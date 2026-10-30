@@ -130,7 +130,7 @@ class RuleTests(unittest.TestCase):
         self.assertEqual(screening.q2_gate(dets, {1: self.t(9, records=11)}, self.rules)["status"], INSUFFICIENT)
         self.assertEqual(screening.q2_gate(dets, {1: self.t(9)}, self.rules)["status"], screening.FAIL)
 
-    def test_negative_five_minute_counts_are_zero(self):
+    def test_negative_five_minute_counts_are_missing(self):
         from datetime import timedelta
         from diagnostics.measures import Measures
         period = timewin.period_ending("2026-10-30T14:30", self.rules)
@@ -141,9 +141,12 @@ class RuleTests(unittest.TestCase):
                 return [{"site": "1", "detector": 1, "time": t - timedelta(minutes=2), "value": v}
                         for t, v in zip(ends, [19, -10] + [0] * 10)]
         totals = Measures(Source(), self.rules, Settings().schema).detector_totals(period, 60)["1"][1]
-        self.assertEqual((totals["total"], totals["records"], totals["negatives"]), (19, 12, 1))
+        self.assertEqual((totals["total"], totals["records"], totals["negatives"]), (19, 11, 1))
         gate = screening.q2_gate([{"detector": 1, "active": True}], {1: totals}, self.rules)
-        self.assertEqual(gate["status"], screening.PASS)                  # 19 + 0, not 19 - 10 = 9
+        self.assertEqual(gate["status"], screening.PASS)                  # 19 from 11 valid records, not 19 - 10 = 9
+        low = {**totals, "total": 7}
+        self.assertEqual(screening.q2_gate([{"detector": 1, "active": True}], {1: low}, self.rules)["status"],
+                         INSUFFICIENT)                                    # below 10 with a record missing: Grey, not FAIL
 
     def comp(self, status):
         return {"status": status}

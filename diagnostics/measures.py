@@ -6,9 +6,9 @@ each period then takes exactly the interval records it needs:
     link volume      sum of the two 15-minute records (both required)
     site KPIs        mean of the two 15-minute records (both required)
     green share      mean of the two 15-minute records; both must have GreenShare and HasGreen = 1
-    detector count   sum of the 5-minute records present in the 60-minute window, a negative record counted
-                     as 0 (q2.negative_counts); the number of records present is kept, so Q2 can tell a
-                     complete window from a partial one
+    detector count   sum of the 5-minute records present in the 60-minute window; a negative record is not a
+                     valid count and is treated as missing (q2.negative_counts: "missing"; "zero" counts it as 0).
+                     The number of valid records is kept, so Q2 can tell a complete window from a partial one
 
 An entity missing any required record has no value for that period. Missing is never zero.
 """
@@ -126,13 +126,15 @@ class Measures:
         rows = self.source.detector_counts(*_span([period], window_minutes), sites=sites)
         series = self._series(rows, lambda r: (r["site"], r["detector"]), step, "detector_counts")
         ends = period.interval_ends(step, window_minutes)
-        zero_negative = self.rules["q2"].get("negative_counts", "zero") == "zero"
+        negative = self.rules["q2"].get("negative_counts", "missing")
         out = defaultdict(dict)
         for (site, detector), s in series.items():
             present = [s[t] for t in ends if t in s]
             negatives = sum(v < 0 for v in present)
-            if zero_negative:
+            if negative == "zero":
                 present = [max(v, 0.0) for v in present]
+            elif negative == "missing":
+                present = [v for v in present if v >= 0]
             out[site][detector] = {"total": sum(present), "records": len(present), "expected": len(ends),
                                    "negatives": negatives}
         return dict(out)

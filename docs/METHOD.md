@@ -51,14 +51,14 @@ Classifications are made by deterministic code. The LLM never decides a category
 
 - **Detectors.** Neo4j `(Detector)-[:BELONG_TO]->(Intersection)` with `active = true` only **(decision)**.
 - **Counts.** The raw counts in `scats/volume`, field `d[n]`, where n = `detector_number`. Each detector's count is the sum of its 5-minute records in the 60 minutes ending with the period (twelve when complete).
-- **Negative counts (decision).** A negative 5-minute count is counted as 0 before summing (`q2.negative_counts: "zero"`), so 19 and −10 give 19, not 9.
+- **Negative counts (decision).** A negative 5-minute count is not a valid count: it is treated as a missing record (`q2.negative_counts: "missing"`), following the methodology's rule that missing records are not measured zeros. So 19 and −10 give 19 from the valid records, not 9; whether the detector passes then follows the rules below.
 - **Each detector is judged on its own**; counts are never added across detectors.
 
 | Detector result | When |
 |---|---|
 | PASS | Its count is at least 10 (`q2.min_vehicles`), **even if some 5-minute records are missing** — the missing ones could only add to it |
 | FAIL | Its count is below 10 and all twelve records are present |
-| INSUFFICIENT | Its count is below 10 and records are missing (a missing record is not a zero), or it has no records |
+| INSUFFICIENT | Its count is below 10 and records are missing or negative (a missing record is not a zero), or it has no valid records |
 
 | Site result | When |
 |---|---|

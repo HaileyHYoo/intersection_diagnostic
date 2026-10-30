@@ -20,7 +20,7 @@ behaviour it was built for:
     new_link        an EGRESS link with no history and one with no data     -> Normal (not evaluated)
     dirty           stamps a few seconds late, duplicates, quoted link IDs,
                     string values, an off-grid record and a negative
-                    5-minute detector count (counted as 0)                  -> Normal
+                    5-minute detector count (treated as missing)            -> Normal
     inactive_zero   an inactive detector recording zero                     -> Normal
 
 Raw tags are emitted the way the live feeds hold them (quoted link IDs on "dirty" sites, numbers as

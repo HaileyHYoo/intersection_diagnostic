@@ -177,7 +177,7 @@ def period_values(source, settings: Settings, site: str, period, approaches: lis
         quarters[approach] = {t.isoformat() for t in aligner.align(points, 15, label) if t in ends}
     return {"period": period.label(), "period_end_utc": period.end.isoformat(),
             "q2_detector_totals_60min": {str(k): v for k, v in sorted(totals.items())},
-            "q2_reading": "total = 60-minute count with negative 5-minute records counted as 0; records = 5-minute records present of expected",
+            "q2_reading": "total = 60-minute count of the valid 5-minute records (negatives are treated as missing); records = valid records of expected",
             "q1_volume_30min": {k: volume.get(k) for k in sorted(links)},
             "q3_kpi": kpi[period.key].get(site),
             "q3c_green": green,

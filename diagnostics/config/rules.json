@@ -24,8 +24,8 @@
   "q2": {
     "window_minutes": 60,
     "min_vehicles": 10,
-    "negative_counts": "zero",
-    "note": "Per detector: >= min_vehicles over the 60 minutes passes even with missing 5-minute records; below it, FAIL needs all records, otherwise INSUFFICIENT DATA. A negative 5-minute count is counted as 0 (\"zero\") or used as stored (\"keep\").",
+    "negative_counts": "missing",
+    "note": "Per detector: >= min_vehicles over the 60 minutes passes even with missing 5-minute records; below it, FAIL needs all records, otherwise INSUFFICIENT DATA. A negative 5-minute count is not a valid count and is treated as missing (\"missing\"); \"zero\" counts it as 0, \"keep\" uses it as stored.",
     "active_detectors_only": true
   },
   "q1": {

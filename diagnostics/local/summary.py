@@ -49,7 +49,9 @@ def summarise(payload: dict) -> dict:
     out["q2_records"] = {"detectors": len(q2_rows),
                          "passed_with_records_missing": sum(1 for d in q2_rows if d["status"] == "PASS"
                                                             and d.get("records", 0) < (d.get("expected_records") or 0)),
-                         "detectors_with_negative_counts_zeroed": sum(1 for d in q2_rows if d.get("negatives_counted_as_zero"))}
+                         "detectors_with_negative_records": sum(1 for d in q2_rows if d.get("negative_records")),
+                         "of_which_grey_or_insufficient": sum(1 for d in q2_rows if d.get("negative_records")
+                                                              and d["status"] == INSUFFICIENT)}
     out["detector_health"] = {"sites": len(dh), "failed_detectors_per_site": dict(sorted(failed_n.items())),
                               "failed_detector_counts_60min": dict(failed_counts),
                               "sites_where_every_failed_detector_counted_0": all_zero,

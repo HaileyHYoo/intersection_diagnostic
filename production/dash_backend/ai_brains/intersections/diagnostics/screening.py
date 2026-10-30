@@ -46,7 +46,7 @@ def site_name(streets) -> str | None:
 
 # ---------------------------------------------------------------------- Q2
 def q2_gate(detectors: list[dict], totals: dict[int, dict], rules: dict) -> dict:
-    """Per active detector, its count over the 60 minutes (negative 5-minute records counted as 0):
+    """Per active detector, its count over the 60 minutes (a negative 5-minute record is treated as missing):
 
         at least the minimum                      PASS, even if some 5-minute records are missing
                                                   (the missing ones could only add to it)
@@ -68,7 +68,7 @@ def q2_gate(detectors: list[dict], totals: dict[int, dict], rules: dict) -> dict
         else:
             status = INSUFFICIENT
         rows.append({"detector": d["detector"], "count_60min": count, "status": status, "records": t["records"],
-                     "expected_records": t["expected"], "negatives_counted_as_zero": t["negatives"]})
+                     "expected_records": t["expected"], "negative_records": t["negatives"]})
     failed = [r for r in rows if r["status"] == FAIL]
     missing = [r for r in rows if r["status"] == INSUFFICIENT]
     if not rows:
