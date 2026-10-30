@@ -3,7 +3,7 @@
   "files": {
     "__init__.py": "e566b6b31d8c609355349866514660cf8812b98e583d353d105892d4d167f132",
     "baseline.py": "0eb1f93509e70aee9f41ea4bdf13bbea0c1b8637ac01f17028e8173f133f39fd",
-    "config/rules.json": "ef63a8e56b8f2ce7c02679d914742a13c54bb5e1ae68aacc9d3e739d6c50a0f5",
+    "config/rules.json": "6c171cb7470121dc4a12dda27b944b77d1a89417a69568ad44a63982e367b9b5",
     "config/schema.json": "383430955fe6888f95847ed5f738d8a86d1451bd90168a00f57a4b8269800d49",
     "contract/__init__.py": "8973aab51d753b08f6fe38e8d54f8235e9b22001501128b62168e438a3ffd8dd",
     "contract/adapter.py": "e303b48c4fca895856718613b9fc359aaf75f8886b13e8193a7cb11290ce33e7",

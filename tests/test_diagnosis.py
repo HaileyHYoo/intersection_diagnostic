@@ -85,9 +85,10 @@ class DiagnoseTests(unittest.TestCase):
         self.assertEqual(self.section(r, 3)["text"], UNAVAILABLE)
         self.assertTrue(self.section(r, 1)["text"])        # D001 still runs
 
-    def test_queue_is_reported_unavailable_not_estimated(self):
-        text = self.section(self.report("4300"), 3)["text"]
-        self.assertIn("Queue length: unavailable", text)
+    def test_queue_is_part_of_the_tomtom_section(self):
+        section = self.section(self.report("4300"), 3)
+        self.assertIn("longest mean queue is on Swanston Street [N]", section["text"])
+        self.assertIn("Mean queue (m)", section["tables"][0]["columns"])
 
     def test_other_categories_show_evidence_only(self):
         for site in ("4309", "4318", "4321", "4345"):

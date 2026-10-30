@@ -3,11 +3,14 @@
 ## 1. 준비
 
 ```powershell
+git clone -b claude/busy-volta-of5gyv https://github.com/HaileyHYoo/intersection_diagnostic.git
 cd intersection_diagnostic
 python -m venv .venv; .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
 Copy-Item .env.example .env      # 챗봇 .env 값(InfluxDB, Neo4j, OpenAI)을 그대로 넣으면 됩니다
 ```
+
+`.env`에는 `TOMTOM_API_KEY`도 넣어 주세요(챗봇 TomTom 기능과 같은 키). 대기행렬 조회에 씁니다.
 
 OpenAI 키가 없거나 `--no-llm`을 주면 D001/D002 문장은 코드가 직접 씁니다. 숫자와 판정은 어느 경우든 코드가 계산합니다.
 
@@ -38,6 +41,7 @@ python main.py inspect --site 4397 --end 2026-10-27T08:30 --hours 2
 | 타임스탬프가 구간 끝 기준인지 | 각 feed의 `last`가 창 끝 시각과 같은지 |
 | 정각에서 벗어난 기록의 패턴 | `offset_within_step`, `on_grid` |
 | EGRESS 링크에 볼륨과 GreenShare가 있는지 | `checks.links` |
+| TomTom 매핑과 대기행렬 아카이브가 읽히는지 | `checks.tomtom` (화면 요약의 `tomtom:` 줄) |
 
 결과에 따라 `diagnostics/config/schema.json`이나 `rules.json`의 값만 바꾸면 됩니다. 코드는 고치지 않아도 됩니다.
 
@@ -68,7 +72,7 @@ python main.py baseline --days 7                      # 주간 베이스라인 �
 | 데이터 지연 여유 | `data_latency_minutes` 5 |
 | 클릭 시 실행할 템플릿 | `click` (Red만 D001, D002) |
 | 평소값 기준 | `reference_value` `"median"` (중앙값, 프로덕션 계약 기준) |
-| TomTom 대기행렬(API) | `tomtom.api_enabled` false. 켜려면 `.env`에 `TOMTOM_API_KEY` 필요 |
+| TomTom 대기행렬(API) | `tomtom.api_enabled` true (문서 13장). `.env`에 `TOMTOM_API_KEY` 필요. 없으면 대기행렬만 "unavailable" |
 | 프로덕션 템플릿 ID | `contract.template_ids` (D002 ID는 확인 전 임시값) |
 
 규칙이나 스키마 버전이 바뀌면 베이스라인과 실행 결과를 자동으로 새로 계산합니다.

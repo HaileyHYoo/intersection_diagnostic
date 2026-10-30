@@ -39,7 +39,7 @@ Copy `production/dash_backend/ai_brains/intersections/diagnostics/` into the bac
 | `store.py` | SQLite store (runs, baselines, diagnoses) |
 | `config/schema.json`, `config/rules.json` | Data schema (temporary) and rules |
 | `contract/` | The production team's `intersections_diagnostics_schemas.py` (copied unchanged), `adapter.py` (conversion) and `core.py` (`run_screening`, `run_diagnosis`) |
-| `sources/tomtom_queue.py` | TomTom Junction Analytics queue archive (only when `tomtom.api_enabled`) |
+| `sources/tomtom_queue.py` | TomTom Junction Analytics queue archive (Q5 queue length; `tomtom.api_enabled`, on) |
 | `data/` | TomTom approach ↔ link mapping (from the chatbot) and the site ↔ subsystem map (fallback only) |
 
 ## 3. Dependencies and environment
@@ -53,7 +53,7 @@ Copy `production/dash_backend/ai_brains/intersections/diagnostics/` into the bac
 | `DIAGNOSTICS_DB` | `diagnostics.sqlite3` (working directory) | SQLite file for runs, baselines and reports. Use a persistent, writable path. |
 | `DIAGNOSTICS_SCHEMA_FILE` | bundled `config/schema.json` | Your schema file, once it replaces the temporary one |
 | `DIAGNOSTICS_RULES_FILE` | bundled `config/rules.json` | Only if the rules are managed outside the package |
-| `TOMTOM_API_KEY` | — | Only when `tomtom.api_enabled` is switched on (Q5 queue length). The chatbot's TomTom layer already uses it. |
+| `TOMTOM_API_KEY` | — | **Needed for the Q5 queue length** (methodology section 13). The chatbot's TomTom layer already uses it. Without it, Q5 reports the queue as unavailable. |
 
 ## 4. Host code
 

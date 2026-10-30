@@ -77,6 +77,9 @@ class InspectTests(unittest.TestCase):
         clean = inspect_data.inspect(source, s, "4339", END, 2)
         self.assertEqual(clean["checks"]["detectors"]["fields_present"], list(range(1, 10)))
         self.assertEqual(clean["checks"]["detectors"]["neo4j_inactive"], [9])
+        red = inspect_data.inspect(source, s, "4300", END, 2)
+        self.assertEqual(red["checks"]["tomtom"]["mapped_approaches"], 4)
+        self.assertEqual(len(red["checks"]["tomtom"]["queue"]["approaches"]), 4)
 
 
 if __name__ == "__main__":

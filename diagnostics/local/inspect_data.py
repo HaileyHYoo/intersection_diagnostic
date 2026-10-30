@@ -9,6 +9,7 @@ expected grid, duplicates, value types and sample rows; then:
     links       Neo4j EGRESS links against volume DetectorGroupId and IntersectionPerfApproach LinkId,
                 with the raw IDs that needed normalising
     stamps      the first and last stamps in the window, to confirm end-of-interval labelling
+    tomtom      the site's junction UUID and approach mapping, and the queue archive rows for the window
 
 Nothing is written to the databases. The report is printed and saved as JSON.
 """
@@ -127,6 +128,25 @@ def inspect(source, settings: Settings, site: str, end=None, hours: float = 2.0)
         "window_start": start.isoformat(), "window_end": stop.isoformat(),
         "per_feed": {k: {"first": v.get("first"), "last": v.get("last")} for k, v in report["feeds"].items()},
     }
+
+    # TomTom: the approach mapping and the queue archive (Q5)
+    mapping = source.tomtom_mapping(site)
+    tomtom = {"junction_uuid": mapping["uuid"], "mapped_approaches": len(mapping["approaches"]),
+              "mapped_links_not_egress": sorted({a["link"] for a in mapping["approaches"].values()} - egress),
+              "api_enabled": rules["tomtom"]["api_enabled"]}
+    queue = attempt("tomtom.queue", lambda: source.tomtom_queue(site, start, stop)) if mapping["uuid"] else None
+    if not mapping["uuid"]:
+        tomtom["queue_skipped"] = "the site has no TomTom junction in the mapping file"
+    if queue is not None:
+        per = defaultdict(list)
+        for r in queue:
+            per[r["approach"]].append(r["queue_m"])
+        tomtom["queue"] = {"rows": len(queue), "first": str(min((r["time"] for r in queue), default=None)),
+                           "last": str(max((r["time"] for r in queue), default=None)),
+                           "approaches": {a: {"minutes": len(v), "mean_m": round(sum(v) / len(v), 1),
+                                              "mapped_link": mapping["approaches"].get(a, {}).get("link")}
+                                          for a, v in per.items()}}
+    report["checks"]["tomtom"] = tomtom
     return report
 
 
@@ -156,6 +176,11 @@ def summary(report: dict) -> str:
     li = report["checks"]["links"]
     lines.append(f"  links: egress {len(li['neo4j_egress'])}, without volume {li['egress_without_volume']}, "
                  f"without perf {li['egress_without_perf']}, normalised raw ids {li['raw_ids_normalised'][:5]}")
+    t = report["checks"].get("tomtom", {})
+    q = t.get("queue")
+    lines.append(f"  tomtom: junction {t.get('junction_uuid')}, mapped approaches {t.get('mapped_approaches')}, "
+                 + (f"queue rows {q['rows']} over {len(q['approaches'])} approaches" if q else
+                    t.get("queue_skipped") or "queue not read (see errors)"))
     for k, v in report["errors"].items():
         lines.append(f"  ERROR {k}: {v}")
     return "\n".join(lines)

@@ -76,10 +76,19 @@ class LiveSourceTests(unittest.TestCase):
         self.assertIn("-1731433707", mapping["exits"])
         self.assertEqual(self.source().tomtom_mapping("99999"), {"uuid": None, "approaches": {}, "exits": {}})
 
-    def test_queue_off_by_default(self):
+    def test_queue_switch_and_missing_key(self):
+        import os
         from diagnostics.sources.base import DataUnavailable
-        with self.assertRaises(DataUnavailable):
-            self.source().tomtom_queue("162", T, T)
+        self.assertTrue(Settings().rules["tomtom"]["api_enabled"])              # on by default (methodology 13)
+        off = Settings(rules=load_rules(overrides={"tomtom": {"api_enabled": False}}))
+        with self.assertRaisesRegex(DataUnavailable, "disabled"):
+            self.source(settings=off).tomtom_queue("162", T, T)
+        saved = {k: os.environ.pop(k) for k in ("TOMTOM_API_KEY", "TOMTOM_API_TOKEN") if k in os.environ}
+        try:
+            with self.assertRaisesRegex(DataUnavailable, "TOMTOM_API_KEY"):
+                self.source().tomtom_queue("162", datetime(2026, 10, 26, 21, tzinfo=timezone.utc), T)
+        finally:
+            os.environ.update(saved)
 
     def test_fallback_only_when_enabled(self):
         from diagnostics.measures import Measures

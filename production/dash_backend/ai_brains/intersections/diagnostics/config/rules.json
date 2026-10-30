@@ -39,10 +39,10 @@
   },
   "fallbacks": {"enabled": false},
   "tomtom": {
-    "api_enabled": false,
+    "api_enabled": true,
     "adequate_quarters": 2,
     "queue_min_minutes": 15,
-    "note": "api_enabled switches the Junction Analytics queue archive (Q5 queue length) on; it needs TOMTOM_API_KEY."
+    "note": "Methodology section 13: Q5 reports approach queue length and the largest queue from the TomTom Junction Analytics queue history (API archive). Needs TOMTOM_API_KEY; without it, or if the call fails, the queue is reported as unavailable and the rest of Q5 still runs."
   },
   "contract": {
     "template_ids": {
