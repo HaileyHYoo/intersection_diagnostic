@@ -1,0 +1,46 @@
+[
+  {
+    "id": "D001",
+    "version": "1.0",
+    "methodology_step": "Q4",
+    "title": "SCATS diagnostic interpretation",
+    "question": "What traffic and signal-operation abnormalities have been identified at this intersection, how do they relate to one another, and what should the traffic engineer investigate first?",
+    "invocation": "Direct, from a map click on a Red intersection. No semantic matching or parameter extraction.",
+    "allowed_parameters": ["site", "run_id"],
+    "source_fields": ["saved Q1 result (approaches, current/usual volume, 10th-90th percentile range, direction, % difference)",
+                      "saved Q3 result (cycle length, cycle stability, phase service per approach, statuses)"],
+    "execution_path": "No data retrieval. Reads the saved, validated Q1/Q3 results of the screening run.",
+    "input": "evidence object built by templates/d001.py from the run record",
+    "output": {"diagnosis": "string", "supporting_evidence": ["string"], "suggested_checks": ["string"]},
+    "missing_data": "Components that were INSUFFICIENT DATA are named as not assessed; no value is inferred.",
+    "constraints": [
+      "Report every affected approach and the measure that is unusual.",
+      "Do not assume the Q1 approach is the Q3 phase-service approach; connect them only when the approach is the same.",
+      "Association is not causation: an abnormal signal measure does not prove SCATS caused the traffic issue.",
+      "Do not reclassify the intersection, invent figures, write database queries or propose automatic timing changes.",
+      "Suggested checks are conservative (review, investigate, verify, check, monitor) and tied to visible evidence."
+    ]
+  },
+  {
+    "id": "D002",
+    "version": "1.0",
+    "methodology_step": "Q5",
+    "title": "TomTom road-user performance confirmation",
+    "question": "Which approaches are experiencing the greatest TomTom-reported delay and queue length during the selected period, and do these correspond with the approaches identified by the SCATS screening and diagnosis?",
+    "invocation": "Direct, from the same map click.",
+    "allowed_parameters": ["site", "run_id"],
+    "source_fields": ["InfluxDB IntersectionTurnKpi: ApproachDelaySec, ControlDelaySec, MultiStopRate, TurnRatioPct, SampleCount",
+                      "InfluxDB IntersectionKpi: ControlDelaySec",
+                      "TomTom ApproachId -> EGRESS link mapping file",
+                      "Q1/Q3 affected approaches from the screening run"],
+    "execution_path": "Fixed retrieval of the two TomTom measurements for the same 30-minute period; code computes metrics, ranking and the SCATS comparison. The TomTom Junction Analytics API (queue) is disabled in this version.",
+    "input": "evidence object built by templates/d002.py",
+    "output": {"road_user_impact": "string", "agreement": "agreement | disagreement | insufficient coverage", "coverage": "string"},
+    "missing_data": "Missing approaches or movements are reported as partial coverage, never as zero. Without data: 'TomTom confirmation unavailable for this intersection or analysis period.'",
+    "constraints": [
+      "State whether the greatest delay is on the SCATS-identified approach; report a mismatch.",
+      "Highest among observed approaches is not historically abnormal delay.",
+      "Do not assert that signal settings caused congestion, queues or delay."
+    ]
+  }
+]
