@@ -8,6 +8,7 @@ from datetime import datetime
 
 from .. import ids, tomtom_map
 from ..settings import Settings, connection_env, package_file
+from ..timewin import tz_name
 from .base import DataUnavailable
 from .graph import GraphReader
 from .influx import InfluxReader, build_flux, padded
@@ -162,7 +163,7 @@ class LiveSource:
         if not uuid:
             raise DataUnavailable("the site has no verified TomTom junction")
         if self._queue is None:
-            self._queue = QueueArchive(self.schema["tomtom_queue"], self.settings.rules.get("timezone", "Australia/Melbourne"))
+            self._queue = QueueArchive(self.schema["tomtom_queue"], tz_name(self.settings.rules))
         rows = self._queue.rows(uuid, start, end)
         self.provenance.append({"source": "TomTom Junction Analytics archive", "site": site, "rows": len(rows)})
         return rows

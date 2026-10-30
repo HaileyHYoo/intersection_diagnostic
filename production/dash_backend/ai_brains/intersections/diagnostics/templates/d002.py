@@ -77,7 +77,9 @@ def measure(source, site: dict, period: Period, rules: dict) -> dict:
     for r in rows:
         series[(r["approach"], r["exit"], r["field"])].append((r["time"], r["value"]))
     ends = period.interval_ends(15)
-    aligned = {k: {t: v for t, v in aligner.align(points, 15).items() if t in ends} for k, points in series.items()}
+    feed = source.schema["influx"]["sources"]["tomtom_turn_kpi"] if hasattr(source, "schema") else {}
+    label = feed.get("timestamp_label", "end")
+    aligned = {k: {t: v for t, v in aligner.align(points, 15, label).items() if t in ends} for k, points in series.items()}
 
     names = {a["link"]: a for a in site["q1"]["approaches"]}
     names.update({a["link"]: a for a in site["q3"]["components"]["phase_service"]["approaches"]})

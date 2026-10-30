@@ -58,7 +58,7 @@ def parse_archive(blob: bytes, spec: dict) -> list[dict]:
                     if value is None or value < 0:
                         continue
                     rows.append({"approach": str(record[approach]), "time": parse_time(record[stamp], spec["naive_timestamp_timezone"]),
-                                 "queue_m": value})
+                                 "queue_m": value, "raw_time": record[stamp]})
     return rows
 
 

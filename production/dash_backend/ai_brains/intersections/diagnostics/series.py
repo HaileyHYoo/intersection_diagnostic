@@ -1,9 +1,12 @@
 """Put raw time-series records onto a fixed grid, one value per interval.
 
-Records are labelled at the interval end (see timewin.py). A record exactly on a grid point keeps it. One
-within alignment.tolerance_seconds of a grid point is moved to that point; this absorbs small write
-delays without shifting a record into the neighbouring interval. Anything further off the grid is dropped
-(alignment.off_grid = "drop") or assigned to the interval it falls in ("ceil"). When two records land on
+Records are labelled at the interval end (see timewin.py); a feed labelled at the interval start
+(schema "timestamp_label": "start") is shifted by one interval first. A record exactly on a grid point keeps
+it. One within alignment.tolerance_seconds of a grid point is moved to that point; this absorbs small write
+delays without shifting a record into the neighbouring interval. Anything further off the grid is assigned
+to the interval its stamp falls in (alignment.off_grid = "ceil": 03:22:05 -> the interval ending 03:30) or
+dropped ("drop"). Live feeds are written off the grid at a fixed offset (5-minute detector counts at :03,
+:08, ...; IntersectionPerfKpi/Approach at :07, :22, ...), so "ceil" is the default. When two records land on
 the same interval, alignment.duplicates decides: "last" keeps the latest raw timestamp, "first" the
 earliest. Every decision is counted so the inspection report can show how clean a feed is.
 
@@ -48,16 +51,17 @@ class Aligner:
         self.stats = {"records": 0, "on_grid": 0, "snapped": 0, "off_grid_dropped": 0, "off_grid_ceiled": 0,
                       "duplicates": 0, "invalid_values": 0}
 
-    def align(self, points, step_minutes: int) -> dict[datetime, float]:
+    def align(self, points, step_minutes: int, label: str = "end") -> dict[datetime, float]:
         """{interval end: value} from (timestamp, value) pairs of one series."""
         chosen: dict[datetime, tuple[datetime, float]] = {}
+        shift = timedelta(minutes=step_minutes) if label == "start" else timedelta(0)
         for stamp, raw in points:
             self.stats["records"] += 1
             value = number(raw)
             if value is None:
                 self.stats["invalid_values"] += 1
                 continue
-            stamp = to_utc(stamp)
+            stamp = to_utc(stamp) + shift
             point = grid_point(stamp, step_minutes, self.tolerance, self.off_grid)
             if point is None:
                 self.stats["off_grid_dropped"] += 1

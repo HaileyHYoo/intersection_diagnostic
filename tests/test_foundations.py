@@ -75,15 +75,52 @@ class PeriodTests(unittest.TestCase):
         self.assertTrue(skipped["2025-12-31"].startswith("year-end"))
 
 
+class TimeZoneTests(unittest.TestCase):
+    def test_zone_comes_from_the_region_tag(self):
+        self.assertEqual(timewin.tz_name(RULES), "Australia/Melbourne")
+        brisbane = load_rules(overrides={"region": "AU-QLD-Brisbane1"})
+        p = timewin.period_ending("2026-10-27T08:30", brisbane)          # Brisbane has no daylight saving
+        self.assertEqual(p.end, utc(2026, 10, 26, 22, 30))
+        with self.assertRaises(ValueError):
+            timewin.tz_name(load_rules(overrides={"region": "XX-Nowhere"}))
+
+    def test_local_input_is_queried_in_utc(self):
+        from diagnostics.sources.live import LiveSource
+
+        class Capture:
+            queries = []
+
+            def rows(self, flux):
+                self.queries.append(flux)
+                return []
+        src = LiveSource(Settings(), influx=Capture(), graph=object())
+        p = timewin.period_ending("2026-10-30T14:30", RULES)            # Melbourne local (AEDT)
+        src.site_kpi(p.start, p.end)
+        self.assertIn('time(v: "2026-10-30T02:59:00Z")', src.influx.queries[0])   # 03:00Z minus tolerance
+        self.assertIn('time(v: "2026-10-30T03:31:01Z")', src.influx.queries[0])
+
+
 class AlignmentTests(unittest.TestCase):
     def test_on_grid_snapped_and_dropped(self):
-        a = Aligner(RULES["alignment"])
+        a = Aligner({**RULES["alignment"], "off_grid": "drop"})
         points = [(utc(2026, 1, 1, 1, 15), 10), (utc(2026, 1, 1, 1, 30, 40), 11),
                   (utc(2026, 1, 1, 1, 40), 99), (utc(2026, 1, 1, 1, 45), "12")]
         series = a.align(points, 15)
         self.assertEqual(series, {utc(2026, 1, 1, 1, 15): 10, utc(2026, 1, 1, 1, 30): 11, utc(2026, 1, 1, 1, 45): 12})
         self.assertEqual(a.stats["off_grid_dropped"], 1)
         self.assertEqual(a.stats["snapped"], 1)
+
+    def test_live_offsets_go_to_the_interval_they_fall_in(self):
+        # default "ceil": PerfKpi written at :07/:22, detector counts at :03/:08 (30 Oct 2026 inspection)
+        a = Aligner(RULES["alignment"])
+        kpi = a.align([(utc(2026, 10, 30, 3, 7, 4), 72), (utc(2026, 10, 30, 3, 22, 5), 74)], 15)
+        self.assertEqual(sorted(kpi), [utc(2026, 10, 30, 3, 15), utc(2026, 10, 30, 3, 30)])
+        det = a.align([(utc(2026, 10, 30, 2, 33) + timedelta(minutes=5 * k), 3) for k in range(12)], 5)
+        self.assertEqual(sorted(det), [utc(2026, 10, 30, 2, 35) + timedelta(minutes=5 * k) for k in range(12)])
+
+    def test_start_labelled_feed_is_shifted(self):
+        a = Aligner(RULES["alignment"])
+        self.assertEqual(list(a.align([(utc(2026, 10, 30, 3, 15), 1)], 15, "start")), [utc(2026, 10, 30, 3, 30)])
 
     def test_record_is_never_moved_into_the_next_interval(self):
         # 01:10 is 5 minutes before 01:15: not snapped, dropped (does not become the 01:15 record)

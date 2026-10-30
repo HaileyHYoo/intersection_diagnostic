@@ -33,7 +33,7 @@ from datetime import datetime, timedelta
 from .. import ids
 from ..tomtom_map import movement
 from ..series import ends_between
-from ..timewin import Period, latest_period, to_utc
+from ..timewin import Period, latest_period, to_utc, tz_name
 
 SCENARIOS = ["red_agree", "red_disagree", "red_no_tomtom", "amber_traffic", "amber_signal", "single_signal",
              "detector_fail", "detector_gap", "volume_gap", "no_green", "kpi_gap", "new_link", "dirty",
@@ -348,4 +348,4 @@ class FakeSource:
 
     def scenario_period(self) -> Period:
         return Period(self.scenario_end - timedelta(minutes=self.rules["period_minutes"]), self.scenario_end,
-                      self.rules.get("timezone", "Australia/Melbourne"))
+                      tz_name(self.rules))

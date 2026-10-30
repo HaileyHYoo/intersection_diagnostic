@@ -141,13 +141,47 @@ def inspect(source, settings: Settings, site: str, end=None, hours: float = 2.0)
         per = defaultdict(list)
         for r in queue:
             per[r["approach"]].append(r["queue_m"])
+        raw_times = [str(r.get("raw_time")) for r in queue[:3]]
+        tomtom["queue_time_format"] = {
+            "raw_samples": raw_times, "naive_timestamps_read_as": settings.schema["tomtom_queue"]["naive_timestamp_timezone"],
+            "has_offset": all(t.endswith("Z") or "+" in t[10:] or t[10:].count("-") > 0 for t in raw_times) if raw_times else None}
         tomtom["queue"] = {"rows": len(queue), "first": str(min((r["time"] for r in queue), default=None)),
                            "last": str(max((r["time"] for r in queue), default=None)),
                            "approaches": {a: {"minutes": len(v), "mean_m": round(sum(v) / len(v), 1),
                                               "mapped_link": mapping["approaches"].get(a, {}).get("link")}
                                           for a, v in per.items()}}
     report["checks"]["tomtom"] = tomtom
+    report["checks"]["period_values"] = attempt("period_values", lambda: period_values(source, settings, site, period, approaches))
     return report
+
+
+def period_values(source, settings: Settings, site: str, period, approaches: list[dict]) -> dict:
+    """What the screening would use for this site in the window's last 30-minute period."""
+    from ..measures import Measures
+    rules, schema = settings.rules, settings.schema
+    m = Measures(source, rules, schema)
+    totals = m.detector_totals(period, rules["q2"]["window_minutes"], sites=[site]).get(site, {})
+    links = {a["link"] for a in approaches}
+    volume = {k: v for k, v in m.link_volumes([period])[period.key].items() if k in links}
+    kpi, _ = m.site_kpi([period], sites=[site])
+    green = m.approach_green([period], sites=[site])[period.key].get(site, {})
+    turn = source.tomtom_turn_kpi(site, period.start, period.end)
+    label = schema["influx"]["sources"]["tomtom_turn_kpi"].get("timestamp_label", "end")
+    from ..series import Aligner
+    aligner, quarters = Aligner(rules["alignment"]), defaultdict(set)
+    ends = set(period.interval_ends(15))
+    by_approach = defaultdict(list)
+    for r in turn:
+        by_approach[r["approach"]].append((r["time"], r["value"]))
+    for approach, points in by_approach.items():
+        quarters[approach] = {t.isoformat() for t in aligner.align(points, 15, label) if t in ends}
+    return {"period": period.label(), "period_end_utc": period.end.isoformat(),
+            "q2_detector_totals_60min": {str(k): v for k, v in sorted(totals.items())},
+            "q1_volume_30min": {k: volume.get(k) for k in sorted(links)},
+            "q3_kpi": kpi[period.key].get(site),
+            "q3c_green": green,
+            "tomtom_quarters_used": {a: sorted(q) for a, q in quarters.items()},
+            "reading": "None means the value is missing for this period and the site would be Grey (or TomTom partial)."}
 
 
 def _num(value) -> bool:
@@ -176,6 +210,13 @@ def summary(report: dict) -> str:
     li = report["checks"]["links"]
     lines.append(f"  links: egress {len(li['neo4j_egress'])}, without volume {li['egress_without_volume']}, "
                  f"without perf {li['egress_without_perf']}, normalised raw ids {li['raw_ids_normalised'][:5]}")
+    pv = report["checks"].get("period_values")
+    if pv:
+        missing_det = [k for k, v in pv["q2_detector_totals_60min"].items() if v is None]
+        lines.append(f"  period {pv['period']}: Q2 detectors {len(pv['q2_detector_totals_60min'])} (missing {missing_det}), "
+                     f"Q1 volumes {pv['q1_volume_30min']}, Q3 {pv['q3_kpi']}")
+        lines.append(f"    Q3C green {{link: share}} {{{', '.join(f'{k}: {v['green_share']}' for k, v in pv['q3c_green'].items())}}}, "
+                     f"TomTom quarters per approach {[len(v) for v in pv['tomtom_quarters_used'].values()]}")
     t = report["checks"].get("tomtom", {})
     q = t.get("queue")
     lines.append(f"  tomtom: junction {t.get('junction_uuid')}, mapped approaches {t.get('mapped_approaches')}, "

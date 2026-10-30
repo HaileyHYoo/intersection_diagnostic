@@ -1,9 +1,9 @@
 {
-  "version": "tmp-2026-10-31",
+  "version": "tmp-2026-10-30b",
   "note": "Temporary schema designed from the InfluxDB inventory of 5 Oct 2026 and the chatbot's Neo4j queries. Replace with the production team's schema; code reads every name from here.",
   "timestamps": {
     "label": "end",
-    "note": "A record stamped 01:15 covers 01:00-01:15."
+    "note": "A record stamped 01:15 covers 01:00-01:15. Per feed, timestamp_label can be \"start\"."
   },
   "influx": {
     "region_tag": "Region",
@@ -17,16 +17,22 @@
         "detector_field": "d[{n}]",
         "detector_field_regex": "^d\\[[0-9]+\\]$",
         "interval_minutes": 5,
-        "filters": {}
+        "filters": {},
+        "timestamp_label": "end"
       },
       "link_volume": {
         "purpose": "Q1: existing 15-minute approach/link volumes",
         "bucket": "scats-aggregation",
         "measurement": "volume",
         "link_tag": "DetectorGroupId",
-        "fields": {"volume": "Volume"},
+        "fields": {
+          "volume": "Volume"
+        },
         "interval_minutes": 15,
-        "filters": {"MinutesPast": "15"}
+        "filters": {
+          "MinutesPast": "15"
+        },
+        "timestamp_label": "end"
       },
       "site_kpi": {
         "purpose": "Q3A/Q3B: existing Signal Performance KPIs per site",
@@ -34,9 +40,15 @@
         "measurement": "IntersectionPerfKpi",
         "site_tag": "SiteNo",
         "site_format": "S",
-        "fields": {"cycle_length": "AvgCycle", "cycle_stability": "CycleStability"},
+        "fields": {
+          "cycle_length": "AvgCycle",
+          "cycle_stability": "CycleStability"
+        },
         "interval_minutes": 15,
-        "filters": {"MinutesPast": "15"}
+        "filters": {
+          "MinutesPast": "15"
+        },
+        "timestamp_label": "end"
       },
       "approach_perf": {
         "purpose": "Q3C: existing phase service (green share) per approach link",
@@ -46,10 +58,14 @@
         "site_format": "S",
         "link_tag": "LinkId",
         "bound_tag": "Bound",
-        "fields": {"green_share": "GreenShare", "has_green": "HasGreen"},
+        "fields": {
+          "green_share": "GreenShare",
+          "has_green": "HasGreen"
+        },
         "green_share_unit": "percent",
         "interval_minutes": 15,
-        "filters": {}
+        "filters": {},
+        "timestamp_label": "end"
       },
       "tomtom_site_kpi": {
         "purpose": "Q5: TomTom intersection KPIs stored in InfluxDB",
@@ -57,9 +73,18 @@
         "measurement": "IntersectionKpi",
         "site_tag": "SiteNo",
         "site_format": "S",
-        "fields": {"control_delay": "ControlDelaySec", "stops": "AvgStopsPerCar", "speed": "AvgSpeedkmh"},
+        "fields": {
+          "control_delay": "ControlDelaySec",
+          "stops": "AvgStopsPerCar",
+          "speed": "AvgSpeedkmh"
+        },
         "interval_minutes": 15,
-        "filters": {"MinutesPast": "15", "Provider": "TomTom"}
+        "filters": {
+          "MinutesPast": "15",
+          "Provider": "TomTom"
+        },
+        "timestamp_label": "end",
+        "timestamp_note": "To confirm: in the 30 Oct 2026 inspection (site 4397) the last record of a window ending 03:30 was 03:15. If records are labelled at the interval start, set timestamp_label to \"start\"."
       },
       "tomtom_turn_kpi": {
         "purpose": "Q5: TomTom approach and movement KPIs stored in InfluxDB",
@@ -77,7 +102,12 @@
           "sample_count": "SampleCount"
         },
         "interval_minutes": 15,
-        "filters": {"MinutesPast": "15", "Provider": "TomTom"}
+        "filters": {
+          "MinutesPast": "15",
+          "Provider": "TomTom"
+        },
+        "timestamp_label": "end",
+        "timestamp_note": "To confirm: in the 30 Oct 2026 inspection (site 4397) the last record of a window ending 03:30 was 03:15. If records are labelled at the interval start, set timestamp_label to \"start\"."
       }
     },
     "fallbacks": {
@@ -100,10 +130,28 @@
   "tomtom_queue": {
     "purpose": "Q5 queue length: TomTom Junction Analytics archive, per-minute queue per approach (only when rules tomtom.api_enabled)",
     "url_template": "https://api.tomtom.com/junction-analytics/junctions/1/archive/{junction_uuid}/data/flat/daily",
-    "date_params": {"from": "from", "to": "to"},
-    "queue_columns": ["queueLengthMeters", "queue_length_meters", "queueLength"],
-    "approach_columns": ["approachId", "approach_id", "approachID", "id"],
-    "time_columns": ["time", "timestamp", "dateTime", "datetime", "observedAt"],
+    "date_params": {
+      "from": "from",
+      "to": "to"
+    },
+    "queue_columns": [
+      "queueLengthMeters",
+      "queue_length_meters",
+      "queueLength"
+    ],
+    "approach_columns": [
+      "approachId",
+      "approach_id",
+      "approachID",
+      "id"
+    ],
+    "time_columns": [
+      "time",
+      "timestamp",
+      "dateTime",
+      "datetime",
+      "observedAt"
+    ],
     "naive_timestamp_timezone": "UTC",
     "note": "Same endpoint and parsing as the chatbot's TomTom layer (NT782/NT783). Credentials: TOMTOM_API_KEY, or TOMTOM_API_TOKEN with TOMTOM_AUTH_HEADER / TOMTOM_AUTH_PREFIX."
   },

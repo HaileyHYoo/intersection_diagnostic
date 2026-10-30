@@ -18,11 +18,16 @@ Classifications are made by deterministic code. The LLM never decides a category
 - **Timestamps label the end of the interval (decision).** A 15-minute record stamped 01:15 covers 01:00–01:15. A 5-minute record stamped 01:05 covers 01:00–01:05.
 - **Analysis period.** By default this is the latest completed 30 minutes. The period ends on a :00 or :30 boundary, `data_latency_minutes` (5) after real time. Any past period can also be selected.
 - **Records used for the period.** The 30-minute period ending at T uses the 15-minute records stamped T−15 and T. The Q2 window uses the twelve 5-minute records stamped T−55 … T.
-- **Putting records on the grid (decision)** (`series.py`):
-  - A stamp within `alignment.tolerance_seconds` (60 s) of a grid point is moved onto that point.
-  - A stamp further off the grid is dropped (`off_grid: "drop"`). It is never moved into the neighbouring interval.
-  - If two records land on the same point, the latest one is kept (`duplicates: "last"`).
-  - The counts of moved, dropped and duplicate records are kept with every run.
+- **Time zones.** All data are stored in UTC. The region tag gives the local time zone (`rules.region_timezones`, e.g. `AU-VIC-Melbourne` → `Australia/Melbourne`), as in the chatbot.
+  - Local time is used for inputs without an offset, 30-minute slots, weekdays, holidays and display.
+  - Every query is sent in UTC.
+- **Putting records on the grid (decision)** (`series.py`). Live feeds are written at a fixed offset from the grid (30 Oct 2026 inspection, site 4397): 5-minute detector counts at :03, :08 …, and `IntersectionPerfKpi` / `IntersectionPerfApproach` at :07, :22, :37, :52. Each record therefore goes to the interval its stamp falls in (`off_grid: "ceil"`):
+  - 03:22:05 belongs to 03:15–03:30;
+  - 03:28 belongs to 03:25–03:30;
+  - so the 30 minutes ending 03:30 use the Q3 records 03:07 and 03:22, and Q2 uses the twelve detector records 02:33 … 03:28.
+  - A stamp within `alignment.tolerance_seconds` (60 s) of a grid point is moved onto that point (a late write). If two records land on the same interval, the latest one is kept (`duplicates: "last"`).
+  - A feed labelled at the interval start (`timestamp_label: "start"` in the schema) is shifted by one interval first.
+  - The counts of moved, assigned and duplicate records are kept with every run.
 - **Missing records.** A missing or non-numeric value is missing, never zero. A 30-minute value needs both 15-minute records, and the Q2 count needs all twelve 5-minute records.
 
 ## 3. History (baseline)

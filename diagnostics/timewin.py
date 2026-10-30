@@ -19,8 +19,19 @@ from .vic_calendar import exclusion_reason
 UTC = timezone.utc
 
 
+def tz_name(rules: dict) -> str:
+    """The region's local time zone. Data are stored in UTC; inputs, slots, weekdays, holidays and display
+    use local time, and queries convert to UTC (as the chatbot does from its Region tag)."""
+    zones = rules.get("region_timezones", {})
+    if rules["region"] in zones:
+        return zones[rules["region"]]
+    if rules.get("timezone"):
+        return rules["timezone"]
+    raise ValueError(f"No time zone configured for region {rules['region']} (rules region_timezones).")
+
+
 def zone(rules: dict) -> ZoneInfo:
-    return ZoneInfo(rules.get("timezone", "Australia/Melbourne"))
+    return ZoneInfo(tz_name(rules))
 
 
 def to_utc(value: datetime | str) -> datetime:
@@ -96,7 +107,7 @@ def latest_period(rules: dict, now: datetime | None = None) -> Period:
     now = to_utc(now or datetime.now(UTC)) - timedelta(minutes=rules.get("data_latency_minutes", 0))
     minutes = rules["period_minutes"]
     end = floor_to(now, minutes)
-    return Period(end - timedelta(minutes=minutes), end, rules.get("timezone", "Australia/Melbourne"))
+    return Period(end - timedelta(minutes=minutes), end, tz_name(rules))
 
 
 def period_ending(end: datetime | str, rules: dict) -> Period:
@@ -110,7 +121,7 @@ def period_ending(end: datetime | str, rules: dict) -> Period:
     minutes = rules["period_minutes"]
     if floor_to(end, minutes) != end:
         raise ValueError(f"A period must end on a {minutes}-minute boundary (got {end.astimezone(tz):%H:%M}).")
-    return Period(end - timedelta(minutes=minutes), end, rules.get("timezone", "Australia/Melbourne"))
+    return Period(end - timedelta(minutes=minutes), end, tz_name(rules))
 
 
 def period_at(day: date, slot: str, rules: dict) -> Period:
@@ -118,7 +129,7 @@ def period_at(day: date, slot: str, rules: dict) -> Period:
     tz = zone(rules)
     start = datetime.combine(day, time.fromisoformat(slot)).replace(tzinfo=tz)
     start = to_utc(start)
-    return Period(start, start + timedelta(minutes=rules["period_minutes"]), rules.get("timezone", "Australia/Melbourne"))
+    return Period(start, start + timedelta(minutes=rules["period_minutes"]), tz_name(rules))
 
 
 def reference_periods(period: Period, rules: dict) -> tuple[list[Period], dict[str, str]]:

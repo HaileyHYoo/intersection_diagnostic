@@ -2,7 +2,14 @@
   "version": "v1.1",
   "note": "Intersections Diagnostics V1 rules. Values follow the agreed methodology (29 Oct 2026); items marked 'decision' were agreed in addition to it.",
   "region": "AU-VIC-Melbourne",
-  "timezone": "Australia/Melbourne",
+  "region_timezones": {
+    "AU-VIC-Melbourne": "Australia/Melbourne",
+    "AU-VIC-Geelong": "Australia/Melbourne",
+    "AU-QLD-Brisbane1": "Australia/Brisbane",
+    "SA-Doha": "Asia/Qatar",
+    "SA-Riyadh": "Asia/Riyadh"
+  },
+  "time_note": "All data are stored in UTC. Inputs without an offset, 30-minute slots, weekdays, holidays and display use the region's local time; every query is sent in UTC.",
   "period_minutes": 30,
   "quarter_minutes": 15,
   "data_latency_minutes": 5,
@@ -33,8 +40,9 @@
   },
   "q3": {"abnormal_required": 2, "assessable_required": 2},
   "alignment": {
+    "note": "Live feeds are written at a fixed offset from the grid (detector counts at :03/:08, PerfKpi/PerfApproach at :07/:22), so an off-grid record goes to the interval its stamp falls in (ceil). Within tolerance_seconds of a grid point it is moved onto that point.",
     "tolerance_seconds": 60,
-    "off_grid": "drop",
+    "off_grid": "ceil",
     "duplicates": "last"
   },
   "fallbacks": {"enabled": false},

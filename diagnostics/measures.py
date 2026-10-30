@@ -34,18 +34,22 @@ class Measures:
     def _step(self, feed: str) -> int:
         return self.schema["influx"]["sources"][feed]["interval_minutes"]
 
-    def _series(self, rows, key, step):
+    def _label(self, feed: str) -> str:
+        return self.schema["influx"]["sources"][feed].get("timestamp_label", self.schema["timestamps"]["label"])
+
+    def _series(self, rows, key, step, feed):
         grouped = defaultdict(list)
         for r in rows:
             k = key(r)
             if None not in (k if isinstance(k, tuple) else (k,)):
                 grouped[k].append((r["time"], r["value"]))
-        return {k: self.aligner.align(points, step) for k, points in grouped.items()}
+        label = self._label(feed)
+        return {k: self.aligner.align(points, step, label) for k, points in grouped.items()}
 
     # ------------------------------------------------------------------ Q1
     def link_volumes(self, periods: list[Period]) -> dict[str, dict[str, float]]:
         step = self._step("link_volume")
-        series = self._series(self.source.link_volumes(*_span(periods)), lambda r: r["link"], step)
+        series = self._series(self.source.link_volumes(*_span(periods)), lambda r: r["link"], step, "link_volume")
         out = {}
         for p in periods:
             ends = p.interval_ends(step)
@@ -58,14 +62,14 @@ class Measures:
         return out
 
     # ------------------------------------------------------------------ Q3A / Q3B
-    def site_kpi(self, periods: list[Period]) -> tuple[dict, dict]:
+    def site_kpi(self, periods: list[Period], sites=None) -> tuple[dict, dict]:
         """({period: {site: {field: value}}}, {period: {site: {field: origin}}})."""
         step = self._step("site_kpi")
         span = _span(periods)
-        series = self._series(self.source.site_kpi(*span), lambda r: (r["site"], r["field"]), step)
+        series = self._series(self.source.site_kpi(*span, sites=sites), lambda r: (r["site"], r["field"]), step, "site_kpi")
         fallback = {}
         if self.rules.get("fallbacks", {}).get("enabled"):
-            fallback = self._series(self.source.cycle_length_fallback(*span), lambda r: (r["site"], r["field"]), step)
+            fallback = self._series(self.source.cycle_length_fallback(*span), lambda r: (r["site"], r["field"]), step, "site_kpi")
         out, origins = {}, {}
         for p in periods:
             ends = p.interval_ends(step)
@@ -84,16 +88,16 @@ class Measures:
         return out, origins
 
     # ------------------------------------------------------------------ Q3C
-    def approach_green(self, periods: list[Period]) -> dict[str, dict[str, dict[str, dict]]]:
+    def approach_green(self, periods: list[Period], sites=None) -> dict[str, dict[str, dict[str, dict]]]:
         """{period: {site: {link: {green_share, green, complete, bound}}}}.
 
         green is True only when every required record has HasGreen = 1 and a GreenShare value;
         green_share is then the mean share in percent, otherwise None.
         """
         step = self._step("approach_perf")
-        rows = self.source.approach_perf(*_span(periods))
+        rows = self.source.approach_perf(*_span(periods), sites=sites)
         bounds = {(r["site"], r["link"]): r.get("bound") for r in rows if r.get("bound")}
-        series = self._series(rows, lambda r: (r["site"], r["link"], r["field"]), step)
+        series = self._series(rows, lambda r: (r["site"], r["link"], r["field"]), step, "approach_perf")
         fraction = self.schema["influx"]["sources"]["approach_perf"].get("green_share_unit") == "fraction"
         out = {}
         for p in periods:
@@ -112,10 +116,10 @@ class Measures:
         return out
 
     # ------------------------------------------------------------------ Q2
-    def detector_totals(self, period: Period, window_minutes: int) -> dict[str, dict[int, float | None]]:
+    def detector_totals(self, period: Period, window_minutes: int, sites=None) -> dict[str, dict[int, float | None]]:
         step = self._step("detector_counts")
-        rows = self.source.detector_counts(*_span([period], window_minutes))
-        series = self._series(rows, lambda r: (r["site"], r["detector"]), step)
+        rows = self.source.detector_counts(*_span([period], window_minutes), sites=sites)
+        series = self._series(rows, lambda r: (r["site"], r["detector"]), step, "detector_counts")
         ends = period.interval_ends(step, window_minutes)
         out = defaultdict(dict)
         for (site, detector), s in series.items():

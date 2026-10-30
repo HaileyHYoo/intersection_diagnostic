@@ -42,9 +42,18 @@ python main.py inspect --site 4397 --end 2026-10-27T08:30 --hours 2
 
 | Check | Where in the report | If it fails |
 |---|---|---|
-| `d[n]` is `Detector.detector_number` | `checks.detectors`: `active_without_field` and `fields_without_neo4j_detector` both empty | Change `detector_field` or the `detectors` query |
+| `d[n]` is `Detector.detector_number` | `checks.detectors`: the active Neo4j detectors equal `fields_with_nonzero_counts` (unused fields `d[9]`… are zero) | Change `detector_field` or the `detectors` query |
 | Value types of `scats/volume` | `feeds.detector_counts.value_types` | Nothing to change: strings are converted, and anything non-numeric is missing |
-| Stamps are interval ends | `checks.timestamps`: each feed's `last` equals the window end | Set `timestamps.label` (and review `timewin.py`) |
-| Off-grid stamps (01:10, 04:22:05 seen in the inventory) | `feeds.*.offset_within_step`, `on_grid` | Adjust `alignment.tolerance_seconds` / `off_grid` in rules.json |
+| Stamps are interval ends | `checks.timestamps`: each feed's `last` equals the window end | Set the feed's `timestamp_label` |
+| Off-grid stamps | `feeds.*.offset_within_step`, `on_grid` | Nothing to change with `off_grid: "ceil"`; check `period_values` |
 | EGRESS links have volume and green share | `checks.links` | Check the link ID format and `ids.strip_chars` |
+| What the screening would use | `checks.period_values`: no `None` for Q2 detectors, Q1 volumes, Q3 KPIs, Q3C green | A `None` means the site would be Grey |
+| TomTom queue time format | `checks.tomtom.queue_time_format` | If stamps have no offset and are not UTC, set `tomtom_queue.naive_timestamp_timezone` |
+
+**Results for site 4397, 30 Oct 2026 (UTC 01:30–03:30):**
+- confirmed: `d[n]` = detector number (1–8); detector counts are integers; the three EGRESS links have volume and green share; the 15-minute volumes are end-labelled; the TomTom mapping and queue archive work (3 approaches, 1 row per minute);
+- found: detector counts are stamped at :03/:08 and PerfKpi/PerfApproach at :07/:22, which is now handled with `off_grid: "ceil"`;
+- still open:
+  - the TomTom KPIs ended at 03:15 for a window ending at 03:30, so they are either start-labelled or late. Re-run `inspect` for a window that ended an hour or more earlier; if `last` is still 15 minutes before the window end, set `timestamp_label: "start"` for `tomtom_site_kpi` and `tomtom_turn_kpi`;
+  - whether a PerfKpi record stamped :07 covers the 15 minutes up to :07 (the reading used) or an earlier quarter written late — a question for the production team.
 | `IntersectionPerfApproach` is 15-minute | `feeds.approach_perf.step_seconds` = 900 | Set `interval_minutes` |

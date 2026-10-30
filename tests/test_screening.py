@@ -58,7 +58,7 @@ class NetworkScreeningTests(unittest.TestCase):
         stats = self.result["alignment"]
         self.assertGreater(stats["snapped"], 0)
         self.assertGreater(stats["duplicates"], 0)
-        self.assertGreater(stats["off_grid_dropped"], 0)
+        self.assertGreater(stats["off_grid_ceiled"], 0)       # the off-grid 9999 record lost to the real one
         self.assertEqual(self.sites["4336"]["category"], "normal")
 
     def test_no_green_greys_the_site_and_can_be_switched_off(self):
