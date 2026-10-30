@@ -50,13 +50,21 @@ Classifications are made by deterministic code. The LLM never decides a category
 ## 4. Q2: Detector health gate
 
 - **Detectors.** Neo4j `(Detector)-[:BELONG_TO]->(Intersection)` with `active = true` only **(decision)**.
-- **Counts.** The raw counts in `scats/volume`, field `d[n]`, where n = `detector_number`. Each detector's count is the sum over the last 60 minutes (the twelve 5-minute records).
+- **Counts.** The raw counts in `scats/volume`, field `d[n]`, where n = `detector_number`. Each detector's count is the sum of its 5-minute records in the 60 minutes ending with the period (twelve when complete).
+- **Negative counts (decision).** A negative 5-minute count is counted as 0 before summing (`q2.negative_counts: "zero"`), so 19 and −10 give 19, not 9.
+- **Each detector is judged on its own**; counts are never added across detectors.
 
-| Result | When |
+| Detector result | When |
 |---|---|
-| FAIL → Detector Health Issue | Any active detector counted fewer than 10 vehicles (`q2.min_vehicles`). An observed low count takes precedence over missing records elsewhere. |
-| INSUFFICIENT → Grey | No low count, but some detector lacks a complete 60-minute record **(decision: all 12 required)**, or the site has no active detector |
-| PASS | Every active detector counted at least 10 vehicles |
+| PASS | Its count is at least 10 (`q2.min_vehicles`), **even if some 5-minute records are missing** — the missing ones could only add to it |
+| FAIL | Its count is below 10 and all twelve records are present |
+| INSUFFICIENT | Its count is below 10 and records are missing (a missing record is not a zero), or it has no records |
+
+| Site result | When |
+|---|---|
+| FAIL → Detector Health Issue | Any active detector FAILs. An observed low count takes precedence over insufficient detectors elsewhere. |
+| INSUFFICIENT → Grey | No detector FAILs, but at least one is INSUFFICIENT, or the site has no active detector |
+| PASS | Every active detector PASSes |
 
 Q1 and Q3 run only after a PASS.
 

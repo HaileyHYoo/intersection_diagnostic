@@ -177,6 +177,7 @@ def period_values(source, settings: Settings, site: str, period, approaches: lis
         quarters[approach] = {t.isoformat() for t in aligner.align(points, 15, label) if t in ends}
     return {"period": period.label(), "period_end_utc": period.end.isoformat(),
             "q2_detector_totals_60min": {str(k): v for k, v in sorted(totals.items())},
+            "q2_reading": "total = 60-minute count with negative 5-minute records counted as 0; records = 5-minute records present of expected",
             "q1_volume_30min": {k: volume.get(k) for k in sorted(links)},
             "q3_kpi": kpi[period.key].get(site),
             "q3c_green": green,
@@ -212,8 +213,9 @@ def summary(report: dict) -> str:
                  f"without perf {li['egress_without_perf']}, normalised raw ids {li['raw_ids_normalised'][:5]}")
     pv = report["checks"].get("period_values")
     if pv:
-        missing_det = [k for k, v in pv["q2_detector_totals_60min"].items() if v is None]
-        lines.append(f"  period {pv['period']}: Q2 detectors {len(pv['q2_detector_totals_60min'])} (missing {missing_det}), "
+        missing_det = [k for k, v in pv["q2_detector_totals_60min"].items() if v["records"] < v["expected"]]
+        negative_det = [k for k, v in pv["q2_detector_totals_60min"].items() if v["negatives"]]
+        lines.append(f"  period {pv['period']}: Q2 detectors {len(pv['q2_detector_totals_60min'])} (records missing {missing_det}, negatives {negative_det}), "
                      f"Q1 volumes {pv['q1_volume_30min']}, Q3 {pv['q3_kpi']}")
         lines.append(f"    Q3C green {{link: share}} {{{', '.join(f'{k}: {v['green_share']}' for k, v in pv['q3c_green'].items())}}}, "
                      f"TomTom quarters per approach {[len(v) for v in pv['tomtom_quarters_used'].values()]}")

@@ -2,7 +2,7 @@
 
 Deterministic code only; no LLM. Every site gets one category:
 
-    detector_health   Q2 FAIL: an active detector recorded fewer than the minimum in 60 minutes
+    detector_health   Q2 FAIL: an active detector recorded fewer than the minimum in a complete 60 minutes
     grey              insufficient data (Q2 not assessable, Q1 or Q3 INSUFFICIENT DATA, or an evaluated
                       approach without green in the period)
     normal            Q1 NORMAL and Q3 NORMAL
@@ -45,15 +45,30 @@ def site_name(streets) -> str | None:
 
 
 # ---------------------------------------------------------------------- Q2
-def q2_gate(detectors: list[dict], totals: dict[int, float | None], rules: dict) -> dict:
+def q2_gate(detectors: list[dict], totals: dict[int, dict], rules: dict) -> dict:
+    """Per active detector, its count over the 60 minutes (negative 5-minute records counted as 0):
+
+        at least the minimum                      PASS, even if some 5-minute records are missing
+                                                  (the missing ones could only add to it)
+        below the minimum, all records present    FAIL
+        below the minimum, records missing        INSUFFICIENT DATA (a missing record is not a zero)
+    """
     rule = rules["q2"]
     if rule.get("active_detectors_only", True):
         detectors = [d for d in detectors if d["active"]]
     rows = []
     for d in sorted(detectors, key=lambda d: d["detector"]):
-        count = totals.get(d["detector"])
-        status = INSUFFICIENT if count is None else (PASS if count >= rule["min_vehicles"] else FAIL)
-        rows.append({"detector": d["detector"], "count_60min": count, "status": status})
+        t = totals.get(d["detector"]) or {"total": None, "records": 0, "expected": None, "negatives": 0}
+        count = t["total"] if t["records"] else None
+        complete = t["records"] and t["records"] == t["expected"]
+        if count is not None and count >= rule["min_vehicles"]:
+            status = PASS
+        elif count is not None and complete:
+            status = FAIL
+        else:
+            status = INSUFFICIENT
+        rows.append({"detector": d["detector"], "count_60min": count, "status": status, "records": t["records"],
+                     "expected_records": t["expected"], "negatives_counted_as_zero": t["negatives"]})
     failed = [r for r in rows if r["status"] == FAIL]
     missing = [r for r in rows if r["status"] == INSUFFICIENT]
     if not rows:
@@ -62,7 +77,8 @@ def q2_gate(detectors: list[dict], totals: dict[int, float | None], rules: dict)
         # An observed low count takes precedence over missing records at other detectors.
         status, reason = FAIL, f"{len(failed)} detector(s) below {rule['min_vehicles']} vehicles in 60 minutes"
     elif missing:
-        status, reason = INSUFFICIENT, f"{len(missing)} detector(s) without a complete 60-minute record"
+        status, reason = INSUFFICIENT, (f"{len(missing)} detector(s) below {rule['min_vehicles']} vehicles with "
+                                        "5-minute records missing in the 60 minutes")
     else:
         status, reason = PASS, None
     return {"status": status, "reason": reason, "threshold": rule["min_vehicles"], "detectors": rows,

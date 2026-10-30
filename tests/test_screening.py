@@ -109,12 +109,41 @@ class BaselineCacheTests(unittest.TestCase):
 class RuleTests(unittest.TestCase):
     rules = Settings().rules
 
+    @staticmethod
+    def t(total, records=12, negatives=0):
+        return {"total": total, "records": records, "expected": 12, "negatives": negatives}
+
     def test_q2_observed_failure_wins_over_missing(self):
         dets = [{"detector": 1, "active": True}, {"detector": 2, "active": True}]
-        self.assertEqual(screening.q2_gate(dets, {1: 3, 2: None}, self.rules)["status"], screening.FAIL)
-        self.assertEqual(screening.q2_gate(dets, {1: 30, 2: None}, self.rules)["status"], INSUFFICIENT)
-        self.assertEqual(screening.q2_gate(dets, {1: 30, 2: 10}, self.rules)["status"], screening.PASS)
+        t = self.t
+        self.assertEqual(screening.q2_gate(dets, {1: t(3), 2: t(4, records=11)}, self.rules)["status"], screening.FAIL)
+        self.assertEqual(screening.q2_gate(dets, {1: t(30), 2: t(4, records=11)}, self.rules)["status"], INSUFFICIENT)
+        self.assertEqual(screening.q2_gate(dets, {1: t(30)}, self.rules)["status"], INSUFFICIENT)   # no records at all
+        self.assertEqual(screening.q2_gate(dets, {1: t(30), 2: t(10)}, self.rules)["status"], screening.PASS)
         self.assertEqual(screening.q2_gate([], {}, self.rules)["status"], INSUFFICIENT)
+
+    def test_q2_passes_on_eleven_records_when_the_count_is_reached(self):
+        dets = [{"detector": 1, "active": True}]
+        gate = screening.q2_gate(dets, {1: self.t(10, records=11)}, self.rules)
+        self.assertEqual(gate["status"], screening.PASS)
+        self.assertEqual(gate["detectors"][0]["records"], 11)
+        self.assertEqual(screening.q2_gate(dets, {1: self.t(9, records=11)}, self.rules)["status"], INSUFFICIENT)
+        self.assertEqual(screening.q2_gate(dets, {1: self.t(9)}, self.rules)["status"], screening.FAIL)
+
+    def test_negative_five_minute_counts_are_zero(self):
+        from datetime import timedelta
+        from diagnostics.measures import Measures
+        period = timewin.period_ending("2026-10-30T14:30", self.rules)
+
+        class Source:
+            def detector_counts(self, start, end, sites=None):
+                ends = period.interval_ends(5, 60)
+                return [{"site": "1", "detector": 1, "time": t - timedelta(minutes=2), "value": v}
+                        for t, v in zip(ends, [19, -10] + [0] * 10)]
+        totals = Measures(Source(), self.rules, Settings().schema).detector_totals(period, 60)["1"][1]
+        self.assertEqual((totals["total"], totals["records"], totals["negatives"]), (19, 12, 1))
+        gate = screening.q2_gate([{"detector": 1, "active": True}], {1: totals}, self.rules)
+        self.assertEqual(gate["status"], screening.PASS)                  # 19 + 0, not 19 - 10 = 9
 
     def comp(self, status):
         return {"status": status}

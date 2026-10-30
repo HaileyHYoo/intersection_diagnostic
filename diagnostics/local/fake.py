@@ -12,13 +12,15 @@ behaviour it was built for:
     amber_signal    cycle length +30% and cycle stability poorer
     single_signal   cycle length +30% only (one Q3 measure -> Q3 normal -> Normal)
     detector_fail   one active detector counts 0 in the last 60 minutes   -> Detector Health Issue
-    detector_gap    one active detector misses a 5-minute record           -> Grey
+    detector_gap    one active detector counts 0 and misses a 5-minute record -> Grey (a busy detector with
+                    a missing record still passes: detector 6 at the same site)
     volume_gap      one approach misses a 15-minute volume record           -> Grey
     no_green        one approach has HasGreen = 0 in the period             -> Grey
     kpi_gap         no IntersectionPerfKpi records in the period            -> Grey
     new_link        an EGRESS link with no history and one with no data     -> Normal (not evaluated)
     dirty           stamps a few seconds late, duplicates, quoted link IDs,
-                    string values and an off-grid record                    -> Normal
+                    string values, an off-grid record and a negative
+                    5-minute detector count (counted as 0)                  -> Normal
     inactive_zero   an inactive detector recording zero                     -> Normal
 
 Raw tags are emitted the way the live feeds hold them (quoted link IDs on "dirty" sites, numbers as
@@ -174,8 +176,13 @@ class FakeSource:
                     if self._current(stamp, 60):
                         if n["scenario"] == "detector_fail" and d["detector"] == 3:
                             value = 0.0
-                        if n["scenario"] == "detector_gap" and d["detector"] == 5 and stamp == self.scenario_end - timedelta(minutes=20):
+                        if n["scenario"] == "detector_gap" and d["detector"] in (5, 6) \
+                                and stamp == self.scenario_end - timedelta(minutes=20):
                             continue
+                        if n["scenario"] == "detector_gap" and d["detector"] == 5:
+                            value = 0.0
+                        if n["scenario"] == "dirty" and d["detector"] == 2 and stamp == self.scenario_end:
+                            value = -50.0
                     out.append({"site": ids.site(site), "detector": d["detector"], "time": self._stamp(site, stamp),
                                 "value": self._value(site, round(value, 1))})
         return out

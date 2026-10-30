@@ -45,6 +45,11 @@ def summarise(payload: dict) -> dict:
             examples["single detector"].append(s["site"])
         if zero:
             examples["every failed detector 0"].append(s["site"])
+    q2_rows = [d for s in sites for d in s["q2"]["detectors"]]
+    out["q2_records"] = {"detectors": len(q2_rows),
+                         "passed_with_records_missing": sum(1 for d in q2_rows if d["status"] == "PASS"
+                                                            and d.get("records", 0) < (d.get("expected_records") or 0)),
+                         "detectors_with_negative_counts_zeroed": sum(1 for d in q2_rows if d.get("negatives_counted_as_zero"))}
     out["detector_health"] = {"sites": len(dh), "failed_detectors_per_site": dict(sorted(failed_n.items())),
                               "failed_detector_counts_60min": dict(failed_counts),
                               "sites_where_every_failed_detector_counted_0": all_zero,
@@ -139,7 +144,7 @@ def summarise(payload: dict) -> dict:
 def text(summary: dict) -> str:
     lines = [f"Run {summary['run']}  {summary['period']}  sites {summary['sites']}  errors {summary['errors']}",
              "  categories: " + ", ".join(f"{k} {v}" for k, v in summary["categories"].items())]
-    for key in ("detector_health", "grey", "traffic_abnormal", "signal"):
+    for key in ("q2_records", "detector_health", "grey", "traffic_abnormal", "signal"):
         lines.append(f"  {key}:")
         for k, v in summary[key].items():
             lines.append(f"    {k}: {v}")
