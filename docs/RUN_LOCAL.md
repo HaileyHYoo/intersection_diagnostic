@@ -54,8 +54,17 @@ python main.py summary                                # 최근 실행에서 분�
 python main.py inspect --site 994 --end 2026-10-30T15:00 --history   # 기준 주별·접근로별 히스토리(값이 왜 빠졌는지)
 python main.py diagnose --run <run_id> --site 4397    # Red 교차로 리포트
 python main.py export-html --run <run_id> --out out/map.html
-python main.py baseline --days 7                      # 주간 베이스라인 미리 계산
+python main.py baseline --days 7                      # 주간 베이스라인 미리 계산 + 주간 베이스라인 스냅샷 저장
+python main.py site-history --site 4397 --from 2026-10-01 --to 2026-10-31   # 저장된 로그 기준 분류 이력
+python main.py archive --run <run_id>                 # 로그 저장이 실패한 실행의 로그 다시 쓰기
+python main.py watch                                  # (추후 확장) 30분마다 자동 스크리닝, Ctrl+C로 중지
+python main.py backfill --from 2026-10-26T07:00 --to 2026-10-26T10:00   # (추후 확장) 과거 구간 연속 스크리닝
 ```
+
+- **기록 저장(문건 18장).** 스크리닝이 끝날 때마다 JSON 로그 1개를 저장하고, 그 실행에 쓰인 베이스라인은 주간 스냅샷에 저장합니다. 위치는 `DIAGNOSTICS_ARCHIVE`입니다. 기본값은 DB 파일 옆 `archive/` 폴더이고, 프로덕션에서는 `s3://버킷/경로`를 씁니다. 이미 있는 파일은 덮어쓰지 않습니다.
+  - `archive/screening-logs/AU-VIC-Melbourne/2026/10/30/1430_<run_id>.json`
+  - `archive/baselines/AU-VIC-Melbourne/2026-W44.<방법 버전>/Friday/1430.json.gz`
+- 가짜 데이터(`demo`, `--fake`)는 `out/demo_archive/`에 따로 저장하므로 실데이터 기록과 섞이지 않습니다.
 
 - 시각에 오프셋이 없으면 멜번 현지 시각으로 봅니다.
 - 처음 실행할 때는 8주치 기준 구간을 조회하므로 시간이 걸릴 수 있습니다. 이후에는 SQLite(`diagnostics.sqlite3`)에 캐시된 값을 씁니다.

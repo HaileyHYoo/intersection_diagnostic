@@ -7,6 +7,8 @@ schema can replace the temporary one without touching code:
     DIAGNOSTICS_SCHEMA_FILE   another schema file
     DIAGNOSTICS_RULES_FILE    another rules file
     DIAGNOSTICS_DB            SQLite file for cached runs, baselines and reports
+    DIAGNOSTICS_ARCHIVE       screening JSON logs and baseline snapshots: a folder or s3://bucket/prefix
+                              (default: "archive" next to the SQLite file; "off" for none)
 
 Connections use the same variables as the intersection chatbot (INFLUXDB_*, NEO4J_*, OPENAI_*).
 """
@@ -57,6 +59,10 @@ class Settings:
     schema: dict = field(default_factory=load_schema)
     rules: dict = field(default_factory=load_rules)
     db_path: str = field(default_factory=lambda: os.environ.get("DIAGNOSTICS_DB", "diagnostics.sqlite3"))
+
+    @property
+    def archive_location(self) -> str:
+        return os.environ.get("DIAGNOSTICS_ARCHIVE") or str(Path(self.db_path).resolve().parent / "archive")
 
     @property
     def region(self) -> str:

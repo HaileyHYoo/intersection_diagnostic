@@ -91,10 +91,11 @@ class Measures:
 
     # ------------------------------------------------------------------ Q3C
     def approach_green(self, periods: list[Period], sites=None) -> dict[str, dict[str, dict[str, dict]]]:
-        """{period: {site: {link: {green_share, green, complete, bound}}}}.
+        """{period: {site: {link: {green_share, green, complete, bound, raw_share}}}}.
 
         green is True only when every required record has HasGreen = 1 and a GreenShare value;
-        green_share is then the mean share in percent, otherwise None.
+        green_share is then the mean share in percent, otherwise None. raw_share is the mean GreenShare
+        whatever HasGreen says (for inspection only; screening never uses it).
         """
         step = self._step("approach_perf")
         rows = self.source.approach_perf(*_span(periods), sites=sites)
@@ -113,9 +114,9 @@ class Measures:
                 green = complete and all(v >= 0.5 for v in flag)
                 # Rounded to remove float noise (99.99999999999999 vs 100.0), which would otherwise fall below
                 # a zero-width 10th-90th range; this is precision, not a materiality threshold.
-                value = round(mean(share) * (100 if fraction else 1), self.rules["q3c"].get("round_decimals", 3)) if green else None
-                table[site][link] = {"green_share": value, "green": green, "complete": complete,
-                                     "bound": bounds.get((site, link))}
+                raw = round(mean(share) * (100 if fraction else 1), self.rules["q3c"].get("round_decimals", 3)) if share else None
+                table[site][link] = {"green_share": raw if green else None, "green": green, "complete": complete,
+                                     "bound": bounds.get((site, link)), "raw_share": raw}
             out[p.key] = dict(table)
         return out
 

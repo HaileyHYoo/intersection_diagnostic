@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import threading
 
+from . import archive as history
 from .llm import HostLLM
 from .service import DiagnosticsService
 from .settings import Settings
@@ -30,7 +31,8 @@ def service_for_bot(bot=None, settings: Settings | None = None) -> DiagnosticsSe
         if _service is None:
             settings = settings or Settings()
             llm = HostLLM(bot.llm) if bot is not None and getattr(bot, "llm", None) is not None else None
-            _service = DiagnosticsService(LiveSource(settings), settings, SQLiteStore(settings.db_path), llm)
+            _service = DiagnosticsService(LiveSource(settings), settings, SQLiteStore(settings.db_path), llm,
+                                          archive=history.open_archive(settings.archive_location))
         return _service
 
 
@@ -40,7 +42,8 @@ def run_screening(screening_input, settings: Settings | None = None):
     from .contract import core
     settings = settings or Settings()
     store = SQLiteStore(settings.db_path)
-    return core.run_screening(screening_input, LiveSource(settings), settings, store, audit_store=store)
+    return core.run_screening(screening_input, LiveSource(settings), settings, store, audit_store=store,
+                              archive=history.open_archive(settings.archive_location))
 
 
 def run_diagnosis(diagnosis_input, bot=None, settings: Settings | None = None):

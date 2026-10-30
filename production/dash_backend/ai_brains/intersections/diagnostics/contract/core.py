@@ -19,14 +19,19 @@ Audit (methodology 18): what the contract has no field for is written to an audi
 """
 from __future__ import annotations
 
-from datetime import datetime
+import logging
+from datetime import datetime, timezone
 
+from .. import archive as history
 from .. import screening
 from ..baseline import BaselineBuilder
 from ..settings import Settings, config_snapshot, load_rules
 from ..store import SQLiteStore
 from ..templates import d001, d002
 from . import adapter
+
+
+log = logging.getLogger(__name__)
 
 
 def settings_for(config, base: Settings | None = None) -> Settings:
@@ -38,8 +43,10 @@ def _reads(source, mark: int) -> list[dict]:
     return [dict(p) for p in getattr(source, "provenance", [])[mark:]]
 
 
-def run_screening(inp, source, settings: Settings | None = None, store=None, audit_store=None):
-    """ScreeningInput -> ScreeningResult."""
+def run_screening(inp, source, settings: Settings | None = None, store=None, audit_store=None, archive=None):
+    """ScreeningInput -> ScreeningResult. With an archive, the run's screening JSON log and the baseline
+    snapshot it used are written there (methodology 18.3/18.4)."""
+    started = datetime.now(timezone.utc).isoformat(timespec="seconds")
     settings = settings_for(inp.config, settings)
     if inp.region != settings.region:
         raise ValueError(f"Region {inp.region} is not configured (rules region {settings.region}).")
@@ -49,6 +56,13 @@ def run_screening(inp, source, settings: Settings | None = None, store=None, aud
     result = screening.screen(source, settings, baseline, period, adapter.network(inp))
     payload = {"region": inp.region, "period": period.to_dict(), "baseline": {"version": baseline["version"]},
                "sites": result["sites"], "errors": result["errors"]}
+    if archive is not None:
+        try:
+            _archive(archive, inp, settings, period, baseline, result, payload, started)
+        except Exception as exc:  # noqa: BLE001 - the result does not depend on the archive
+            log.warning("Screening log for run %s not written: %s", inp.run_id, exc)
+            if audit_store is not None:
+                audit_store.save_audit("archive_failed", inp.run_id, {"what": "screening log", "error": str(exc)})
     audit_ref = None
     if audit_store is not None:
         audit_store.put_config(settings.rules_version, config_snapshot(settings))
@@ -60,6 +74,20 @@ def run_screening(inp, source, settings: Settings | None = None, store=None, aud
             "alignment": result["alignment"], "errors": result["errors"], "sites": result["sites"]}))
     return adapter.screening_result(payload, settings, run=inp.run_id, baseline_version=inp.baseline_version,
                                     audit_ref=audit_ref)
+
+
+def _archive(archive, inp, settings, period, baseline, result, payload, started) -> None:
+    snapshot = history.snapshot_version(period, baseline["version"])
+    snapshot_key = history.write_baseline_snapshot(archive, settings.region, baseline, period, snapshot,
+                                                    history.approaches_of(result["sites"]))
+    history.write_screening_log(archive, {
+        **payload, "run_id": inp.run_id, "counts": result["counts"], "rules_version": settings.rules_version,
+        "schema_version": settings.schema.get("version"), "config_version": settings.rules_version,
+        "contract_baseline_version": inp.baseline_version,
+        "baseline": {**{k: baseline[k] for k in ("version", "reference_periods", "skipped_days")},
+                     "snapshot_version": snapshot, "snapshot_key": snapshot_key}},
+        {"started": started, "finished": datetime.now(timezone.utc).isoformat(timespec="seconds"), "status": "complete"},
+        settings.rules)
 
 
 def run_diagnosis(inp, source, settings: Settings | None = None, llm=None, audit_store=None):

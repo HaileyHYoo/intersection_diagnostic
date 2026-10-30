@@ -260,7 +260,7 @@ def history(source, settings: Settings, site: str, end=None) -> dict:
             elif not g["complete"]:
                 state = "a quarter-hour missing"
             elif not g["green"]:
-                state = "HasGreen = 0"
+                state = f"HasGreen = 0 (GreenShare {g['raw_share']})"
             else:
                 state = g["green_share"]
             row["green_share"][link] = state

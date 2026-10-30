@@ -94,8 +94,9 @@ class BaselineBuilder:
             self.store.put_baseline(self.region, self.version, period.key, cached)
         return cached
 
-    def precompute(self, days: list, slots: list[str] | None = None, progress=None) -> int:
-        """The weekly job: baselines for every slot of the given analysis days."""
+    def precompute(self, days: list, slots: list[str] | None = None, progress=None, on_built=None) -> int:
+        """The weekly job: baselines for every slot of the given analysis days. on_built(period, baseline) is
+        called for each, e.g. to write the weekly baseline snapshot."""
         minutes = self.rules["period_minutes"]
         slots = slots or [f"{m // 60:02d}:{m % 60:02d}" for m in range(0, 24 * 60, minutes)]
         count = 0
@@ -104,7 +105,10 @@ class BaselineBuilder:
             refs = {r.key: r for p in periods for r in reference_periods(p, self.rules)[0]}
             self.slot_values(list(refs.values()))           # one fetch per reference day
             for p in periods:
-                self.store.put_baseline(self.region, self.version, p.key, self.build(p))
+                baseline = self.build(p)
+                self.store.put_baseline(self.region, self.version, p.key, baseline)
+                if on_built:
+                    on_built(p, baseline)
                 count += 1
             if progress:
                 progress(day, count)

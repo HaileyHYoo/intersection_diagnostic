@@ -7,7 +7,14 @@
     python main.py summary [--run ID]                why sites got their category (stored run)
     python main.py map [--fake]                      local map viewer (http://127.0.0.1:8765)
     python main.py export-html --run ID --out out/map.html
-    python main.py baseline [--start 2026-10-30] [--days 7]   weekly baseline job
+    python main.py baseline [--start 2026-10-30] [--days 7]   weekly baseline job (+ weekly baseline snapshot)
+    python main.py archive --run ID                  write a run's screening JSON log if it is missing
+    python main.py site-history --site 4397 --from 2026-10-01 --to 2026-10-31   categories over screened periods
+    python main.py watch                             (later extension) screen every new period as it completes
+    python main.py backfill --from ... --to ...      (later extension) screen past periods one by one
+
+Every completed screening writes one JSON log, and every baseline it uses is in that week's baseline
+snapshot, under DIAGNOSTICS_ARCHIVE (a folder or s3://bucket/prefix; default: "archive" next to the database).
 
 Times without an offset are Melbourne local time. Connections come from .env (see .env.example).
 """
@@ -44,6 +51,7 @@ def make_llm(args):
 
 
 def make_service(args, fake: bool = False, scenario_end=None):
+    from diagnostics.archive import open_archive
     from diagnostics.service import DiagnosticsService
     from diagnostics.settings import Settings
     from diagnostics.store import SQLiteStore
@@ -52,12 +60,15 @@ def make_service(args, fake: bool = False, scenario_end=None):
         from diagnostics.local.fake import FakeSource
         source = FakeSource(settings.rules, settings.schema, scenario_end, n_sites=args.sites)
         db = args.db or str(ROOT / "out" / "demo.sqlite3")
+        archive = open_archive(str(Path(db).parent / "demo_archive"))      # never mixed with live records
     else:
         from diagnostics.sources.live import LiveSource
         source = LiveSource(settings)
         db = args.db or settings.db_path
+        settings.db_path = db
+        archive = open_archive(settings.archive_location)
     Path(db).parent.mkdir(parents=True, exist_ok=True)
-    return DiagnosticsService(source, settings, SQLiteStore(db), make_llm(args))
+    return DiagnosticsService(source, settings, SQLiteStore(db), make_llm(args), archive=archive)
 
 
 def print_counts(view: dict) -> None:
@@ -162,6 +173,45 @@ def cmd_baseline(args):
     print(f"Stored {n} baselines ({svc.settings.baseline_version}).")
 
 
+def cmd_archive(args):
+    svc = make_service(args)
+    key = svc.archive_run(args.run)
+    print(f"{svc.archive}: {key}" if key else "Not written (see the warning above, or no archive configured).")
+
+
+def cmd_site_history(args):
+    from diagnostics.archive import site_history
+    svc = make_service(args, fake=args.fake)
+    if svc.archive is None:
+        print("No archive configured (DIAGNOSTICS_ARCHIVE=off).")
+        return 1
+    h = site_history(svc.archive, svc.settings.region, args.site, args.start, args.end)
+    print(f"Site {h['site']} {h['from']}..{h['to']}: {h['screened_periods']} screened periods, "
+          f"counts {h['counts']}, Red share {h['red_share']}")
+    print("  Periods without a screening are not counted; the site was in no run for "
+          f"{h['periods_without_this_site']} screened period(s).")
+    for period, category in h["timeline"][-args.last:]:
+        print(f"  {period}  {category}")
+
+
+def cmd_watch(args):
+    import logging
+    from diagnostics.schedule import run_scheduled
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
+    svc = make_service(args)
+    print("Screening every new period; Ctrl+C to stop.")
+    try:
+        run_scheduled(svc, max_runs=args.runs, on_run=print_counts)
+    except KeyboardInterrupt:
+        pass
+
+
+def cmd_backfill(args):
+    from diagnostics.schedule import backfill
+    n = backfill(make_service(args), args.start, args.end, on_run=print_counts)
+    print(f"{n} periods screened.")
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--env", help=".env file (default: ./.env)")
@@ -220,6 +270,28 @@ def main(argv=None) -> int:
     p.add_argument("--start")
     p.add_argument("--days", type=int, default=7)
     p.set_defaults(func=cmd_baseline)
+
+    p = sub.add_parser("archive", help="write a run's screening JSON log if it is missing")
+    p.add_argument("--run", required=True)
+    p.set_defaults(func=cmd_archive)
+
+    p = sub.add_parser("site-history", help="a site's categories over the screened periods in the archive")
+    p.add_argument("--site", required=True)
+    p.add_argument("--from", dest="start", required=True, help="first local date, e.g. 2026-10-01")
+    p.add_argument("--to", dest="end", required=True, help="last local date")
+    p.add_argument("--last", type=int, default=20, help="timeline rows to print")
+    p.add_argument("--fake", action="store_true", help="read the demo archive")
+    p.add_argument("--sites", type=int, default=48)
+    p.set_defaults(func=cmd_site_history)
+
+    p = sub.add_parser("watch", help="(later extension) screen every new period as it completes")
+    p.add_argument("--runs", type=int, help="stop after this many periods")
+    p.set_defaults(func=cmd_watch)
+
+    p = sub.add_parser("backfill", help="(later extension) screen past periods one by one")
+    p.add_argument("--from", dest="start", required=True, help="first period end, e.g. 2026-10-26T07:00")
+    p.add_argument("--to", dest="end", required=True, help="last period end")
+    p.set_defaults(func=cmd_backfill)
 
     args = parser.parse_args(argv)
     load_env(args.env)

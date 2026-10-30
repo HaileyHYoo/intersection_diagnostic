@@ -4,3 +4,4 @@ openai>=1.30
 python-dotenv>=1.0
 tzdata>=2024.1
 pydantic>=2.6
+# boto3>=1.35   only when DIAGNOSTICS_ARCHIVE is s3://... (conditional writes)

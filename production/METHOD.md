@@ -172,6 +172,22 @@ Methodology item 18 (record what is needed to reproduce a result) is covered by:
 - **Data provenance**: every run and diagnosis carries `provenance`, the list of reads it made (source, measurement, sites, time range, record count).
 - **Registry template IDs**: each diagnosis template records both our ID (D001/D002) and its version, and the production registry ID from `rules.contract.template_ids` (or from the host's `TemplateRef`).
 
+### 10.1 Historical records (methodology 18.3–18.6, updated document)
+
+Two separate datasets, never overwritten, kept apart from the current results in SQLite (`archive.py`). The location is `DIAGNOSTICS_ARCHIVE`: an S3 URL (`s3://bucket/prefix`, as the document asks) or a local folder (default `archive/` next to the SQLite file).
+
+| Record | Key | Written |
+|---|---|---|
+| Screening JSON log (18.3) | `screening-logs/{region}/{YYYY}/{MM}/{DD}/{HHMM}_{run_id}.json` | Once per completed run, automatically, on both the service and contract paths. A cached run viewed by more users writes nothing new (18.5). |
+| Baseline snapshot (18.4) | `baselines/{region}/{baseline_version}/{weekday}/{HHMM}.json.gz` | By the weekly job for every slot, and by any screening whose slot is not yet in the snapshot |
+
+- **Log content.** Metadata (run ID, start and completion times, region, period, completion status, baseline version and snapshot key, reference periods and skipped days, rules/schema/config versions). Then every site with its category, Normal included. Then Detector Health issues: failed detector IDs, their 60-minute counts and the threshold applied. Then traffic abnormalities (flagged approaches with current, usual, range and % difference), signal abnormalities (Q3A, Q3B and the flagged Q3C approaches) and Grey sites with their reasons. Then the summary counts, and the complete Q2/Q1/Q3 evidence of every site.
+- **Baseline version (decision).** `"{ISO week of the analysis day}.{method version}"`, e.g. `2026-W44.v1.1-88ffd9d604`. A period is compared with the 8 same-weekday periods before its own date. So every analysis day of a week uses that week's baseline, which is what a weekly refresh gives. The method version changes with any rule or schema change that affects baselines, so a new snapshot is written and old ones stay as they were.
+- **Snapshot content.** Per site: Q3A and Q3B usual value, 10th–90th range and observation count. Per approach (EGRESS link): the same for Q1 volume and Q3C green share. It also holds the weekday, slot, reference periods, skipped days and calculation time. No raw history values, as the document allows.
+- **Storage failure.** If the archive cannot be written, the run still completes and is shown. The failure is recorded (`audits`, kind `archive_failed`), and `python main.py archive --run ID` writes the log later. An existing log is never replaced.
+- **Later analysis (18.6).** `archive.site_history()` / `python main.py site-history` counts a site's categories over the periods that were actually screened. A period without a run is counted as nothing, not as Normal. When one period has several runs (e.g. after a rule change), the latest counts.
+- **Scheduled screening (later extension, not V1).** `schedule.run_scheduled` (`python main.py watch`) screens each period when its data is complete (period end + 5 min). `schedule.backfill` (`python main.py backfill`) screens past periods. Both use the normal `screen()`, so periods already screened are reused, and every run writes its own log. Nothing runs on a timer unless one of these is started (or an OS scheduler calls `python main.py screen`).
+
 A site that fails to process is recorded in the run's `errors` (site → reason) and does not stop the network screening. Each site also carries `total_volume_veh_h`: the evaluated approaches' 30-minute volume as an hourly rate, or None unless every evaluated approach has a value.
 
 ## 11. Production contract
@@ -216,7 +232,9 @@ If the production team stores these elsewhere instead, only the audit record is 
   3. the time zone of periods, and a UTC cache key (today the same instant gives two keys);
   4. a config/rules hash in the cache key;
   5. `has_largest_queue: bool | None`;
-  6. the optional audit fields in §11 (`generated_by`, `llm_rejected`, `config_version`, `audit_ref`), or where audit records should be kept instead.
+  6. the optional audit fields in §11 (`generated_by`, `llm_rejected`, `config_version`, `audit_ref`), or where audit records should be kept instead;
+  7. the S3 bucket and prefix for the screening logs and baseline snapshots (§10.1), with put/get/list rights; whether the contract's `baseline_version` (e.g. `2026-W44`) should carry the method version too.
+- **Q3C history (live data).** At site 994 every reference week before 23 Oct 2026 has `HasGreen = 0` on every approach while the cycle runs normally, so Q3C has one usable week. `inspect --history` now shows the GreenShare stored with `HasGreen = 0`, to tell whether HasGreen was not filled before that date (a data-pipeline question for Zay) or whether the records are empty.
 - **For the methodology owner:** the Q3 case of one abnormal, one normal and one not-assessable measure (§6).
 - **Template IDs.** D002's registry ID (`ID_Q5_TOMTOM_CONFIRMATION`) is a placeholder until confirmed.
 - **Outside this repository:** the chatbot's `tomtom/engine.py::scats_volume_hours()` groups 15-minute records by their stamp's clock hour. With end labelling, this shifts every hour by 15 minutes (00:45–01:45 instead of 01:00–02:00). It should be fixed in the Chatbot repository.

@@ -17,12 +17,14 @@ The host can use the package in either of two ways:
 | `screen(period_end)` | A chosen past period | The same, compared with the 8 weeks before that day |
 | `diagnose(run_id, site)` | Click on an intersection | **Red:** the four-section report from templates D001 + D002. **Any other category:** the saved evidence |
 | `site_evidence(run_id, site)` | Any time | The saved Q2/Q1/Q3 evidence for one site |
-| `refresh_baselines(days)` | Weekly job | Precomputed 8-week baselines |
+| `refresh_baselines(days)` | Weekly job | Precomputed 8-week baselines, and the weekly baseline snapshot in the archive |
+| `archive_run(run_id)` | After an archive outage | Writes a run's screening JSON log if it is missing |
 
 `screen()`:
 - returns the saved run when one exists for the same region, period, baseline version and rules version, so users share it;
 - waits for a run already in progress rather than starting a second one;
-- does not run on a timer. Screening runs only when the host asks.
+- does not run on a timer. Screening runs only when the host asks (V1). `schedule.run_scheduled` / `schedule.backfill` exist for a later version that screens every period;
+- writes one screening JSON log per completed run and keeps the weekly baseline snapshot (methodology 18.3/18.4) in `DIAGNOSTICS_ARCHIVE`.
 
 ## 2. Files
 
@@ -37,6 +39,8 @@ Copy `production/dash_backend/ai_brains/intersections/diagnostics/` into the bac
 | `report.py`, `llm.py` | Report assembly and the LLM guard |
 | `sources/` | InfluxDB and Neo4j readers built from the schema |
 | `store.py` | SQLite store (runs, baselines, diagnoses) |
+| `archive.py` | Screening JSON logs and weekly baseline snapshots (S3 or a folder), and reading them back |
+| `schedule.py` | Later extension: scheduled screening and back-calculation |
 | `config/schema.json`, `config/rules.json` | Data schema (temporary) and rules |
 | `contract/` | The production team's `intersections_diagnostics_schemas.py` (copied unchanged), `adapter.py` (conversion) and `core.py` (`run_screening`, `run_diagnosis`) |
 | `sources/tomtom_queue.py` | TomTom Junction Analytics queue archive (Q5 queue length; `tomtom.api_enabled`, on) |
@@ -44,13 +48,14 @@ Copy `production/dash_backend/ai_brains/intersections/diagnostics/` into the bac
 
 ## 3. Dependencies and environment
 
-**Dependencies.** No new packages beyond the chatbot's: `influxdb-client`, `neo4j`, `python-dotenv`, `tzdata`, `pydantic` (v2, for the contract), and `openai` through the host client.
+**Dependencies.** No new packages beyond the chatbot's: `influxdb-client`, `neo4j`, `python-dotenv`, `tzdata`, `pydantic` (v2, for the contract), and `openai` through the host client. `boto3` (1.35 or later, for conditional writes) is needed only when the archive is on S3.
 
 **Environment.** The same variables as the chatbot, plus:
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `DIAGNOSTICS_DB` | `diagnostics.sqlite3` (working directory) | SQLite file for runs, baselines and reports. Use a persistent, writable path. |
+| `DIAGNOSTICS_ARCHIVE` | `archive/` next to the SQLite file | **`s3://bucket/prefix`** for the screening JSON logs and baseline snapshots (methodology 18.3/18.4). Needs `s3:PutObject`, `s3:GetObject` and `s3:ListBucket`; AWS credentials as usual for boto3. `off` disables it. |
 | `DIAGNOSTICS_SCHEMA_FILE` | bundled `config/schema.json` | Your schema file, once it replaces the temporary one |
 | `DIAGNOSTICS_RULES_FILE` | bundled `config/rules.json` | Only if the rules are managed outside the package |
 | `TOMTOM_API_KEY` | — | **Needed for the Q5 queue length** (methodology section 13). The chatbot's TomTom layer already uses it. Without it, Q5 reports the queue as unavailable. |
@@ -113,6 +118,7 @@ print(view["counts"], view["period"]["local"])
 Sent on 31 Oct 2026: the `site_grey_no_green` flag, baseline storage and versioning, time zones and a UTC cache key, a config hash in the cache key, and `has_largest_queue: bool | None`. Also still open:
 
 - **Audit fields.** Add the optional fields above to the contract, or say where audit records should live.
+- **S3.** The bucket and prefix for `DIAGNOSTICS_ARCHIVE`. On the contract path, pass `archive=` to `core.run_screening` (`host.run_screening` does this). The log uses the host's `run_id`.
 
 - **Schema.** Replace `config/schema.json` with the final schema (see SCHEMA.md) and change its `version`.
 - **Store.** Use SQLite on a persistent path, or a database. `store.SQLiteStore` is the interface to re-implement.
