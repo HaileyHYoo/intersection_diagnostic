@@ -77,6 +77,18 @@ class SummaryTests(unittest.TestCase):
         self.assertIn("categories", summary.text(result))
 
 
+class HistoryTests(unittest.TestCase):
+    def test_history_shows_why_phase_service_has_one_value(self):
+        s = Settings()
+        source = FakeSource(s.rules, s.schema, END + ":00+11:00", n_sites=16)
+        h = inspect_data.history(source, s, "4345", END)                  # the "short_history" site
+        west = next(k for k in h["usable_history_per_link"] if k.startswith("COLLW"))
+        self.assertEqual(h["usable_history_per_link"][west], {"volume": 8, "green_share": 1})
+        self.assertEqual(h["periods"][2]["green_share"][west], "no records")
+        self.assertEqual(h["usable_history_kpi"], {"cycle_length": 8, "cycle_stability": 8})
+        self.assertIn("usable history per link", inspect_data.history_text(h))
+
+
 class InspectTests(unittest.TestCase):
     def test_inspection_checks(self):
         s = Settings()

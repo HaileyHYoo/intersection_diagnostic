@@ -97,8 +97,12 @@ def cmd_inspect(args):
     from diagnostics.settings import Settings
     from diagnostics.sources.live import LiveSource
     settings = Settings()
-    report = inspect_data.inspect(LiveSource(settings), settings, args.site, args.end, args.hours)
+    source = LiveSource(settings)
+    report = inspect_data.inspect(source, settings, args.site, args.end, args.hours)
     print(inspect_data.summary(report))
+    if args.history:
+        report["history"] = inspect_data.history(source, settings, args.site, args.end)
+        print(inspect_data.history_text(report["history"]))
     print("Saved:", inspect_data.save(report, args.out_dir))
 
 
@@ -177,6 +181,7 @@ def main(argv=None) -> int:
     p.add_argument("--site", required=True)
     p.add_argument("--end")
     p.add_argument("--hours", type=float, default=2.0)
+    p.add_argument("--history", action="store_true", help="also show the reference periods behind the baseline")
     p.add_argument("--out-dir", default=str(ROOT / "out"))
     p.set_defaults(func=cmd_inspect)
 

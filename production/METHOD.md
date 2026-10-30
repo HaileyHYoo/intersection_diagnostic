@@ -16,7 +16,11 @@ Classifications are made by deterministic code. The LLM never decides a category
 ## 2. Time
 
 - **Timestamps label the end of the interval (decision).** A 15-minute record stamped 01:15 covers 01:00–01:15. A 5-minute record stamped 01:05 covers 01:00–01:05.
-- **Analysis period.** By default this is the latest completed 30 minutes. The period ends on a :00 or :30 boundary, `data_latency_minutes` (5) after real time. Any past period can also be selected.
+- **Analysis period.** The latest completed 30-minute period. Periods are the day's 48 clock slots (:00–:30, :30–:00), as the methodology's 30-minute time slots, the contract's `slot_index` (0–47) and "refreshed when a new completed 30-minute period becomes available" imply. The "latest two completed 15-minute intervals" of Q1 are the two quarters of that slot.
+  - A period is used `data_latency_minutes` (5) after it ends, so at 16:19 the period is 15:30–16:00, and from 16:35 it is 16:00–16:30.
+  - The Q2 window is the 60 minutes ending with the period (15:00–16:00 for that example).
+  - The history is the same slot on the same weekday in the 8 previous weeks (15:30–16:00 on the eight previous Fridays).
+  - Any past period can also be selected.
 - **Records used for the period.** The 30-minute period ending at T uses the 15-minute records stamped T−15 and T. The Q2 window uses the twelve 5-minute records stamped T−55 … T.
 - **Time zones.** All data are stored in UTC. The region tag gives the local time zone (`rules.region_timezones`, e.g. `AU-VIC-Melbourne` → `Australia/Melbourne`), as in the chatbot.
   - Local time is used for inputs without an offset, 30-minute slots, weekdays, holidays and display.
@@ -90,7 +94,7 @@ Q1 and Q3 run only after a PASS.
 - **Approach without green.** `HasGreen = 0`, or no GreenShare/HasGreen record, in either quarter-hour. **Any evaluated approach without green makes the whole site Grey (decision,** `q3c.grey_site_if_any_approach_without_green`**, strictest setting).**
 - **Q3C component result.** ABNORMAL if any approach is abnormal. INSUFFICIENT if any evaluated approach lacks a value or history.
 - **Q3 overall.** ABNORMAL if at least 2 of the 3 measures are ABNORMAL. Otherwise NORMAL if at least 2 measures can be assessed. Otherwise INSUFFICIENT DATA.
-- **Fallbacks.** The subsystem `ActiveCycleLength` fallback for Q3A is kept in code but switched off (`fallbacks.enabled: false`).
+- **Fallbacks.** Only the calculated KPIs are used. The `IntersectionPerfKpi` / `IntersectionPerfApproach` KPIs exist for part of the network only (the chatbot falls back to `subsystem_status` for cycle length and saturation). The subsystem `ActiveCycleLength` fallback for Q3A is kept in code but switched off (`fallbacks.enabled: false`). It would not change the result for a site without KPIs: Q3B and Q3C have no fallback, so only one measure could be assessed and Q3 would still be INSUFFICIENT DATA (Grey).
 
 DemandShare, SignedGap, DemandPressure, GreenGapBusiest, RiskBusiest and the other KPIs are **not** used for screening.
 

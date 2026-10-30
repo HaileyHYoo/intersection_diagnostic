@@ -11,6 +11,12 @@ expected grid, duplicates, value types and sample rows; then:
     stamps      the first and last stamps in the window, to confirm end-of-interval labelling
     tomtom      the site's junction UUID and approach mapping, and the queue archive rows for the window
 
+    python main.py inspect --site 994 --end 2026-10-30T15:00 --history
+
+adds the history behind the baseline: for each reference period (same weekday and 30-minute slot in the
+previous weeks) the value of every measure, or why it is missing, and per approach how many usable values
+the baseline gets.
+
 Nothing is written to the databases. The report is printed and saved as JSON.
 """
 from __future__ import annotations
@@ -226,4 +232,60 @@ def summary(report: dict) -> str:
                     t.get("queue_skipped") or "queue not read (see errors)"))
     for k, v in report["errors"].items():
         lines.append(f"  ERROR {k}: {v}")
+    return "\n".join(lines)
+
+
+def history(source, settings: Settings, site: str, end=None) -> dict:
+    """Per reference period: Q1 volume per EGRESS link, Q3A/Q3B KPIs, Q3C green share per link (or why not)."""
+    from ..measures import Measures
+    from ..timewin import reference_periods
+    rules, schema = settings.rules, settings.schema
+    period = period_ending(end, rules) if end else latest_period(rules)
+    used, skipped = reference_periods(period, rules)
+    links = sorted({a["link"] for a in source.approaches([site])})
+    rows, usable = [], defaultdict(lambda: {"volume": 0, "green_share": 0})
+    usable_kpi = Counter()
+    for ref in [period] + used:
+        m = Measures(source, rules, schema)
+        volume = m.link_volumes([ref])[ref.key]
+        kpi, _ = m.site_kpi([ref], sites=[site])
+        green = m.approach_green([ref], sites=[site])[ref.key].get(site, {})
+        row = {"period": ref.label(), "role": "analysis" if ref is period else "reference",
+               "volume_30min": {link: None if volume.get(link) is None else round(volume[link], 1) for link in links},
+               "kpi": kpi[ref.key].get(site, {}), "green_share": {}}
+        for link in sorted(set(links) | set(green)):
+            g = green.get(link)
+            if g is None:
+                state = "no records"
+            elif not g["complete"]:
+                state = "a quarter-hour missing"
+            elif not g["green"]:
+                state = "HasGreen = 0"
+            else:
+                state = g["green_share"]
+            row["green_share"][link] = state
+            if ref is not period and isinstance(state, float):
+                usable[link]["green_share"] += 1
+        if ref is not period:
+            for link in links:
+                usable[link]["volume"] += volume.get(link) is not None
+            usable_kpi.update(k for k in ("cycle_length", "cycle_stability") if k in row["kpi"])
+        rows.append(row)
+    return {"site": site, "period": period.label(), "minimum": rules["history"]["min_observations"],
+            "reference_periods_used": len(used), "skipped": skipped, "periods": rows,
+            "usable_history_per_link": {k: dict(v) for k, v in sorted(usable.items())},
+            "usable_history_kpi": dict(usable_kpi)}
+
+
+def history_text(h: dict) -> str:
+    lines = [f"History for site {h['site']}, {h['period']}: {h['reference_periods_used']} reference periods "
+             f"(minimum {h['minimum']}), skipped {h['skipped'] or 'none'}"]
+    for row in h["periods"]:
+        green = ", ".join(f"{k}: {v}" for k, v in row["green_share"].items())
+        kpi = ", ".join(f"{k} {v:.1f}" for k, v in row["kpi"].items()) or "no KPI"
+        lines.append(f"  {row['role'][:3]} {row['period']}")
+        lines.append(f"      volume {row['volume_30min']}")
+        lines.append(f"      {kpi} | green {green or 'no records'}")
+    lines.append(f"  usable history per link: {h['usable_history_per_link']}")
+    lines.append(f"  usable history KPI: {h['usable_history_kpi']}")
     return "\n".join(lines)

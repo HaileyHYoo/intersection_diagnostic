@@ -50,6 +50,15 @@ class NetworkScreeningTests(unittest.TestCase):
         site = self.sites["4339"]
         self.assertNotIn(9, [d["detector"] for d in site["q2"]["detectors"]])
 
+    def test_short_phase_service_history_leaves_q3_to_the_other_two(self):
+        site = self.sites["4345"]
+        comps = site["q3"]["components"]
+        self.assertEqual(comps["phase_service"]["status"], INSUFFICIENT)
+        short = [a for a in comps["phase_service"]["approaches"] if a["status"] == INSUFFICIENT]
+        self.assertEqual([a["n_history"] for a in short], [1])
+        self.assertEqual(site["q3"]["assessable_count"], 2)
+        self.assertEqual(site["category"], "normal")
+
     def test_links_without_history_are_not_evaluated(self):
         site = self.sites["4333"]
         self.assertEqual(sorted(a["link"][:4] for a in site["q1"]["not_evaluated"]), ["DEAD", "NEWL"])

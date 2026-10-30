@@ -22,6 +22,8 @@ behaviour it was built for:
                     string values, an off-grid record and a negative
                     5-minute detector count (treated as missing)            -> Normal
     inactive_zero   an inactive detector recording zero                     -> Normal
+    short_history   one approach has phase-service data only in the last week, so Q3C has one
+                    historical value and cannot be assessed; Q3 is decided by the other two -> Normal
 
 Raw tags are emitted the way the live feeds hold them (quoted link IDs on "dirty" sites, numbers as
 strings) and normalised with the same ids functions the live source uses.
@@ -39,11 +41,12 @@ from ..timewin import Period, latest_period, to_utc, tz_name
 
 SCENARIOS = ["red_agree", "red_disagree", "red_no_tomtom", "amber_traffic", "amber_signal", "single_signal",
              "detector_fail", "detector_gap", "volume_gap", "no_green", "kpi_gap", "new_link", "dirty",
-             "inactive_zero", "red_agree"]
+             "inactive_zero", "red_agree", "short_history"]
 EXPECTED = {"red_agree": "red", "red_disagree": "red", "red_no_tomtom": "red", "amber_traffic": "amber_traffic",
             "amber_signal": "amber_signal", "single_signal": "normal", "detector_fail": "detector_health",
             "detector_gap": "grey", "volume_gap": "grey", "no_green": "grey", "kpi_gap": "grey",
-            "new_link": "normal", "dirty": "normal", "inactive_zero": "normal", "normal": "normal"}
+            "new_link": "normal", "dirty": "normal", "inactive_zero": "normal", "short_history": "normal",
+            "normal": "normal"}
 BOUNDS = ["N", "E", "S", "W"]
 STREETS = ["Swanston Street", "Elizabeth Street", "Queen Street", "William Street", "King Street",
            "Spencer Street", "Russell Street", "Exhibition Street", "Spring Street", "Lygon Street"]
@@ -238,6 +241,8 @@ class FakeSource:
                 if not to_utc(start) <= stamp <= to_utc(end):
                     continue
                 for a in n["approaches"]:
+                    if n["scenario"] == "short_history" and a["bound"] == "W" and stamp < self.scenario_end - timedelta(days=8):
+                        continue
                     share = GREEN_SPLIT[a["bound"]] * self._noise(stamp, site, a["link"], "green", scale=0.02)
                     has_green = 1.0
                     if self._current(stamp):
