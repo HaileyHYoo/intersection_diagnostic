@@ -50,6 +50,7 @@ python main.py inspect --site 4397 --end 2026-10-27T08:30 --hours 2
 ```powershell
 python main.py map                                    # http://127.0.0.1:8765, 최근 30분
 python main.py screen --end 2026-05-12T08:30          # 과거 구간(그 날짜 이전 8주가 기준)
+python main.py summary                                # 최근 실행에서 분류별 원인 집계(Detector Health, Grey, Amber)
 python main.py diagnose --run <run_id> --site 4397    # Red 교차로 리포트
 python main.py export-html --run <run_id> --out out/map.html
 python main.py baseline --days 7                      # 주간 베이스라인 미리 계산

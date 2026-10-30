@@ -64,6 +64,19 @@ class ViewerTests(unittest.TestCase):
         self.assertIn('"4300"', text)
 
 
+class SummaryTests(unittest.TestCase):
+    def test_summary_explains_the_categories(self):
+        from diagnostics.local import summary
+        svc = service()
+        run = svc.store.get_run(svc.screen(END)["run_id"])
+        result = summary.summarise(run["payload"])
+        self.assertEqual(result["detector_health"]["sites_where_every_failed_detector_counted_0"], 1)
+        self.assertEqual(result["grey"]["sites"], 4)
+        self.assertIn("Q3C: approach without green", result["grey"]["causes (a site can have several)"])
+        self.assertEqual(result["traffic_abnormal"]["direction"], {"HIGH": 4, "LOW": 1})
+        self.assertIn("categories", summary.text(result))
+
+
 class InspectTests(unittest.TestCase):
     def test_inspection_checks(self):
         s = Settings()

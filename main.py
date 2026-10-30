@@ -4,6 +4,7 @@
     python main.py inspect --site 4397 [--end ...]   check the live feeds for one site
     python main.py screen [--end 2026-10-27T08:30]   screen the network (latest completed period by default)
     python main.py diagnose --run ID --site 4397     D001 + D002 report for a Red site
+    python main.py summary [--run ID]                why sites got their category (stored run)
     python main.py map [--fake]                      local map viewer (http://127.0.0.1:8765)
     python main.py export-html --run ID --out out/map.html
     python main.py baseline [--start 2026-10-30] [--days 7]   weekly baseline job
@@ -102,9 +103,12 @@ def cmd_inspect(args):
 
 
 def cmd_screen(args):
+    import time
     svc = make_service(args)
+    started = time.monotonic()
     view = svc.screen(args.end, force=args.force)
     print_counts(view)
+    print(f"  took {time.monotonic() - started:.0f} s")
     if args.json:
         Path(args.json).write_text(json.dumps(view, indent=2, default=str), encoding="utf-8")
         print("Saved:", args.json)
@@ -117,6 +121,18 @@ def cmd_diagnose(args):
         print(result["report"]["markdown"])
     else:
         print(json.dumps(result["site"], indent=2, default=str))
+
+
+def cmd_summary(args):
+    from diagnostics.local import summary
+    svc = make_service(args, fake=args.fake)
+    run_id = args.run or next((r["run_id"] for r in svc.store.list_runs(50) if r["status"] == "complete"), None)
+    if not run_id:
+        print("No complete screening run in the store; run `python main.py screen` first.")
+        return 1
+    result = summary.summarise({**svc.store.get_run(run_id)["payload"], "run_id": run_id})
+    print(summary.text(result))
+    print("Saved:", summary.save(result, args.out_dir))
 
 
 def cmd_map(args):
@@ -175,6 +191,13 @@ def main(argv=None) -> int:
     p.add_argument("--site", required=True)
     p.add_argument("--fresh", action="store_true")
     p.set_defaults(func=cmd_diagnose)
+
+    p = sub.add_parser("summary", help="why sites got their category, for a stored run")
+    p.add_argument("--run", help="run id (default: the latest complete run)")
+    p.add_argument("--fake", action="store_true", help="read the demo store")
+    p.add_argument("--sites", type=int, default=48)
+    p.add_argument("--out-dir", default=str(ROOT / "out"))
+    p.set_defaults(func=cmd_summary)
 
     p = sub.add_parser("map", help="local map viewer")
     p.add_argument("--fake", action="store_true")

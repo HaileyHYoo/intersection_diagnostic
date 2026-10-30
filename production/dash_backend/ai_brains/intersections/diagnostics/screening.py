@@ -40,7 +40,8 @@ def site_name(streets) -> str | None:
     if not streets:
         return None
     parts = streets if isinstance(streets, list) else str(streets).split("|")
-    return " / ".join(p.strip() for p in parts if p and p.strip()) or None
+    names = list(dict.fromkeys(p.strip() for p in parts if p and str(p).strip()))
+    return " / ".join(sorted(names)) or None
 
 
 # ---------------------------------------------------------------------- Q2

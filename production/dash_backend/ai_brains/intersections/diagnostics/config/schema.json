@@ -123,7 +123,7 @@
     }
   },
   "graph": {
-    "sites": "MATCH (i:Intersection)-[:IN]-(:Region {tag: $region}) WHERE i.scats_site_no IS NOT NULL AND coalesce(i.signalised, true) = true RETURN DISTINCT toString(i.scats_site_no) AS site, i.latitude AS lat, i.longitude AS lon, i.street_names AS streets",
+    "sites": "MATCH (i:Intersection)-[:IN]-(:Region {tag: $region}) WHERE i.scats_site_no IS NOT NULL AND coalesce(i.signalised, true) = true OPTIONAL MATCH (i)-[:INGRESS|EGRESS]-(r:Road) WITH i, collect(DISTINCT r.street_name) AS streets RETURN DISTINCT toString(i.scats_site_no) AS site, i.latitude AS lat, i.longitude AS lon, streets",
     "detectors": "MATCH (d:Detector)-[:BELONG_TO]->(i:Intersection)-[:IN]-(:Region {tag: $region}) WHERE toString(i.scats_site_no) IN $sites RETURN toString(i.scats_site_no) AS site, d.detector_number AS detector, d.active AS active",
     "approaches": "MATCH (i:Intersection)-[:IN]-(:Region {tag: $region}) WHERE toString(i.scats_site_no) IN $sites MATCH (i)-[:EGRESS]-(r:Road) WHERE r.link_id IS NOT NULL RETURN DISTINCT toString(i.scats_site_no) AS site, r.link_id AS link_id, r.street_name AS street"
   },
