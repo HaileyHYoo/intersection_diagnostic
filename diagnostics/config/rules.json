@@ -1,0 +1,50 @@
+{
+  "version": "v1.0",
+  "note": "Intersections Diagnostics V1 rules. Values follow the agreed methodology (29 Oct 2026); items marked 'decision' were agreed in addition to it.",
+  "region": "AU-VIC-Melbourne",
+  "timezone": "Australia/Melbourne",
+  "period_minutes": 30,
+  "quarter_minutes": 15,
+  "data_latency_minutes": 5,
+  "history": {
+    "weeks": 8,
+    "min_observations": 5,
+    "extend_beyond_weeks": false,
+    "exclude": {"public_holidays": true, "dst_change_days": true, "year_end": true}
+  },
+  "percentiles": {"low": 0.10, "high": 0.90},
+  "reference_value": "mean",
+  "q2": {
+    "window_minutes": 60,
+    "min_vehicles": 10,
+    "require_all_intervals": true,
+    "active_detectors_only": true
+  },
+  "q1": {
+    "min_pct_difference": 10,
+    "approach_history_min_presence": 1,
+    "grey_if_any_approach_missing": true
+  },
+  "q3a": {"min_pct_difference": 10},
+  "q3b": {"higher_is_more_stable": true},
+  "q3c": {
+    "approach_history_min_presence": 1,
+    "grey_site_if_any_approach_without_green": true
+  },
+  "q3": {"abnormal_required": 2, "assessable_required": 2},
+  "alignment": {
+    "tolerance_seconds": 60,
+    "off_grid": "drop",
+    "duplicates": "last"
+  },
+  "fallbacks": {"enabled": false},
+  "tomtom": {"api_enabled": false, "adequate_quarters": 2},
+  "click": {
+    "red": ["D001", "D002"],
+    "amber_traffic": [],
+    "amber_signal": [],
+    "normal": [],
+    "grey": [],
+    "detector_health": []
+  }
+}

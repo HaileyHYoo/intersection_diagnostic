@@ -1,0 +1,108 @@
+{
+  "version": "tmp-2026-10-30",
+  "note": "Temporary schema designed from the InfluxDB inventory of 5 Oct 2026 and the chatbot's Neo4j queries. Replace with the production team's schema; code reads every name from here.",
+  "timestamps": {
+    "label": "end",
+    "note": "A record stamped 01:15 covers 01:00-01:15."
+  },
+  "influx": {
+    "region_tag": "Region",
+    "sources": {
+      "detector_counts": {
+        "purpose": "Q2: raw (non-aggregated) SCATS counts per detector",
+        "bucket": "scats",
+        "measurement": "volume",
+        "site_tag": "SiteNo",
+        "site_format": "plain",
+        "detector_field": "d[{n}]",
+        "detector_field_regex": "^d\\[[0-9]+\\]$",
+        "interval_minutes": 5,
+        "filters": {}
+      },
+      "link_volume": {
+        "purpose": "Q1: existing 15-minute approach/link volumes",
+        "bucket": "scats-aggregation",
+        "measurement": "volume",
+        "link_tag": "DetectorGroupId",
+        "fields": {"volume": "Volume"},
+        "interval_minutes": 15,
+        "filters": {"MinutesPast": "15"}
+      },
+      "site_kpi": {
+        "purpose": "Q3A/Q3B: existing Signal Performance KPIs per site",
+        "bucket": "scats-aggregation",
+        "measurement": "IntersectionPerfKpi",
+        "site_tag": "SiteNo",
+        "site_format": "S",
+        "fields": {"cycle_length": "AvgCycle", "cycle_stability": "CycleStability"},
+        "interval_minutes": 15,
+        "filters": {"MinutesPast": "15"}
+      },
+      "approach_perf": {
+        "purpose": "Q3C: existing phase service (green share) per approach link",
+        "bucket": "scats-aggregation",
+        "measurement": "IntersectionPerfApproach",
+        "site_tag": "SiteNo",
+        "site_format": "S",
+        "link_tag": "LinkId",
+        "bound_tag": "Bound",
+        "fields": {"green_share": "GreenShare", "has_green": "HasGreen"},
+        "green_share_unit": "percent",
+        "interval_minutes": 15,
+        "filters": {}
+      },
+      "tomtom_site_kpi": {
+        "purpose": "Q5: TomTom intersection KPIs stored in InfluxDB",
+        "bucket": "scats-aggregation",
+        "measurement": "IntersectionKpi",
+        "site_tag": "SiteNo",
+        "site_format": "S",
+        "fields": {"control_delay": "ControlDelaySec", "stops": "AvgStopsPerCar", "speed": "AvgSpeedkmh"},
+        "interval_minutes": 15,
+        "filters": {"MinutesPast": "15", "Provider": "TomTom"}
+      },
+      "tomtom_turn_kpi": {
+        "purpose": "Q5: TomTom approach and movement KPIs stored in InfluxDB",
+        "bucket": "scats-aggregation",
+        "measurement": "IntersectionTurnKpi",
+        "site_tag": "SiteNo",
+        "site_format": "S",
+        "approach_tag": "ApproachId",
+        "exit_tag": "ExitId",
+        "fields": {
+          "approach_delay": "ApproachDelaySec",
+          "control_delay": "ControlDelaySec",
+          "multi_stop_rate": "MultiStopRate",
+          "turn_ratio": "TurnRatioPct",
+          "sample_count": "SampleCount"
+        },
+        "interval_minutes": 15,
+        "filters": {"MinutesPast": "15", "Provider": "TomTom"}
+      }
+    },
+    "fallbacks": {
+      "cycle_length": {
+        "purpose": "Q3A fallback: subsystem active cycle length (subsystem value, shared by its sites)",
+        "bucket": "scats",
+        "measurement": "subsystem_status",
+        "region_no_tag": "RegionNo",
+        "subsystem_no_tag": "SubsystemNo",
+        "field": "ActiveCycleLength",
+        "site_map_file": "data/site_subsystem_map.json"
+      }
+    }
+  },
+  "graph": {
+    "sites": "MATCH (i:Intersection)-[:IN]-(:Region {tag: $region}) WHERE i.scats_site_no IS NOT NULL AND coalesce(i.signalised, true) = true RETURN DISTINCT toString(i.scats_site_no) AS site, i.latitude AS lat, i.longitude AS lon, i.street_names AS streets",
+    "detectors": "MATCH (d:Detector)-[:BELONG_TO]->(i:Intersection)-[:IN]-(:Region {tag: $region}) WHERE toString(i.scats_site_no) IN $sites RETURN toString(i.scats_site_no) AS site, d.detector_number AS detector, d.active AS active",
+    "approaches": "MATCH (i:Intersection)-[:IN]-(:Region {tag: $region}) WHERE toString(i.scats_site_no) IN $sites MATCH (i)-[:EGRESS]-(r:Road) WHERE r.link_id IS NOT NULL RETURN DISTINCT toString(i.scats_site_no) AS site, r.link_id AS link_id, r.street_name AS street"
+  },
+  "tomtom_mapping": {
+    "file": "data/tomtom_neo4j_links_AU-VIC-Melbourne_final.json",
+    "note": "TomTom ApproachId -> Neo4j EGRESS link_id per SCATS site (from the chatbot's TomTom layer)."
+  },
+  "ids": {
+    "strip_chars": "'\"`‘’“” \t\r\n",
+    "note": "Link IDs can arrive with characters added by spreadsheet auto-formatting (e.g. a leading apostrophe). These are stripped from both ends before matching; nothing inside the ID is changed."
+  }
+}
