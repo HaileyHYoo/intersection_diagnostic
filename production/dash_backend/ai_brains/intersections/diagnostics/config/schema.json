@@ -84,7 +84,7 @@
           "Provider": "TomTom"
         },
         "timestamp_label": "end",
-        "timestamp_note": "To confirm: in the 30 Oct 2026 inspection (site 4397) the last record of a window ending 03:30 was 03:15. If records are labelled at the interval start, set timestamp_label to \"start\"."
+        "timestamp_note": "End-labelled, confirmed 30 Oct 2026 (site 4397): the last record equals the window end; the latest quarter can arrive some minutes late."
       },
       "tomtom_turn_kpi": {
         "purpose": "Q5: TomTom approach and movement KPIs stored in InfluxDB",
@@ -107,7 +107,7 @@
           "Provider": "TomTom"
         },
         "timestamp_label": "end",
-        "timestamp_note": "To confirm: in the 30 Oct 2026 inspection (site 4397) the last record of a window ending 03:30 was 03:15. If records are labelled at the interval start, set timestamp_label to \"start\"."
+        "timestamp_note": "End-labelled, confirmed 30 Oct 2026 (site 4397): the last record equals the window end; the latest quarter can arrive some minutes late."
       }
     },
     "fallbacks": {
@@ -153,7 +153,8 @@
       "observedAt"
     ],
     "naive_timestamp_timezone": "UTC",
-    "note": "Same endpoint and parsing as the chatbot's TomTom layer (NT782/NT783). Credentials: TOMTOM_API_KEY, or TOMTOM_API_TOKEN with TOMTOM_AUTH_HEADER / TOMTOM_AUTH_PREFIX."
+    "note": "Same endpoint and parsing as the chatbot's TomTom layer (NT782/NT783). Credentials: TOMTOM_API_KEY, or TOMTOM_API_TOKEN with TOMTOM_AUTH_HEADER / TOMTOM_AUTH_PREFIX.",
+    "naive_timestamp_timezone_note": "Archive stamps carry Z (UTC), confirmed 30 Oct 2026."
   },
   "tomtom_mapping": {
     "file": "data/tomtom_neo4j_links_AU-VIC-Melbourne_final.json",

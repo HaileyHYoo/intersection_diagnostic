@@ -109,7 +109,9 @@ class Measures:
                 flag = window_values(series.get((site, link, "has_green"), {}), ends)
                 complete = share is not None and flag is not None
                 green = complete and all(v >= 0.5 for v in flag)
-                value = mean(share) * (100 if fraction else 1) if green else None
+                # Rounded to remove float noise (99.99999999999999 vs 100.0), which would otherwise fall below
+                # a zero-width 10th-90th range; this is precision, not a materiality threshold.
+                value = round(mean(share) * (100 if fraction else 1), self.rules["q3c"].get("round_decimals", 3)) if green else None
                 table[site][link] = {"green_share": value, "green": green, "complete": complete,
                                      "bound": bounds.get((site, link))}
             out[p.key] = dict(table)

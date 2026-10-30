@@ -53,7 +53,10 @@ python main.py inspect --site 4397 --end 2026-10-27T08:30 --hours 2
 **Results for site 4397, 30 Oct 2026 (UTC 01:30–03:30):**
 - confirmed: `d[n]` = detector number (1–8); detector counts are integers; the three EGRESS links have volume and green share; the 15-minute volumes are end-labelled; the TomTom mapping and queue archive work (3 approaches, 1 row per minute);
 - found: detector counts are stamped at :03/:08 and PerfKpi/PerfApproach at :07/:22, which is now handled with `off_grid: "ceil"`;
-- still open:
-  - the TomTom KPIs ended at 03:15 for a window ending at 03:30, so they are either start-labelled or late. Re-run `inspect` for a window that ended an hour or more earlier; if `last` is still 15 minutes before the window end, set `timestamp_label: "start"` for `tomtom_site_kpi` and `tomtom_turn_kpi`;
-  - whether a PerfKpi record stamped :07 covers the 15 minutes up to :07 (the reading used) or an earlier quarter written late — a question for the production team.
-| `IntersectionPerfApproach` is 15-minute | `feeds.approach_perf.step_seconds` = 900 | Set `interval_minutes` |
+- confirmed in a second run (UTC 23:00–01:00): the TomTom KPIs are end-labelled (the latest quarter can arrive a few minutes late); the TomTom queue archive stamps carry `Z` (UTC); every value the screening needs for the period is present.
+- observed:
+  - detector 1 at 4397 counts 1–2 vehicles per hour, so this site is a Detector Health Issue under the Q2 rule at both times;
+  - `d[12]` counted traffic but is not associated with the site in Neo4j, so it is not part of Q2;
+  - GreenShare is 100% on two of the three approaches (once stored as 99.99999999999999). Green share is rounded to 3 decimals (`q3c.round_decimals`) so that float noise is not read as LOW against a 100–100 range.
+- still open: whether a PerfKpi record stamped :07 covers the 15 minutes up to :07 (the reading used) or an earlier quarter written late — a question for the production team.
+

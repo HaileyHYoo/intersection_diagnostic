@@ -36,7 +36,8 @@
   "q3b": {"higher_is_more_stable": true},
   "q3c": {
     "approach_history_min_presence": 1,
-    "grey_site_if_any_approach_without_green": true
+    "grey_site_if_any_approach_without_green": true,
+    "round_decimals": 3
   },
   "q3": {"abnormal_required": 2, "assessable_required": 2},
   "alignment": {

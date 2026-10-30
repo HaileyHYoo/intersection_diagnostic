@@ -1,7 +1,7 @@
 import unittest
 from datetime import datetime, timezone
 
-from diagnostics import screening, timewin
+from diagnostics import screening, stats, timewin
 from diagnostics.baseline import BaselineBuilder
 from diagnostics.local.fake import FakeSource
 from diagnostics.settings import Settings, load_rules
@@ -55,10 +55,10 @@ class NetworkScreeningTests(unittest.TestCase):
         self.assertEqual(sorted(a["link"][:4] for a in site["q1"]["not_evaluated"]), ["DEAD", "NEWL"])
 
     def test_dirty_feed_is_cleaned(self):
-        stats = self.result["alignment"]
-        self.assertGreater(stats["snapped"], 0)
-        self.assertGreater(stats["duplicates"], 0)
-        self.assertGreater(stats["off_grid_ceiled"], 0)       # the off-grid 9999 record lost to the real one
+        counts = self.result["alignment"]
+        self.assertGreater(counts["snapped"], 0)
+        self.assertGreater(counts["duplicates"], 0)
+        self.assertGreater(counts["off_grid_ceiled"], 0)       # the off-grid 9999 record lost to the real one
         self.assertEqual(self.sites["4336"]["category"], "normal")
 
     def test_no_green_greys_the_site_and_can_be_switched_off(self):
@@ -145,6 +145,28 @@ class RuleTests(unittest.TestCase):
         self.assertEqual(cls(ABNORMAL, ABNORMAL), "red")
         self.assertEqual(cls(INSUFFICIENT, ABNORMAL), "grey")
         self.assertEqual(cls(ABNORMAL, INSUFFICIENT), "grey")
+
+
+class GreenShareNoiseTests(unittest.TestCase):
+    def test_float_noise_is_not_low_against_a_constant_history(self):
+        from datetime import timedelta
+        from diagnostics.measures import Measures
+        settings = Settings()
+        period = timewin.period_ending("2026-10-30T14:30", settings.rules)
+
+        class Source:
+            def approach_perf(self, start, end, sites=None):
+                rows = []
+                for k, t in enumerate(period.interval_ends(15)):
+                    stamp = t - timedelta(minutes=8)                       # live feeds write at :07/:22
+                    share = 99.99999999999999 if k == 0 else 100.0
+                    rows += [{"site": "4397", "link": "GRAT", "bound": "E", "field": "green_share", "time": stamp, "value": share},
+                             {"site": "4397", "link": "GRAT", "bound": "E", "field": "has_green", "time": stamp, "value": 1.0}]
+                return rows
+        value = Measures(Source(), settings.rules, settings.schema).approach_green([period])[period.key]["4397"]["GRAT"]
+        self.assertEqual(value["green_share"], 100.0)
+        env = stats.envelope([100.0] * 8, settings.rules)
+        self.assertEqual(stats.range_only(value["green_share"], env)["status"], NORMAL)
 
 
 class FluxTests(unittest.TestCase):
