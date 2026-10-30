@@ -6,6 +6,11 @@
 
 ## 1. What it does
 
+The host can use the package in either of two ways:
+
+- the service below, which keeps its own run store (SQLite);
+- the production contract (`contract/`, section 4b), where the Dash callbacks keep the shared run store.
+
 | Call | When | Returns |
 |---|---|---|
 | `screen()` | The map layer is activated, or the layer is refreshed while active | One category per intersection for the latest completed 30 minutes |
@@ -33,11 +38,13 @@ Copy `production/dash_backend/ai_brains/intersections/diagnostics/` into the bac
 | `sources/` | InfluxDB and Neo4j readers built from the schema |
 | `store.py` | SQLite store (runs, baselines, diagnoses) |
 | `config/schema.json`, `config/rules.json` | Data schema (temporary) and rules |
+| `contract/` | The production team's `intersections_diagnostics_schemas.py` (copied unchanged), `adapter.py` (conversion) and `core.py` (`run_screening`, `run_diagnosis`) |
+| `sources/tomtom_queue.py` | TomTom Junction Analytics queue archive (only when `tomtom.api_enabled`) |
 | `data/` | TomTom approach ↔ link mapping (from the chatbot) and the site ↔ subsystem map (fallback only) |
 
 ## 3. Dependencies and environment
 
-**Dependencies.** No new packages beyond the chatbot's: `influxdb-client`, `neo4j`, `python-dotenv`, `tzdata` (and `openai` through the host client).
+**Dependencies.** No new packages beyond the chatbot's: `influxdb-client`, `neo4j`, `python-dotenv`, `tzdata`, `pydantic` (v2, for the contract), and `openai` through the host client.
 
 **Environment.** The same variables as the chatbot, plus:
 
@@ -46,6 +53,7 @@ Copy `production/dash_backend/ai_brains/intersections/diagnostics/` into the bac
 | `DIAGNOSTICS_DB` | `diagnostics.sqlite3` (working directory) | SQLite file for runs, baselines and reports. Use a persistent, writable path. |
 | `DIAGNOSTICS_SCHEMA_FILE` | bundled `config/schema.json` | Your schema file, once it replaces the temporary one |
 | `DIAGNOSTICS_RULES_FILE` | bundled `config/rules.json` | Only if the rules are managed outside the package |
+| `TOMTOM_API_KEY` | — | Only when `tomtom.api_enabled` is switched on (Q5 queue length). The chatbot's TomTom layer already uses it. |
 
 ## 4. Host code
 
@@ -74,6 +82,21 @@ else:                                      # other categories: saved evidence (Q
 python -c "from datetime import date, timedelta; from dash_backend.ai_brains.intersections.diagnostics.host import service_for_bot; s = service_for_bot(); print(s.refresh_baselines([date.today() + timedelta(days=i) for i in range(7)]))"
 ```
 
+## 4b. With the production contract
+
+```python
+from dash_backend.ai_brains.intersections.diagnostics.host import run_screening, run_diagnosis
+
+# background callback, after writing the RUNNING ScreeningRun
+result = run_screening(screening_input)            # ScreeningInput -> ScreeningResult
+
+# click on a Red site
+diagnosis = run_diagnosis(diagnosis_input, bot)    # DiagnosisInput -> DiagnosisResult
+```
+
+- **The contract module.** The adapter uses its bundled copy of `intersections_diagnostics_schemas.py`. To share one set of classes with the host, call `contract.adapter.use_contract(<the host's module>)` once at start-up.
+- **Sites the contract cannot represent yet.** A site that is Grey because an approach has no green cannot be represented until `Q3CPhaseService.site_grey_no_green` exists. Until then it is listed in `ScreeningResult.errors` with the reason.
+
 ## 5. Verification
 
 ```python
@@ -85,6 +108,8 @@ print(view["counts"], view["period"]["local"])
 ```
 
 ## 6. To agree with the production team
+
+Sent on 31 Oct 2026: the `site_grey_no_green` flag, baseline storage and versioning, time zones and a UTC cache key, a config hash in the cache key, and `has_largest_queue: bool | None`. Also still open:
 
 - **Schema.** Replace `config/schema.json` with the final schema (see SCHEMA.md) and change its `version`.
 - **Store.** Use SQLite on a persistent path, or a database. `store.SQLiteStore` is the interface to re-implement.

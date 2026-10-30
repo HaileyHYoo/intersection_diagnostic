@@ -11,6 +11,7 @@ from ..settings import Settings, connection_env, package_file
 from .base import DataUnavailable
 from .graph import GraphReader
 from .influx import InfluxReader, build_flux, padded
+from .tomtom_queue import QueueArchive
 
 
 class LiveSource:
@@ -22,6 +23,7 @@ class LiveSource:
         self.tolerance = self.settings.rules["alignment"]["tolerance_seconds"]
         self.strip = self.schema.get("ids", {}).get("strip_chars", ids.DEFAULT_STRIP)
         self._influx, self._graph = influx, graph
+        self._queue = None
         self.provenance: list[dict] = []
 
     # -------------------------------------------------------------- connections (opened on first use)
@@ -149,7 +151,21 @@ class LiveSource:
         return self._logical(feed, rows, {"approach": (feed["approach_tag"], str), "exit": (feed["exit_tag"], str)})
 
     def tomtom_mapping(self, site: str) -> dict:
-        return tomtom_map.load(str(package_file(self.schema["tomtom_mapping"]["file"]))).get(ids.site(site), {})
+        """{uuid, approaches, exits} for a site; empty when the site has no TomTom mapping."""
+        return tomtom_map.load(str(package_file(self.schema["tomtom_mapping"]["file"]))).get(ids.site(site), tomtom_map.EMPTY)
+
+    def tomtom_queue(self, site: str, start: datetime, end: datetime) -> list[dict]:
+        """Per-minute queue rows {approach, time, queue_m} from the Junction Analytics archive."""
+        if not self.settings.rules["tomtom"].get("api_enabled"):
+            raise DataUnavailable("the TomTom Junction Analytics API (queue source) is disabled in this version")
+        uuid = self.tomtom_mapping(site)["uuid"]
+        if not uuid:
+            raise DataUnavailable("the site has no verified TomTom junction")
+        if self._queue is None:
+            self._queue = QueueArchive(self.schema["tomtom_queue"], self.settings.rules.get("timezone", "Australia/Melbourne"))
+        rows = self._queue.rows(uuid, start, end)
+        self.provenance.append({"source": "TomTom Junction Analytics archive", "site": site, "rows": len(rows)})
+        return rows
 
     def cycle_length_fallback(self, start: datetime, end: datetime) -> list[dict]:
         """Subsystem active cycle length, given to every site of the subsystem (stated as a fallback)."""

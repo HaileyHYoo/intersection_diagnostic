@@ -10,6 +10,7 @@ Network-wide SCATS screening (Q2 detector gate, Q1 traffic, Q3 signal operation)
 | `diagnostics/` | The package (shared source of local and production) |
 | `diagnostics/config/` | `schema.json` (temporary data schema), `rules.json` (every threshold and switch) |
 | `diagnostics/local/` | Local only: synthetic network, map viewer, feed inspection |
+| `diagnostics/contract/` | Production team's contract (copied unchanged), adapter, `run_screening` / `run_diagnosis` |
 | `main.py` | Local command line |
 | `production/` | Generated package for the backend (`python tools/build_production.py`) |
 | `docs/METHOD.md` | How the code implements the methodology, with every agreed decision |

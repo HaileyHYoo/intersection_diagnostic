@@ -67,6 +67,9 @@ python main.py baseline --days 7                      # 주간 베이스라인 �
 | 히스토리 제외일 | `history.exclude` (공휴일, 서머타임 변경일, 연말) |
 | 데이터 지연 여유 | `data_latency_minutes` 5 |
 | 클릭 시 실행할 템플릿 | `click` (Red만 D001, D002) |
+| 평소값 기준 | `reference_value` `"median"` (중앙값, 프로덕션 계약 기준) |
+| TomTom 대기행렬(API) | `tomtom.api_enabled` false. 켜려면 `.env`에 `TOMTOM_API_KEY` 필요 |
+| 프로덕션 템플릿 ID | `contract.template_ids` (D002 ID는 확인 전 임시값) |
 
 규칙이나 스키마 버전이 바뀌면 베이스라인과 실행 결과를 자동으로 새로 계산합니다.
 

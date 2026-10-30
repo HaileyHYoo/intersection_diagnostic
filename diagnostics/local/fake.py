@@ -31,6 +31,7 @@ import math
 from datetime import datetime, timedelta
 
 from .. import ids
+from ..tomtom_map import movement
 from ..series import ends_between
 from ..timewin import Period, latest_period, to_utc
 
@@ -246,9 +247,14 @@ class FakeSource:
     def tomtom_mapping(self, site):
         n = self.network.get(ids.site(site))
         if not n or not n["tomtom"]:
-            return {}
-        return {str(-1000 - 10 * k - int(site)): {"link": a["link"], "street": a["street"], "direction": a["bound"]}
-                for k, a in enumerate(n["approaches"])}
+            return {"uuid": None, "approaches": {}, "exits": {}}
+        travel = {"N": "SOUTH", "E": "WEST", "S": "NORTH", "W": "EAST"}      # an approach from the north travels south
+        leaving = {"N": "NORTH", "E": "EAST", "S": "SOUTH", "W": "WEST"}
+        approaches = {str(-1000 - 10 * k - int(site)): {"link": a["link"], "street": a["street"], "direction": travel[a["bound"]],
+                                                       "bound": a["bound"]} for k, a in enumerate(n["approaches"])}
+        exits = {str(-5000 - 10 * k - int(site)): {"link": "X" + a["link"][1:], "street": a["street"], "direction": leaving[a["bound"]]}
+                 for k, a in enumerate(n["approaches"])}
+        return {"uuid": "fake-" + site, "approaches": approaches, "exits": exits}
 
     def tomtom_turn_kpi(self, site, start, end):
         n = self.network.get(ids.site(site))
@@ -260,19 +266,42 @@ class FakeSource:
         for stamp in self._ends(start, end, 15):
             if not to_utc(start) <= stamp <= to_utc(end):
                 continue
-            for approach_id, entry in mapping.items():
-                b = entry["direction"]
+            for approach_id, entry in mapping["approaches"].items():
+                b = entry["bound"]
                 delay = (12 + 25 * unit(site, b, "delay")) * self._noise(stamp, site, b, "tt", scale=0.1)
                 if self._current(stamp) and b == worst:
                     delay *= 3.0
-                for k, exit_id in enumerate(("1", "2", "3")):
-                    share = (0.2, 0.6, 0.2)[k]
-                    values = {"approach_delay": delay, "control_delay": delay * (0.8 + 0.2 * k),
+                turns = [(exit_id, movement(entry["direction"], e["direction"])) for exit_id, e in mapping["exits"].items()]
+                turns = [(exit_id, m) for exit_id, m in turns if m in ("left", "through", "right")]
+                for exit_id, m in turns:
+                    share = {"left": 0.2, "through": 0.6, "right": 0.2}[m]
+                    values = {"approach_delay": delay, "control_delay": delay * {"left": 0.8, "through": 1.0, "right": 1.2}[m],
                               "multi_stop_rate": 0.05 + delay / 400, "turn_ratio": share * 100,
                               "sample_count": round(20 * share * time_of_day(stamp.astimezone(self.tz)) + 1)}
                     for field, value in values.items():
-                        out.append({"site": site, "approach": approach_id, "exit": approach_id + "-" + exit_id,
+                        out.append({"site": site, "approach": approach_id, "exit": exit_id,
                                     "field": field, "time": stamp, "value": round(value, 3)})
+        return out
+
+    def tomtom_queue(self, site, start, end):
+        """Per-minute queue per approach; follows rules tomtom.api_enabled like the live source."""
+        from ..sources.base import DataUnavailable
+        if not self.rules["tomtom"].get("api_enabled"):
+            raise DataUnavailable("the TomTom Junction Analytics API (queue source) is disabled in this version")
+        mapping = self.tomtom_mapping(site)
+        if not mapping["uuid"]:
+            raise DataUnavailable("the site has no verified TomTom junction")
+        worst = {"red_agree": "N", "red_disagree": "E"}.get(self.network[ids.site(site)]["scenario"])
+        out, t = [], to_utc(start) + timedelta(minutes=1)
+        while t <= to_utc(end):
+            for approach_id, entry in mapping["approaches"].items():
+                if entry["bound"] == "W" and t.minute % 2:          # a partly observed approach
+                    continue
+                queue = (20 + 60 * unit(site, entry["bound"], "queue")) * self._noise(t, site, entry["bound"], "q", scale=0.2)
+                if self._current(t) and entry["bound"] == worst:
+                    queue *= 4
+                out.append({"approach": approach_id, "time": t, "queue_m": round(queue, 1)})
+            t += timedelta(minutes=1)
         return out
 
     def tomtom_site_kpi(self, site, start, end):

@@ -70,7 +70,16 @@ class LiveSourceTests(unittest.TestCase):
 
     def test_tomtom_mapping_file(self):
         mapping = self.source().tomtom_mapping("S162")
-        self.assertEqual(mapping["1996207257"]["link"], "BURWW3QWW2VW")
+        self.assertEqual(mapping["uuid"], "69381a5ce4939943f584e975")
+        self.assertEqual(mapping["approaches"]["1996207257"]["link"], "BURWW3QWW2VW")
+        self.assertEqual(mapping["approaches"]["1996207257"]["direction"], "WEST")
+        self.assertIn("-1731433707", mapping["exits"])
+        self.assertEqual(self.source().tomtom_mapping("99999"), {"uuid": None, "approaches": {}, "exits": {}})
+
+    def test_queue_off_by_default(self):
+        from diagnostics.sources.base import DataUnavailable
+        with self.assertRaises(DataUnavailable):
+            self.source().tomtom_queue("162", T, T)
 
     def test_fallback_only_when_enabled(self):
         from diagnostics.measures import Measures

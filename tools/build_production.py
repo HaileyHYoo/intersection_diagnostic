@@ -44,7 +44,8 @@ def check_imports() -> None:
     code = ("import sys; sys.path.insert(0, %r); "
             "import dash_backend.ai_brains.intersections.diagnostics.host as h; "
             "import dash_backend.ai_brains.intersections.diagnostics.templates as t; "
-            "assert set(t.catalog()) == {'D001', 'D002'}; print('import ok')") % str(OUT)
+            "assert set(t.catalog()) == {'D001', 'D002'}; "
+            "import dash_backend.ai_brains.intersections.diagnostics.contract.core as c; print('import ok')") % str(OUT)
     subprocess.run([sys.executable, "-I", "-c", code], check=True, cwd=OUT)
     leaked = [p for p in TARGET.rglob("*.py") if "from .local" in p.read_text() or "from ..local" in p.read_text()]
     if leaked:

@@ -6,6 +6,9 @@
     result = svc.diagnose(view["run_id"], "4397")   # map click
 
 One service per process is enough; screen() is safe to call from several request threads at once.
+
+With the production contract (contract/intersections_diagnostics_schemas.py), the Dash callbacks call
+run_screening(ScreeningInput) and run_diagnosis(DiagnosisInput) instead and keep the run store themselves.
 """
 from __future__ import annotations
 
@@ -29,3 +32,19 @@ def service_for_bot(bot=None, settings: Settings | None = None) -> DiagnosticsSe
             llm = HostLLM(bot.llm) if bot is not None and getattr(bot, "llm", None) is not None else None
             _service = DiagnosticsService(LiveSource(settings), settings, SQLiteStore(settings.db_path), llm)
         return _service
+
+
+def run_screening(screening_input, settings: Settings | None = None):
+    """Contract entry for the Dash background callback: ScreeningInput -> ScreeningResult.
+    The callback keeps the shared ScreeningRun record (RUNNING / COMPLETED); this only computes."""
+    from .contract import core
+    settings = settings or Settings()
+    return core.run_screening(screening_input, LiveSource(settings), settings, SQLiteStore(settings.db_path))
+
+
+def run_diagnosis(diagnosis_input, bot=None, settings: Settings | None = None):
+    """Contract entry for a click on a Red site: DiagnosisInput -> DiagnosisResult (the chatbot's LLM words it)."""
+    from .contract import core
+    settings = settings or Settings()
+    llm = HostLLM(bot.llm) if bot is not None and getattr(bot, "llm", None) is not None else None
+    return core.run_diagnosis(diagnosis_input, LiveSource(settings), settings, llm)

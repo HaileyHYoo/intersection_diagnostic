@@ -52,7 +52,9 @@ class ScreenServiceTests(unittest.TestCase):
 
     def test_map_view_is_compact(self):
         view = service().screen(END)
-        self.assertEqual(set(view["sites"][0]), {"site", "name", "lat", "lon", "category", "label", "reasons", "selectable"})
+        self.assertEqual(set(view["sites"][0]), {"site", "name", "lat", "lon", "category", "label", "reasons", "selectable",
+                                                 "total_volume_veh_h"})
+        self.assertEqual(view["errors"], {})
         self.assertEqual(view["period"]["slot"], "08:00")
         self.assertEqual(len(view["baseline"]["reference_periods"]), 8)
 

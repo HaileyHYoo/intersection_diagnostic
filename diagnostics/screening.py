@@ -177,16 +177,24 @@ def classify(q2: dict, q1: dict | None, q3: dict | None) -> tuple[str, list[str]
 
 
 # ---------------------------------------------------------------------- network
-def screen(source, settings, baseline: dict, period: Period) -> dict:
+def screen(source, settings, baseline: dict, period: Period, network: list[dict] | None = None) -> dict:
+    """Screen every site. `network` (optional) is the host's own site list:
+    [{site, name, lat, lon, detectors: [numbers], links: [{link, street}]}]; without it the source is read.
+    A site that fails to process is reported in `errors` and does not stop the run."""
     rules, schema = settings.rules, settings.schema
-    sites = source.sites()
-    site_ids = [s["site"] for s in sites]
-    detectors = defaultdict(list)
-    for d in source.detectors(site_ids):
-        detectors[d["site"]].append(d)
-    links = defaultdict(list)
-    for a in source.approaches(site_ids):
-        links[a["site"]].append(a)
+    detectors, links = defaultdict(list), defaultdict(list)
+    if network is None:
+        sites = source.sites()
+        site_ids = [s["site"] for s in sites]
+        for d in source.detectors(site_ids):
+            detectors[d["site"]].append(d)
+        for a in source.approaches(site_ids):
+            links[a["site"]].append(a)
+    else:
+        sites = network
+        for s in network:
+            detectors[s["site"]] = [{"site": s["site"], "detector": int(n), "active": True} for n in s.get("detectors", [])]
+            links[s["site"]] = [{"site": s["site"], **a} for a in s.get("links", [])]
 
     m = Measures(source, rules, schema)
     totals = m.detector_totals(period, rules["q2"]["window_minutes"])
@@ -195,21 +203,34 @@ def screen(source, settings, baseline: dict, period: Period) -> dict:
     kpi, origin = kpi[period.key], origin[period.key]
     green = m.approach_green([period])[period.key]
 
-    results = []
+    results, errors = [], {}
     for s in sites:
         site = s["site"]
-        bounds = {link: v.get("bound") for link, v in green.get(site, {}).items()}
-        q2 = q2_gate(detectors.get(site, []), totals.get(site, {}), rules)
-        q1 = q3 = None
-        if q2["status"] == PASS:
-            q1 = q1_traffic(links.get(site, []), volume, baseline["volume"], bounds, rules)
-            q3c = q3c_phase_service(links.get(site, []), green.get(site, {}), baseline["green"].get(site, {}), bounds, rules)
-            q3 = q3_signal(kpi.get(site, {}), baseline["kpi"].get(site, {}), origin.get(site, {}), q3c, rules)
-        category, reasons = classify(q2, q1, q3)
-        results.append({"site": site, "name": site_name(s.get("streets")), "lat": s.get("lat"), "lon": s.get("lon"),
-                        "category": category, "label": CATEGORIES[category], "reasons": reasons,
-                        "selectable": rules["click"].get(category, []), "q2": q2, "q1": q1, "q3": q3})
+        try:
+            bounds = {link: v.get("bound") for link, v in green.get(site, {}).items()}
+            q2 = q2_gate(detectors.get(site, []), totals.get(site, {}), rules)
+            q1 = q3 = None
+            if q2["status"] == PASS:
+                q1 = q1_traffic(links.get(site, []), volume, baseline["volume"], bounds, rules)
+                q3c = q3c_phase_service(links.get(site, []), green.get(site, {}), baseline["green"].get(site, {}), bounds, rules)
+                q3 = q3_signal(kpi.get(site, {}), baseline["kpi"].get(site, {}), origin.get(site, {}), q3c, rules)
+            category, reasons = classify(q2, q1, q3)
+        except Exception as exc:  # noqa: BLE001 - one bad site must not stop the network screening
+            errors[site] = f"{type(exc).__name__}: {exc}"
+            continue
+        results.append({"site": site, "name": site_name(s.get("streets")) or s.get("name"), "lat": s.get("lat"),
+                        "lon": s.get("lon"), "category": category, "label": CATEGORIES[category], "reasons": reasons,
+                        "selectable": rules["click"].get(category, []), "q2": q2, "q1": q1, "q3": q3,
+                        "total_volume_veh_h": total_volume(q1)})
     counts = defaultdict(int)
     for r in results:
         counts[r["category"]] += 1
-    return {"sites": results, "counts": dict(counts), "alignment": m.aligner.stats}
+    return {"sites": results, "counts": dict(counts), "errors": errors, "alignment": m.aligner.stats}
+
+
+def total_volume(q1: dict | None) -> float | None:
+    """Site volume for the period as an hourly rate (veh/h): the evaluated approaches' 30-minute sum x 2.
+    None unless every evaluated approach has a value."""
+    if not q1 or not q1["approaches"] or any(a["current"] is None for a in q1["approaches"]):
+        return None
+    return round(sum(a["current"] for a in q1["approaches"]) * 60 / 30, 1)

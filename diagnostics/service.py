@@ -98,7 +98,7 @@ class DiagnosticsService:
                        "baseline": {"version": baseline["version"], "reference_periods": baseline["reference_periods"],
                                     "skipped_days": baseline["skipped_days"]},
                        "rules_version": self.settings.rules_version, "schema_version": self.settings.schema.get("version"),
-                       "counts": result["counts"], "alignment": result["alignment"], "notes": notes,
+                       "counts": result["counts"], "errors": result["errors"], "alignment": result["alignment"], "notes": notes,
                        "sites": result["sites"]}
             self.store.finish_run(run_id, payload, {"counts": result["counts"], "sites": len(result["sites"])})
             return run_id
@@ -108,10 +108,10 @@ class DiagnosticsService:
 
     def map_view(self, run: dict, cached: bool) -> dict:
         p = run["payload"]
-        keep = ("site", "name", "lat", "lon", "category", "label", "reasons", "selectable")
+        keep = ("site", "name", "lat", "lon", "category", "label", "reasons", "selectable", "total_volume_veh_h")
         return {"run_id": run["run_id"], "cached": cached, "region": p["region"], "period": p["period"],
                 "baseline": p["baseline"], "rules_version": p["rules_version"], "schema_version": p["schema_version"],
-                "counts": p["counts"], "notes": p["notes"], "alignment": p["alignment"],
+                "counts": p["counts"], "notes": p["notes"], "alignment": p["alignment"], "errors": p.get("errors", {}),
                 "categories": screening.CATEGORIES, "sites": [{k: s[k] for k in keep} for s in p["sites"]]}
 
     # ------------------------------------------------------------------ Level 2

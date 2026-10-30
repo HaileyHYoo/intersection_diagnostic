@@ -1,5 +1,5 @@
 {
-  "version": "v1.0",
+  "version": "v1.1",
   "note": "Intersections Diagnostics V1 rules. Values follow the agreed methodology (29 Oct 2026); items marked 'decision' were agreed in addition to it.",
   "region": "AU-VIC-Melbourne",
   "timezone": "Australia/Melbourne",
@@ -13,7 +13,7 @@
     "exclude": {"public_holidays": true, "dst_change_days": true, "year_end": true}
   },
   "percentiles": {"low": 0.10, "high": 0.90},
-  "reference_value": "mean",
+  "reference_value": "median",
   "q2": {
     "window_minutes": 60,
     "min_vehicles": 10,
@@ -38,7 +38,19 @@
     "duplicates": "last"
   },
   "fallbacks": {"enabled": false},
-  "tomtom": {"api_enabled": false, "adequate_quarters": 2},
+  "tomtom": {
+    "api_enabled": false,
+    "adequate_quarters": 2,
+    "queue_min_minutes": 15,
+    "note": "api_enabled switches the Junction Analytics queue archive (Q5 queue length) on; it needs TOMTOM_API_KEY."
+  },
+  "contract": {
+    "template_ids": {
+      "D001": {"template_id": "ID_Q4_SCATS_INTERPRETATION", "version": "1.0.0"},
+      "D002": {"template_id": "ID_Q5_TOMTOM_CONFIRMATION", "version": "1.0.0"}
+    },
+    "note": "Template registry IDs in the production contract. D001 is the contract's example; the D002 ID is a placeholder until the production team confirms it."
+  },
   "click": {
     "red": ["D001", "D002"],
     "amber_traffic": [],

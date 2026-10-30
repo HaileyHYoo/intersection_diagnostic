@@ -1,5 +1,5 @@
 {
-  "version": "tmp-2026-10-30",
+  "version": "tmp-2026-10-31",
   "note": "Temporary schema designed from the InfluxDB inventory of 5 Oct 2026 and the chatbot's Neo4j queries. Replace with the production team's schema; code reads every name from here.",
   "timestamps": {
     "label": "end",
@@ -96,6 +96,16 @@
     "sites": "MATCH (i:Intersection)-[:IN]-(:Region {tag: $region}) WHERE i.scats_site_no IS NOT NULL AND coalesce(i.signalised, true) = true RETURN DISTINCT toString(i.scats_site_no) AS site, i.latitude AS lat, i.longitude AS lon, i.street_names AS streets",
     "detectors": "MATCH (d:Detector)-[:BELONG_TO]->(i:Intersection)-[:IN]-(:Region {tag: $region}) WHERE toString(i.scats_site_no) IN $sites RETURN toString(i.scats_site_no) AS site, d.detector_number AS detector, d.active AS active",
     "approaches": "MATCH (i:Intersection)-[:IN]-(:Region {tag: $region}) WHERE toString(i.scats_site_no) IN $sites MATCH (i)-[:EGRESS]-(r:Road) WHERE r.link_id IS NOT NULL RETURN DISTINCT toString(i.scats_site_no) AS site, r.link_id AS link_id, r.street_name AS street"
+  },
+  "tomtom_queue": {
+    "purpose": "Q5 queue length: TomTom Junction Analytics archive, per-minute queue per approach (only when rules tomtom.api_enabled)",
+    "url_template": "https://api.tomtom.com/junction-analytics/junctions/1/archive/{junction_uuid}/data/flat/daily",
+    "date_params": {"from": "from", "to": "to"},
+    "queue_columns": ["queueLengthMeters", "queue_length_meters", "queueLength"],
+    "approach_columns": ["approachId", "approach_id", "approachID", "id"],
+    "time_columns": ["time", "timestamp", "dateTime", "datetime", "observedAt"],
+    "naive_timestamp_timezone": "UTC",
+    "note": "Same endpoint and parsing as the chatbot's TomTom layer (NT782/NT783). Credentials: TOMTOM_API_KEY, or TOMTOM_API_TOKEN with TOMTOM_AUTH_HEADER / TOMTOM_AUTH_PREFIX."
   },
   "tomtom_mapping": {
     "file": "data/tomtom_neo4j_links_AU-VIC-Melbourne_final.json",

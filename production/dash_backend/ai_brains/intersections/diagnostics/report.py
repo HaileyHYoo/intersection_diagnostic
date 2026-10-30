@@ -32,15 +32,21 @@ def evidence_tables(site: dict) -> list[dict]:
     return [traffic, signal, service]
 
 
-def tomtom_table(d002: dict) -> dict | None:
+def tomtom_tables(d002: dict) -> list[dict]:
     rows = d002["evidence"]["approaches"]
     if not rows:
-        return None
-    return {"title": "TomTom approach performance (same 30 min)",
-            "columns": ["Approach", "Approach delay (s)", "Control delay (s)", "Multi-stop rate", "Quarter-hours"],
-            "rows": [[a["approach"], _fmt(a["approach_delay_s"]), _fmt(a["control_delay_s"]),
-                      "-" if a["multi_stop_rate"] is None else f"{a['multi_stop_rate']:.3f}", str(a["quarters_observed"])]
-                     for a in rows]}
+        return []
+    queue = d002["evidence"]["queue"] == "available"
+    approach = {"title": "TomTom approach performance (same 30 min)",
+                "columns": ["Approach", "Approach delay (s)", "Control delay (s)", "Multi-stop rate", "Quarter-hours"]
+                + (["Mean queue (m)", "Max queue (m)", "Queue minutes"] if queue else []),
+                "rows": [[a["approach"], _fmt(a["approach_delay_s"]), _fmt(a["control_delay_s"]),
+                          "-" if a["multi_stop_rate"] is None else f"{a['multi_stop_rate']:.3f}", str(a["quarters_observed"])]
+                         + ([_fmt(a["queue_mean_m"]), _fmt(a["queue_max_m"]), str(a["queue_minutes"])] if queue else [])
+                         for a in rows]}
+    moves = {"title": "TomTom movements (control delay, s)", "columns": ["Approach", "Movement", "Control delay (s)"],
+             "rows": [[a["approach"], m["movement"], _fmt(m.get("control_delay_s"))] for a in rows for m in a["movements"]]}
+    return [approach] + ([moves] if moves["rows"] else [])
 
 
 def assemble(site: dict, period: dict, d001: dict, d002: dict | None) -> dict:
@@ -54,10 +60,9 @@ def assemble(site: dict, period: dict, d001: dict, d002: dict | None) -> dict:
         sections.append({"title": "3. TomTom Road-User Impact", "text": "TomTom confirmation was not run.", "producer": "D002"})
     else:
         a2 = d002["answer"]
-        table = tomtom_table(d002)
         sections.append({"title": "3. TomTom Road-User Impact", "text": a2["road_user_impact"],
                          "bullets": [f"Agreement with SCATS findings: {a2['agreement']}", f"Coverage: {a2['coverage']}"],
-                         "tables": [table] if table else [], "producer": "D002"})
+                         "tables": tomtom_tables(d002), "producer": "D002"})
     sections.append({"title": "4. Suggested Engineering Checks", "bullets": a1["suggested_checks"], "producer": "D001"})
     report = {"site": site["site"], "intersection": site.get("name"), "classification": site["label"],
               "period": period, "sections": sections,

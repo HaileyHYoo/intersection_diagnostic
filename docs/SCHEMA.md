@@ -17,6 +17,7 @@ When the production team's schema arrives, either edit this file or point `DIAGN
 | `approach_perf` | Q3C | `scats-aggregation` / `IntersectionPerfApproach` | `SiteNo`, `LinkId`, `Bound` | `GreenShare` (%), `HasGreen` | 15 min |
 | `tomtom_site_kpi` | D002 | `scats-aggregation` / `IntersectionKpi`, `Provider=TomTom` | `SiteNo` | `ControlDelaySec`, … | 15 min |
 | `tomtom_turn_kpi` | D002 | `scats-aggregation` / `IntersectionTurnKpi`, `Provider=TomTom` | `SiteNo`, `ApproachId`, `ExitId` | `ApproachDelaySec`, `ControlDelaySec`, `MultiStopRate`, `TurnRatioPct`, `SampleCount` | 15 min |
+| `tomtom_queue` (off: `tomtom.api_enabled`) | D002 queue | TomTom Junction Analytics archive, `…/archive/{junction_uuid}/data/flat/daily` | junction UUID from the mapping file, `approachId` | `queueLengthMeters` | 1 min |
 | fallback `cycle_length` (off) | Q3A | `scats` / `subsystem_status` | `RegionNo`, `SubsystemNo` | `ActiveCycleLength` | — |
 
 Neo4j queries are in `graph`:
