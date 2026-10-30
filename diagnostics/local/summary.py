@@ -33,47 +33,63 @@ def summarise(payload: dict) -> dict:
     # Detector Health Issue
     dh = [s for s in sites if s["category"] == "detector_health"]
     failed_n, failed_counts, all_zero, one_detector = Counter(), Counter(), 0, 0
+    examples = {"single detector": [], "every failed detector 0": []}
     for s in dh:
         failed = [d for d in s["q2"]["detectors"] if d["status"] == "FAIL"]
         failed_n[len(failed)] += 1
         failed_counts.update(_bucket(d["count_60min"], [0, 1, 5, 10]) for d in failed)
-        all_zero += all(d["count_60min"] == 0 for d in failed)
+        zero = all(d["count_60min"] == 0 for d in failed)
+        all_zero += zero
         one_detector += len(failed) == 1
+        if len(failed) == 1:
+            examples["single detector"].append(s["site"])
+        if zero:
+            examples["every failed detector 0"].append(s["site"])
     out["detector_health"] = {"sites": len(dh), "failed_detectors_per_site": dict(sorted(failed_n.items())),
                               "failed_detector_counts_60min": dict(failed_counts),
                               "sites_where_every_failed_detector_counted_0": all_zero,
-                              "sites_failing_on_a_single_detector": one_detector}
+                              "sites_failing_on_a_single_detector": one_detector,
+                              "examples": {k: v[:5] for k, v in examples.items()}}
 
     # Grey
     grey = [s for s in sites if s["category"] == "grey"]
-    causes, q1_detail, q3_detail = Counter(), Counter(), Counter()
+    causes, q1_detail, q3_detail, cause_examples = Counter(), Counter(), Counter(), {}
+    missing_share = Counter()
+
+    def cause(name, site):
+        causes[name] += 1
+        cause_examples.setdefault(name, []).append(site)
+
     for s in grey:
         q2 = s["q2"]
         if q2["status"] == INSUFFICIENT:
             if not q2["detectors"]:
-                causes["Q2: no active detector in Neo4j"] += 1
+                cause("Q2: no active detector in Neo4j", s["site"])
             elif len(q2["missing"]) == len(q2["detectors"]):
-                causes["Q2: no detector records at all"] += 1
+                cause("Q2: no detector records at all", s["site"])
             else:
-                causes["Q2: some detectors missing records"] += 1
+                cause("Q2: some detectors missing records", s["site"])
+                missing_share[f"{len(q2['missing'])} of {len(q2['detectors'])}"] += 1
             continue
         ps = s["q3"]["components"]["phase_service"]
         if ps["grey_site"]:
-            causes["Q3C: approach without green"] += 1
+            cause("Q3C: approach without green", s["site"])
         if s["q1"]["status"] == INSUFFICIENT:
-            causes["Q1: insufficient"] += 1
+            cause("Q1: insufficient", s["site"])
             for a in s["q1"]["approaches"]:
                 if a["status"] == INSUFFICIENT:
                     q1_detail["no current volume" if a["current"] is None else "fewer than 5 historical values"] += 1
             if not s["q1"]["approaches"]:
                 q1_detail["no approach with volume history"] += 1
         if s["q3"]["status"] == INSUFFICIENT:
-            causes["Q3: fewer than two measures assessable"] += 1
+            cause("Q3: fewer than two measures assessable", s["site"])
             for name, c in s["q3"]["components"].items():
                 if c["status"] == INSUFFICIENT:
                     q3_detail[name] += 1
     out["grey"] = {"sites": len(grey), "causes (a site can have several)": dict(causes.most_common()),
-                   "Q1 approaches not assessable": dict(q1_detail), "Q3 measures not assessable": dict(q3_detail)}
+                   "Q2 missing detectors (missing of active)": dict(missing_share.most_common(8)),
+                   "Q1 approaches not assessable": dict(q1_detail), "Q3 measures not assessable": dict(q3_detail),
+                   "examples": {k: v[:5] for k, v in cause_examples.items()}}
 
     # Amber traffic and Red: the flagged approaches
     flagged_sites = [s for s in sites if s["category"] in ("amber_traffic", "red")]
@@ -94,8 +110,29 @@ def summarise(payload: dict) -> dict:
             for name in ("cycle_length", "cycle_stability", "phase_service")}
     zero_width = sum(1 for s in assessed for a in s["q3"]["components"]["phase_service"]["approaches"]
                      if a.get("p_low") is not None and a["p_low"] == a["p_high"])
+    # Why Q3C (phase service) could not be assessed, per site and per approach
+    q3c_site, q3c_history, q3c_examples = Counter(), Counter(), {}
+    for s in assessed:
+        ps = s["q3"]["components"]["phase_service"]
+        if ps["status"] != INSUFFICIENT:
+            continue
+        rows = ps["approaches"]
+        if not rows:
+            key = "no approach has phase-service history"
+        elif ps["without_green"]:
+            key = "an approach without green now"
+        elif any(a["current"] is None for a in rows):
+            key = "an approach without a current value"
+        else:
+            key = "an approach with fewer than 5 historical values"
+            q3c_history.update(f"{a['n_history']} values" for a in rows if a["status"] == INSUFFICIENT)
+        q3c_site[key] += 1
+        q3c_examples.setdefault(key, []).append(s["site"])
     out["signal"] = {"sites_assessed": len(assessed), "component_status": {k: dict(v) for k, v in comp.items()},
-                     "phase_service_approaches_with_zero_width_range": zero_width}
+                     "phase_service_approaches_with_zero_width_range": zero_width,
+                     "phase_service_not_assessable_why": dict(q3c_site.most_common()),
+                     "phase_service_history_of_short_approaches": dict(sorted(q3c_history.items())),
+                     "phase_service_examples": {k: v[:5] for k, v in q3c_examples.items()}}
     return out
 
 
