@@ -40,7 +40,12 @@
     "grey_site_if_any_approach_without_green": true,
     "round_decimals": 3
   },
-  "q3": {"abnormal_required": 2, "assessable_required": 2},
+  "q3": {
+    "abnormal_required": 2,
+    "assessable_required": 2,
+    "undetermined_if_missing_could_change": false,
+    "note": "Methodology 9 as written: NORMAL when two measures are assessable and fewer than two are abnormal, even when the third (not assessable) could have made it ABNORMAL. true withholds that case as INSUFFICIENT DATA (Grey); for discussion, not the methodology."
+  },
   "alignment": {
     "note": "Live feeds are written at a fixed offset from the grid (detector counts at :03/:08, PerfKpi/PerfApproach at :07/:22), so an off-grid record goes to the interval its stamp falls in (ceil). Within tolerance_seconds of a grid point it is moved onto that point.",
     "tolerance_seconds": 60,

@@ -25,6 +25,13 @@ def proposed_contract():
         return SiteCategory.GREY
     if AssessmentStatus.INSUFFICIENT_DATA in (q1.status, q3.status):''', 1)
     text = text.replace("    has_largest_queue: bool\n", "    has_largest_queue: bool | None\n", 1)
+    audit = "    generated_by: str | None = None\n    llm_rejected: str | None = None\n"
+    text = text.replace("    limitations: list[str] = Field(default_factory=list)\n",
+                        "    limitations: list[str] = Field(default_factory=list)\n" + audit, 1)
+    narrative = '    narrative: str = Field(default="", description="Template answer explaining the calculated evidence")\n'
+    text = text.replace(narrative, narrative + audit, 1)
+    refs = "    config_version: str | None = None\n    audit_ref: str | None = None\n"
+    text = text.replace("    completed_at: datetime\n", "    completed_at: datetime\n" + refs)
     spec = importlib.util.spec_from_loader("proposed_contract", loader=None)
     module = importlib.util.module_from_spec(spec)
     exec(compile(text, "proposed_contract", "exec"), module.__dict__)
@@ -90,6 +97,56 @@ class ContractTests(unittest.TestCase):
         self.assertTrue(all(isinstance(d.count_60min, int) for d in site.q2.detectors))
         self.assertEqual(site.q3.cycle_stability.polarity, S.StabilityPolarity.LOWER_IS_POORER)
         self.assertGreater(site.total_volume_veh_h, 0)
+
+
+class AuditTests(unittest.TestCase):
+    """Methodology 18 on the contract path: an audit record now, contract fields once they exist."""
+
+    def setUp(self):
+        self.settings = Settings()
+        self.source = FakeSource(self.settings.rules, self.settings.schema, END + ":00+11:00", n_sites=8)
+        self.store = SQLiteStore(":memory:")
+        self.period = timewin.period_ending(END, self.settings.rules)
+
+    def screen(self):
+        S = adapter.S                                                   # the contract in use (bundled or proposed)
+        return core.run_screening(S.ScreeningInput(run_id="scr_audit", region="AU-VIC-Melbourne",
+                                                   period=adapter.period_model(self.period), baseline_version="2026-W44",
+                                                   sites=[]), self.source, self.settings, self.store, audit_store=self.store)
+
+    def diagnose(self, result):
+        S = adapter.S
+        ev = next(s for s in result.sites if s.site_no == "4300")
+        return core.run_diagnosis(S.DiagnosisInput(
+            diagnosis_id="diag_4300", screening_run_id=result.run_id, region=result.region, period=result.period,
+            site=S.ScreeningSite(site_no="4300"), evidence=ev,
+            q4_template=S.TemplateRef(template_id="ID_Q4_SCATS_INTERPRETATION", version="1.0.0"),
+            q5_template=S.TemplateRef(template_id="ID_Q5_TOMTOM_CONFIRMATION", version="1.0.0")),
+            self.source, self.settings, audit_store=self.store)
+
+    def test_audit_records_hold_what_the_contract_cannot(self):
+        result = self.diagnose(self.screen())
+        run = self.store.get_audits("screening", "scr_audit")[0]
+        self.assertEqual(run["contract_baseline_version"], "2026-W44")
+        self.assertTrue(run["provenance"])
+        config = self.store.get_config(run["config_version"])
+        self.assertEqual(config["rules"]["q2"]["min_vehicles"], 10)
+        diag = self.store.get_audits("diagnosis", "diag_4300")[0]
+        self.assertEqual(diag["templates"]["D001"]["registry"]["template_id"], "ID_Q4_SCATS_INTERPRETATION")
+        self.assertEqual(diag["templates"]["D001"]["generated_by"], "code")
+        self.assertFalse(hasattr(result.q4, "generated_by"))           # the current contract has no such field
+
+    def test_future_contract_fields_are_filled(self):
+        try:
+            adapter.use_contract(proposed_contract())
+            result = self.screen()
+            self.assertTrue(result.config_version and result.audit_ref)
+            diag = self.diagnose(result)
+            self.assertEqual(diag.q4.generated_by, "code")
+            self.assertIsNone(diag.q4.llm_rejected)
+            self.assertTrue(diag.audit_ref)
+        finally:
+            adapter.use_contract(S)
 
 
 class CoreTests(unittest.TestCase):

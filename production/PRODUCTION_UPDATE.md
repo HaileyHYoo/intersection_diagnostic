@@ -95,6 +95,7 @@ diagnosis = run_diagnosis(diagnosis_input, bot)    # DiagnosisInput -> Diagnosis
 ```
 
 - **The contract module.** The adapter uses its bundled copy of `intersections_diagnostics_schemas.py`. To share one set of classes with the host, call `contract.adapter.use_contract(<the host's module>)` once at start-up.
+- **Audit records.** `host.run_screening` / `host.run_diagnosis` pass a SQLite store as `audit_store`. Each call saves an audit record (config snapshot, data provenance, registry template IDs, who wrote each answer) that the contract has no field for. If the contract gains the optional fields `generated_by`, `llm_rejected`, `config_version` and `audit_ref`, they are filled automatically (see METHOD.md §11).
 - **Sites the contract cannot represent yet.** A site that is Grey because an approach has no green cannot be represented until `Q3CPhaseService.site_grey_no_green` exists. Until then it is listed in `ScreeningResult.errors` with the reason.
 
 ## 5. Verification
@@ -110,6 +111,8 @@ print(view["counts"], view["period"]["local"])
 ## 6. To agree with the production team
 
 Sent on 31 Oct 2026: the `site_grey_no_green` flag, baseline storage and versioning, time zones and a UTC cache key, a config hash in the cache key, and `has_largest_queue: bool | None`. Also still open:
+
+- **Audit fields.** Add the optional fields above to the contract, or say where audit records should live.
 
 - **Schema.** Replace `config/schema.json` with the final schema (see SCHEMA.md) and change its `version`.
 - **Store.** Use SQLite on a persistent path, or a database. `store.SQLiteStore` is the interface to re-implement.

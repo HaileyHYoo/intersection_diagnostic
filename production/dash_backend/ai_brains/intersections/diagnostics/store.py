@@ -25,6 +25,11 @@ CREATE TABLE IF NOT EXISTS runs (
 CREATE INDEX IF NOT EXISTS runs_key ON runs (region, period_key, baseline_version, rules_version, status);
 CREATE TABLE IF NOT EXISTS diagnoses (
     id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT, site TEXT, created TEXT, payload TEXT);
+CREATE TABLE IF NOT EXISTS configs (
+    version TEXT PRIMARY KEY, created TEXT, payload TEXT);
+CREATE TABLE IF NOT EXISTS audits (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT, ref TEXT, created TEXT, payload TEXT);
+CREATE INDEX IF NOT EXISTS audits_ref ON audits (kind, ref);
 """
 
 
@@ -128,6 +133,29 @@ class SQLiteStore:
                              (limit,)).fetchall()
         return [{"run_id": r[0], "period_key": r[1], "status": r[2], "started": r[3],
                  "summary": json.loads(r[4]) if r[4] else None} for r in rows]
+
+    # ------------------------------------------------------------------ configuration snapshots
+    def put_config(self, version: str, payload: dict) -> None:
+        """The rules and schema a run used, stored once per version, so any run can be reproduced."""
+        with self._conn() as c:
+            c.execute("INSERT OR IGNORE INTO configs VALUES (?,?,?)", (version, now_iso(), json.dumps(payload)))
+
+    def get_config(self, version: str):
+        with self._conn() as c:
+            row = c.execute("SELECT payload FROM configs WHERE version=?", (version,)).fetchone()
+        return json.loads(row[0]) if row else None
+
+    # ------------------------------------------------------------------ audit records (production contract path)
+    def save_audit(self, kind: str, ref: str, payload: dict) -> int:
+        with self._conn() as c:
+            return c.execute("INSERT INTO audits (kind, ref, created, payload) VALUES (?,?,?,?)",
+                             (kind, ref, now_iso(), json.dumps(payload, default=str))).lastrowid
+
+    def get_audits(self, kind: str, ref: str) -> list[dict]:
+        with self._conn() as c:
+            rows = c.execute("SELECT id, created, payload FROM audits WHERE kind=? AND ref=? ORDER BY id",
+                             (kind, ref)).fetchall()
+        return [{"id": r[0], "created": r[1], **json.loads(r[2])} for r in rows]
 
     # ------------------------------------------------------------------ diagnoses
     def save_diagnosis(self, run_id, site, payload) -> int:

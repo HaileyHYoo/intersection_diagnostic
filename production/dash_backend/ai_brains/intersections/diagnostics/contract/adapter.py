@@ -15,6 +15,13 @@ them, detected from the models themselves:
                                          such a site cannot pass the contract's decision-matrix validator; it is
                                          reported in ScreeningResult.errors instead of being dropped silently.
     ScatsComparison.has_largest_queue    None when the queue is unknown. Until it accepts None, False is written.
+
+Audit fields (methodology 18) the contract does not carry yet are kept in a separate audit record (core.py) and
+written into the contract as soon as these optional fields exist (names proposed to the production team):
+
+    Q4Output / Q5Output    generated_by ("code" or "llm:<model>"), llm_rejected (why an LLM answer was not used)
+    ScreeningResult        config_version, audit_ref
+    DiagnosisResult        config_version, audit_ref
 """
 from __future__ import annotations
 
@@ -63,6 +70,11 @@ def accepts_none(model, field: str) -> bool:
 
 def has_field(model, field: str) -> bool:
     return field in model.model_fields
+
+
+def optional(model, **values) -> dict:
+    """Only the values whose field the contract model has (so new contract fields are filled automatically)."""
+    return {k: v for k, v in values.items() if has_field(model, k)}
 
 
 # ---------------------------------------------------------------------- shared
@@ -160,7 +172,7 @@ def site_model(site: dict, rules: dict) -> S.SiteScreeningResult:
 
 
 def screening_result(payload: dict, settings, run: str | None = None, completed_at: datetime | None = None,
-                     baseline_version: str | None = None) -> S.ScreeningResult:
+                     baseline_version: str | None = None, audit_ref: str | None = None) -> S.ScreeningResult:
     """A stored run (service payload) as the contract's ScreeningResult; unrepresentable sites go to errors."""
     period = period_ending(payload["period"]["end"], settings.rules)
     sites, errors = [], dict(payload.get("errors", {}))
@@ -172,7 +184,8 @@ def screening_result(payload: dict, settings, run: str | None = None, completed_
     version = baseline_version or payload["baseline"]["version"]
     return S.ScreeningResult(run_id=run or run_id(payload["region"], period, version),
                              region=payload["region"], period=period_model(period), baseline_version=version, config=config_model(settings.rules),
-                             completed_at=completed_at or datetime.now().astimezone(), sites=sites, errors=errors)
+                             completed_at=completed_at or datetime.now().astimezone(), sites=sites, errors=errors,
+                             **optional(S.ScreeningResult, config_version=settings.rules_version, audit_ref=audit_ref))
 
 
 def network(inp: S.ScreeningInput) -> list[dict] | None:
@@ -280,7 +293,8 @@ def q4_output(site: dict, d001: dict, rules: dict, template: S.TemplateRef | Non
                    if c["status"] == INSUFFICIENT]
     return S.Q4Output(template=template or template_ref(rules, "D001"), diagnosis=d001["answer"]["diagnosis"],
                       supporting_evidence=evidence_items(site), suggested_checks=d001["answer"]["suggested_checks"],
-                      limitations=limitations)
+                      limitations=limitations,
+                      **optional(S.Q4Output, generated_by=d001["generated_by"], llm_rejected=d001["rejected"]))
 
 
 def q5_output(d002: dict, period: Period, rules: dict, template: S.TemplateRef | None = None) -> S.Q5Output:
@@ -288,7 +302,8 @@ def q5_output(d002: dict, period: Period, rules: dict, template: S.TemplateRef |
     template = template or template_ref(rules, "D002")
     if not ev["available"]:
         return S.Q5Output(template=template, available=False, period=period_model(period),
-                          missing_approach_ids=ev["missing_approach_links"], narrative=d002["answer"]["road_user_impact"])
+                          missing_approach_ids=ev["missing_approach_links"], narrative=d002["answer"]["road_user_impact"],
+                          **optional(S.Q5Output, generated_by=d002["generated_by"], llm_rejected=d002["rejected"]))
     ident = lambda a: a["link"] or f"tomtom:{a['tomtom_approach']}"
     approaches = [S.TomTomApproachMetrics(approach_id=ident(a), approach_name=a["approach"], delay_s=a["approach_delay_s"],
                                           control_delay_s=a["control_delay_s"], multi_stop_rate=a["multi_stop_rate"],
@@ -307,4 +322,5 @@ def q5_output(d002: dict, period: Period, rules: dict, template: S.TemplateRef |
                       largest_delay_approach_id=comp["greatest_delay"]["link"] if comp["greatest_delay"] else None,
                       largest_queue_approach_id=comp["longest_queue"]["link"] if comp["longest_queue"] else None,
                       scats_comparison=scats, missing_approach_ids=ev["missing_approach_links"],
-                      narrative=d002["answer"]["road_user_impact"])
+                      narrative=d002["answer"]["road_user_impact"],
+                      **optional(S.Q5Output, generated_by=d002["generated_by"], llm_rejected=d002["rejected"]))

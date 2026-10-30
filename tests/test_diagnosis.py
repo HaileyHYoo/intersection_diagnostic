@@ -102,6 +102,14 @@ class DiagnoseTests(unittest.TestCase):
         self.assertTrue(second["cached"])
         self.assertEqual(first["id"], second["id"])
 
+    def test_records_carry_config_provenance_and_registry_ids(self):
+        run = self.svc.store.get_run(self.run_id)["payload"]
+        self.assertEqual(self.svc.store.get_config(run["config_version"])["rules"]["history"]["weeks"], 8)
+        self.assertTrue(run["provenance"])
+        r = self.report("4300")
+        self.assertEqual(r["templates"]["D001"]["registry"]["template_id"], "ID_Q4_SCATS_INTERPRETATION")
+        self.assertEqual(r["config_version"], run["config_version"])
+
     def test_catalog_definitions(self):
         c = catalog()
         for key in ("id", "version", "question", "allowed_parameters", "source_fields", "execution_path",

@@ -39,7 +39,8 @@ def run_screening(screening_input, settings: Settings | None = None):
     The callback keeps the shared ScreeningRun record (RUNNING / COMPLETED); this only computes."""
     from .contract import core
     settings = settings or Settings()
-    return core.run_screening(screening_input, LiveSource(settings), settings, SQLiteStore(settings.db_path))
+    store = SQLiteStore(settings.db_path)
+    return core.run_screening(screening_input, LiveSource(settings), settings, store, audit_store=store)
 
 
 def run_diagnosis(diagnosis_input, bot=None, settings: Settings | None = None):
@@ -47,4 +48,5 @@ def run_diagnosis(diagnosis_input, bot=None, settings: Settings | None = None):
     from .contract import core
     settings = settings or Settings()
     llm = HostLLM(bot.llm) if bot is not None and getattr(bot, "llm", None) is not None else None
-    return core.run_diagnosis(diagnosis_input, LiveSource(settings), settings, llm)
+    return core.run_diagnosis(diagnosis_input, LiveSource(settings), settings, llm,
+                              audit_store=SQLiteStore(settings.db_path))

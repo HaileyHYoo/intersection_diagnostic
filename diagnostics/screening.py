@@ -158,13 +158,18 @@ def q3_signal(kpi_now: dict, kpi_base: dict, origin: dict, q3c: dict, rules: dic
     abnormal = statuses.count(ABNORMAL)
     assessable = sum(s != INSUFFICIENT for s in statuses)
     rule = rules["q3"]
+    # Methodology 9: NORMAL whenever two measures are assessable and fewer than two are abnormal. With one
+    # abnormal and one not assessable, the missing measure could have made it ABNORMAL; that case is flagged,
+    # and withheld as INSUFFICIENT DATA only if q3.undetermined_if_missing_could_change is switched on.
+    could_change = abnormal < rule["abnormal_required"] <= abnormal + (len(statuses) - assessable)
     if abnormal >= rule["abnormal_required"]:
         status = ABNORMAL
-    elif assessable >= rule["assessable_required"]:
+    elif assessable >= rule["assessable_required"] and not (could_change and rule.get("undetermined_if_missing_could_change")):
         status = NORMAL
     else:
         status = INSUFFICIENT
-    return {"status": status, "abnormal_count": abnormal, "assessable_count": assessable, "components": components}
+    return {"status": status, "abnormal_count": abnormal, "assessable_count": assessable,
+            "missing_measure_could_change": could_change and status == NORMAL, "components": components}
 
 
 # ---------------------------------------------------------------------- classification

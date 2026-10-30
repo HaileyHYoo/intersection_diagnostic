@@ -135,7 +135,11 @@ def summarise(payload: dict) -> dict:
             q3c_history.update(f"{a['n_history']} values" for a in rows if a["status"] == INSUFFICIENT)
         q3c_site[key] += 1
         q3c_examples.setdefault(key, []).append(s["site"])
+    could_change = [s for s in assessed if s["q3"].get("missing_measure_could_change")]
     out["signal"] = {"sites_assessed": len(assessed), "component_status": {k: dict(v) for k, v in comp.items()},
+                     "q3_normal_that_the_missing_measure_could_change": len(could_change),
+                     "of_which_category": dict(Counter(s["category"] for s in could_change)),
+                     "examples_q3_normal_could_change": [s["site"] for s in could_change][:5],
                      "phase_service_approaches_with_zero_width_range": zero_width,
                      "phase_service_not_assessable_why": dict(q3c_site.most_common()),
                      "phase_service_history_of_short_approaches": dict(sorted(q3c_history.items())),

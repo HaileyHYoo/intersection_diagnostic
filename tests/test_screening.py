@@ -167,6 +167,18 @@ class RuleTests(unittest.TestCase):
                "cycle_stability": {NORMAL: 100.0, ABNORMAL: 50.0, INSUFFICIENT: None}[b]}
         return screening.q3_signal(now, {"cycle_length": env, "cycle_stability": env}, {}, q3c, self.rules)
 
+    def test_q3_normal_that_the_missing_measure_could_change(self):
+        q3 = self.q3(ABNORMAL, NORMAL, INSUFFICIENT)
+        self.assertEqual(q3["status"], NORMAL)                          # methodology 9 as written
+        self.assertTrue(q3["missing_measure_could_change"])
+        self.assertFalse(self.q3(NORMAL, NORMAL, INSUFFICIENT)["missing_measure_could_change"])
+        strict = load_rules(overrides={"q3": {"undetermined_if_missing_could_change": True}})
+        env = {"n": 8, "usual": 100.0, "p_low": 95.0, "p_high": 105.0}
+        q3c = {"status": INSUFFICIENT, "grey_site": False, "without_green": []}
+        withheld = screening.q3_signal({"cycle_length": 140.0, "cycle_stability": 100.0},
+                                       {"cycle_length": env, "cycle_stability": env}, {}, q3c, strict)
+        self.assertEqual(withheld["status"], INSUFFICIENT)
+
     def test_q3_two_of_three(self):
         self.assertEqual(self.q3(ABNORMAL, ABNORMAL, NORMAL)["status"], ABNORMAL)
         self.assertEqual(self.q3(ABNORMAL, NORMAL, NORMAL)["status"], NORMAL)

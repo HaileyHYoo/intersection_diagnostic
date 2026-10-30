@@ -94,6 +94,7 @@ Q1 and Q3 run only after a PASS.
 - **Approach without green.** `HasGreen = 0`, or no GreenShare/HasGreen record, in either quarter-hour. **Any evaluated approach without green makes the whole site Grey (decision,** `q3c.grey_site_if_any_approach_without_green`**, strictest setting).**
 - **Q3C component result.** ABNORMAL if any approach is abnormal. INSUFFICIENT if any evaluated approach lacks a value or history.
 - **Q3 overall.** ABNORMAL if at least 2 of the 3 measures are ABNORMAL. Otherwise NORMAL if at least 2 measures can be assessed. Otherwise INSUFFICIENT DATA.
+- **One abnormal, one normal, one not assessable.** The document's rule gives NORMAL, although the missing measure, if it were abnormal, would have made Q3 ABNORMAL. The code follows the document and marks such a site with `q3.missing_measure_could_change = true`; `python main.py summary` counts them. The switch `q3.undetermined_if_missing_could_change` (default `false` = document rule) would make these sites INSUFFICIENT DATA (Grey) instead. **To discuss with the methodology owner.**
 - **Fallbacks.** Only the calculated KPIs are used. The `IntersectionPerfKpi` / `IntersectionPerfApproach` KPIs exist for part of the network only (the chatbot falls back to `subsystem_status` for cycle length and saturation). The subsystem `ActiveCycleLength` fallback for Q3A is kept in code but switched off (`fallbacks.enabled: false`). It would not change the result for a site without KPIs: Q3B and Q3C have no fallback, so only one measure could be assessed and Q3 would still be INSUFFICIENT DATA (Grey).
 
 DemandShare, SignedGap, DemandPressure, GreenGapBusiest, RiskBusiest and the other KPIs are **not** used for screening.
@@ -166,6 +167,11 @@ The SQLite store (`store.py`) keeps:
 
 A run that is already in progress is waited for, not started a second time.
 
+Methodology item 18 (record what is needed to reproduce a result) is covered by:
+- **Configuration snapshots** (`configs` table): the full rules and schema stored once per `rules_version`. Every run and diagnosis carries `config_version`, so its thresholds can be read back even after rules.json changes.
+- **Data provenance**: every run and diagnosis carries `provenance`, the list of reads it made (source, measurement, sites, time range, record count).
+- **Registry template IDs**: each diagnosis template records both our ID (D001/D002) and its version, and the production registry ID from `rules.contract.template_ids` (or from the host's `TemplateRef`).
+
 A site that fails to process is recorded in the run's `errors` (site → reason) and does not stop the network screening. Each site also carries `total_volume_veh_h`: the evaluated approaches' 30-minute volume as an hourly rate, or None unless every evaluated approach has a value.
 
 ## 11. Production contract
@@ -188,6 +194,14 @@ Two agreed behaviours need contract changes that were asked of the production te
 - **Grey for an approach without green.** This needs `Q3CPhaseService.site_grey_no_green` and the matching rule in `classify_site()`. Until then, such a site is reported in `ScreeningResult.errors`, not dropped silently.
 - **Unknown queue.** This needs `ScatsComparison.has_largest_queue: bool | None`. Until then, False is written.
 
+**Audit on the contract path.** The contract has no place for the configuration, provenance, who wrote a template answer, or a rejected LLM answer. `run_screening` and `run_diagnosis` therefore accept an `audit_store`. When one is given, they save an audit record (`audits` table: kind `screening`/`diagnosis`, keyed by run or diagnosis ID) that holds the config snapshot reference, provenance, alignment counts, registry template IDs, `generated_by` and any LLM rejection. The production `host.py` passes a SQLite store.
+
+The following optional contract fields have been proposed. `adapter.optional()` fills each one only when the contract has it, so no code change is needed once they are added:
+- `Q4Output.generated_by`, `Q4Output.llm_rejected`, `Q5Output.generated_by`, `Q5Output.llm_rejected`;
+- `ScreeningResult.config_version`, `ScreeningResult.audit_ref`, `DiagnosisResult.config_version`, `DiagnosisResult.audit_ref`.
+
+If the production team stores these elsewhere instead, only the audit record is needed and nothing else changes.
+
 
 ## 12. Open items
 
@@ -201,6 +215,8 @@ Two agreed behaviours need contract changes that were asked of the production te
   2. where the 8-week baselines are stored, who runs the weekly refresh, and the `baseline_version` of a past period;
   3. the time zone of periods, and a UTC cache key (today the same instant gives two keys);
   4. a config/rules hash in the cache key;
-  5. `has_largest_queue: bool | None`.
+  5. `has_largest_queue: bool | None`;
+  6. the optional audit fields in §11 (`generated_by`, `llm_rejected`, `config_version`, `audit_ref`), or where audit records should be kept instead.
+- **For the methodology owner:** the Q3 case of one abnormal, one normal and one not-assessable measure (§6).
 - **Template IDs.** D002's registry ID (`ID_Q5_TOMTOM_CONFIRMATION`) is a placeholder until confirmed.
 - **Outside this repository:** the chatbot's `tomtom/engine.py::scats_volume_hours()` groups 15-minute records by their stamp's clock hour. With end labelling, this shifts every hour by 15 minutes (00:45–01:45 instead of 01:00–02:00). It should be fixed in the Chatbot repository.

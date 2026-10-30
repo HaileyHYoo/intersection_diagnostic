@@ -87,6 +87,12 @@ class Settings:
         return f"{self.rules['version']}-{digest}"
 
 
+def config_snapshot(settings: "Settings") -> dict:
+    """Everything a run's result depends on besides the data: rules, schema and the derived versions."""
+    return {"rules_version": settings.rules_version, "baseline_version": settings.baseline_version,
+            "schema_version": settings.schema.get("version"), "rules": settings.rules, "schema": settings.schema}
+
+
 def connection_env() -> dict:
     """Connection values, read when a live source is built (never at import)."""
     get = os.environ.get

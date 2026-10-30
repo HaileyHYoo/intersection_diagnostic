@@ -163,6 +163,7 @@ class FakeSource:
 
     # ------------------------------------------------------------------ interface: time series
     def detector_counts(self, start, end, sites=None):
+        self.provenance.append({"source": "fake", "feed": "detector_counts", "start": str(start), "stop": str(end)})
         out = []
         for site, n in self.network.items():
             if sites and site not in sites:
@@ -191,6 +192,7 @@ class FakeSource:
         return out
 
     def link_volumes(self, start, end):
+        self.provenance.append({"source": "fake", "feed": "link_volumes", "start": str(start), "stop": str(end)})
         out = []
         for site, n in self.network.items():
             for stamp in self._ends(start, end, 15):
@@ -210,6 +212,7 @@ class FakeSource:
         return out
 
     def site_kpi(self, start, end, sites=None):
+        self.provenance.append({"source": "fake", "feed": "site_kpi", "start": str(start), "stop": str(end)})
         out = []
         for site, n in self.network.items():
             if sites and site not in sites:
@@ -233,6 +236,7 @@ class FakeSource:
         return out
 
     def approach_perf(self, start, end, sites=None):
+        self.provenance.append({"source": "fake", "feed": "approach_perf", "start": str(start), "stop": str(end)})
         out = []
         for site, n in self.network.items():
             if sites and site not in sites:

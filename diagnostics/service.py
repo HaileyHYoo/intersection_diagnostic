@@ -17,7 +17,7 @@ from datetime import datetime
 from . import screening
 from .baseline import BaselineBuilder
 from .report import assemble
-from .settings import Settings
+from .settings import Settings, config_snapshot
 from .store import SQLiteStore
 from .templates import d001, d002
 from .timewin import Period, latest_period, period_ending
@@ -85,8 +85,18 @@ class DiagnosticsService:
                 return                                    # a stale run (crashed worker) is not waited for
             time.sleep(1)
 
+    def _provenance_since(self, mark: int) -> list[dict]:
+        """Source reads made since `mark`; the list is trimmed so a long-lived service does not grow it forever."""
+        log = getattr(self.source, "provenance", [])
+        taken = [dict(p) for p in log[mark:]]
+        if len(log) > 5000:
+            del log[:len(log) - 1000]
+        return taken
+
     def _run(self, period: Period, key: tuple) -> str:
         run_id = self.store.start_run(*key)
+        mark = len(getattr(self.source, "provenance", []))
+        self.store.put_config(self.settings.rules_version, config_snapshot(self.settings))
         try:
             baseline = self.baselines.get(period)
             result = screening.screen(self.source, self.settings, baseline, period)
@@ -99,7 +109,8 @@ class DiagnosticsService:
                                     "skipped_days": baseline["skipped_days"]},
                        "rules_version": self.settings.rules_version, "schema_version": self.settings.schema.get("version"),
                        "counts": result["counts"], "errors": result["errors"], "alignment": result["alignment"], "notes": notes,
-                       "sites": result["sites"]}
+                       "config_version": self.settings.rules_version,
+                       "provenance": self._provenance_since(mark), "sites": result["sites"]}
             self.store.finish_run(run_id, payload, {"counts": result["counts"], "sites": len(result["sites"])})
             return run_id
         except Exception as exc:
@@ -140,11 +151,15 @@ class DiagnosticsService:
                 return {**saved, "cached": True}
         p = run["payload"]
         period = period_ending(p["period"]["end"], self.settings.rules)
+        mark = len(getattr(self.source, "provenance", []))
         r1 = d001.run(s, p["period"], self.llm) if "D001" in templates else None
         r2 = d002.run(self.source, s, period, self.settings.rules, self.llm) if "D002" in templates else None
         report = assemble(s, p["period"], r1, r2)
+        registry = self.settings.rules.get("contract", {}).get("template_ids", {})
+        templates = {t["template_id"]: {**t, "registry": registry.get(t["template_id"])} for t in (r1, r2) if t}
         record = {"mode": "report", "run_id": run_id, "site": s["site"], "period": p["period"], "report": report,
-                  "templates": {t["template_id"]: t for t in (r1, r2) if t}}
+                  "templates": templates, "config_version": self.settings.rules_version,
+                  "provenance": self._provenance_since(mark)}
         record["id"] = self.store.save_diagnosis(run_id, s["site"], record)
         return {**record, "cached": False}
 
