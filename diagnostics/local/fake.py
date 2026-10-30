@@ -101,8 +101,8 @@ class FakeSource:
             self.network[site] = {"site": site, "scenario": scenario, "lat": lat, "lon": lon, "streets": f"{ns}|{ew}",
                                   "approaches": approaches, "extra": extra, "detectors": detectors,
                                   "cycle": 70 + 40 * unit(site, "cycle"), "stability": 72 + 15 * unit(site, "stab"),
-                                  "tomtom": scenario.startswith("red") and scenario != "red_no_tomtom"
-                                  or unit(site, "tt") < 0.4}
+                                  "tomtom": scenario != "red_no_tomtom"
+                                  and (scenario.startswith("red") or unit(site, "tt") < 0.4)}
 
     def expected(self) -> dict[str, str]:
         return {s: EXPECTED[n["scenario"]] for s, n in self.network.items()}
