@@ -117,6 +117,10 @@ def summarise(payload: dict) -> dict:
             for name in ("cycle_length", "cycle_stability", "phase_service")}
     zero_width = sum(1 for s in assessed for a in s["q3"]["components"]["phase_service"]["approaches"]
                      if a.get("p_low") is not None and a["p_low"] == a["p_high"])
+    # Why Q3A / Q3B could not be assessed: no current value (data not in yet?) or too little history
+    kpi_why = {name: Counter(s["q3"]["components"][name].get("reason") for s in assessed
+                             if s["q3"]["components"][name]["status"] == INSUFFICIENT)
+               for name in ("cycle_length", "cycle_stability")}
     # Why Q3C (phase service) could not be assessed, per site and per approach
     q3c_site, q3c_history, q3c_examples = Counter(), Counter(), {}
     for s in assessed:
@@ -142,6 +146,7 @@ def summarise(payload: dict) -> dict:
                      "not recorded in this run (screened before the check existed): run `python main.py screen` again",
                      "of_which_category": dict(Counter(s["category"] for s in could_change)),
                      "examples_q3_normal_could_change": [s["site"] for s in could_change][:5],
+                     "cycle_not_assessable_why": {k: dict(v.most_common()) for k, v in kpi_why.items()},
                      "phase_service_approaches_with_zero_width_range": zero_width,
                      "phase_service_not_assessable_why": dict(q3c_site.most_common()),
                      "phase_service_history_of_short_approaches": dict(sorted(q3c_history.items())),
