@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Intersection Diagnostics</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root {
+    --bg: #111418; --panel: #181c22; --panel-2: #20252d; --line: #2c333d; --text: #e6e9ee; --muted: #9aa3af;
+    --accent: #6ea8fe;
+    --red: #e5484d; --amber: #f5a524; --amber2: #f0c419; --normal: #30a46c; --grey: #8b939e; --health: #8e4ec6;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  #app { display: grid; grid-template-rows: auto 1fr; height: 100%; }
+  header { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; padding: 10px 16px;
+    background: var(--panel); border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+  header .period { color: var(--muted); }
+  .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  input, button { font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 6px; padding: 5px 9px; }
+  button { cursor: pointer; } button:hover { border-color: var(--accent); }
+  button.primary { background: #23406b; border-color: #2f5590; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px;
+    background: var(--panel-2); border: 1px solid var(--line); cursor: pointer; user-select: none; }
+  .chip.off { opacity: .4; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  main { display: grid; grid-template-columns: 1fr 460px; min-height: 0; }
+  #map { min-height: 0; }
+  aside { background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; padding: 14px 16px 40px; }
+  aside h2 { font-size: 16px; margin: 0 0 2px; }
+  aside h3 { font-size: 14px; margin: 18px 0 6px; color: var(--accent); }
+  aside .sub { color: var(--muted); margin-bottom: 8px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-weight: 600; font-size: 12px; color: #111; }
+  table { width: 100%; border-collapse: collapse; margin: 6px 0 10px; font-size: 12.5px; }
+  th, td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; }
+  td.abn { color: #ffb4b4; font-weight: 600; }
+  ul { padding-left: 18px; margin: 6px 0; } li { margin: 3px 0; }
+  .note { color: var(--muted); font-size: 12.5px; }
+  .empty { color: var(--muted); padding: 30px 0; text-align: center; }
+  .spinner { color: var(--muted); padding: 20px 0; }
+  .leaflet-container { background: #0b0d10; }
+  @media (max-width: 860px) {
+    main { grid-template-columns: 1fr; grid-template-rows: 55vh auto; }
+    aside { border-left: 0; border-top: 1px solid var(--line); }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>Intersection Diagnostics</h1>
+    <span class="period" id="period">-</span>
+    <div class="controls" id="controls">
+      <input type="datetime-local" id="end" step="1800" title="Period end (local time)">
+      <button id="run" class="primary">Screen period</button>
+      <button id="latest">Latest</button>
+    </div>
+    <div class="chips" id="chips"></div>
+  </header>
+  <main>
+    <div id="map"></div>
+    <aside id="panel"><div class="empty">Click an intersection.</div></aside>
+  </main>
+</div>
+<script>
+const STATIC = window.__STATIC__ || null;
+const COLORS = { red: "var(--red)", amber_traffic: "var(--amber)", amber_signal: "var(--amber2)", normal: "var(--normal)",
+                 grey: "var(--grey)", detector_health: "var(--health)" };
+const HEX = { red: "#e5484d", amber_traffic: "#f5a524", amber_signal: "#f0c419", normal: "#30a46c", grey: "#8b939e",
+              detector_health: "#8e4ec6" };
+const ORDER = ["red", "amber_traffic", "amber_signal", "grey", "detector_health", "normal"];
+const hidden = new Set();
+let current = null, markers = [];
+
+const map = L.map("map", { zoomControl: true }).setView([-37.8136, 144.9631], 14);
+L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+  maxZoom: 20, subdomains: "abcd",
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>'
+}).addTo(map);
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const num = (x, d = 1) => (x === null || x === undefined) ? "-" : Number(x).toFixed(d);
+
+async function api(path) {
+  const r = await fetch(path);
+  const body = await r.json();
+  if (!r.ok) throw new Error(body.error || r.statusText);
+  return body;
+}
+
+function drawChips() {
+  const counts = (current && current.counts) || {};
+  $("chips").innerHTML = ORDER.map((c) => `<span class="chip ${hidden.has(c) ? "off" : ""}" data-c="${c}">
+    <span class="dot" style="background:${COLORS[c]}"></span>${esc(current ? current.categories[c] : c)} <b>${counts[c] || 0}</b></span>`).join("");
+  document.querySelectorAll(".chip").forEach((el) => el.onclick = () => {
+    const c = el.dataset.c; hidden.has(c) ? hidden.delete(c) : hidden.add(c); drawChips(); drawMarkers();
+  });
+}
+
+function drawMarkers() {
+  markers.forEach((m) => m.remove()); markers = [];
+  if (!current) return;
+  const sites = current.sites.filter((s) => s.lat != null && s.lon != null && !hidden.has(s.category));
+  sites.sort((a, b) => ORDER.indexOf(b.category) - ORDER.indexOf(a.category));
+  for (const s of sites) {
+    const big = s.category === "red" || s.category.startsWith("amber");
+    const m = L.circleMarker([s.lat, s.lon], { radius: big ? 11 : 8, color: "#ffffff", weight: big ? 1.5 : 1,
+      opacity: .85, fillColor: HEX[s.category], fillOpacity: .9 }).addTo(map);
+    m.bindTooltip(`<b>SCATS ${esc(s.site)}</b> ${esc(s.name || "")}<br>${esc(s.label)}`);
+    m.on("click", () => openSite(s));
+    markers.push(m);
+  }
+}
+
+function showRun(view) {
+  current = view;
+  $("period").textContent = `${view.period.local} · run ${view.run_id}${view.cached ? " (cached)" : ""} · ${view.sites.length} sites`;
+  if (!STATIC) $("end").value = view.period.end_local;   // Melbourne local time, whatever the browser's zone
+  drawChips(); drawMarkers();
+  const pts = view.sites.filter((s) => s.lat != null).map((s) => [s.lat, s.lon]);
+  if (pts.length) map.fitBounds(pts, { padding: [30, 30] });
+  $("panel").innerHTML = runSummary(view);
+}
+
+function runSummary(view) {
+  const notes = (view.notes || []).map((n) => `<li>${esc(n)}</li>`).join("");
+  const refs = (view.baseline.reference_periods || []).map((r) => esc(r.local)).join("<br>");
+  const skipped = Object.entries(view.baseline.skipped_days || {}).map(([d, r]) => `<li>${esc(d)}: ${esc(r)}</li>`).join("");
+  const a = view.alignment || {};
+  return `<h2>Screening run</h2><div class="sub">${esc(view.period.local)}</div>
+    <p>Click an intersection: a Red site runs D001 + D002 and shows the four-section report; any other site shows its saved evidence.</p>
+    ${notes ? `<h3>Notes</h3><ul>${notes}</ul>` : ""}
+    <h3>Reference periods (${(view.baseline.reference_periods || []).length})</h3><div class="note">${refs}</div>
+    ${skipped ? `<h3>Left out of the history</h3><ul>${skipped}</ul>` : ""}
+    <h3>Record alignment</h3>
+    <div class="note">records ${a.records ?? "-"}, on grid ${a.on_grid ?? "-"}, snapped ${a.snapped ?? "-"},
+      dropped off-grid ${a.off_grid_dropped ?? "-"}, duplicates ${a.duplicates ?? "-"}, invalid values ${a.invalid_values ?? "-"}</div>
+    <div class="note" style="margin-top:12px">baseline ${esc(view.baseline.version)} · rules ${esc(view.rules_version)} · schema ${esc(view.schema_version)}</div>`;
+}
+
+function header(site, label, category) {
+  return `<h2>SCATS ${esc(site.site)} ${site.name ? "· " + esc(site.name) : ""}</h2>
+    <div class="sub"><span class="badge" style="background:${HEX[category]}">${esc(label)}</span>
+    &nbsp;${esc(current.period.local)}</div>`;
+}
+
+function table(t) {
+  return `<div><b>${esc(t.title)}</b></div><table><tr>${t.columns.map((c) => `<th>${esc(c)}</th>`).join("")}</tr>
+    ${t.rows.map((r) => `<tr>${r.map((c) => `<td class="${/^(High|Low|Abnormal|Poorer)$/.test(c) ? "abn" : ""}">${esc(c)}</td>`).join("")}</tr>`).join("")}</table>`;
+}
+
+function renderReport(res, site) {
+  const rep = res.report;
+  let html = header(site, rep.classification, "red");
+  for (const s of rep.sections) {
+    html += `<h3>${esc(s.title)}</h3>`;
+    if (s.text) html += `<p>${esc(s.text)}</p>`;
+    if (s.bullets && s.bullets.length) html += `<ul>${s.bullets.map((b) => `<li>${esc(b)}</li>`).join("")}</ul>`;
+    for (const t of s.tables || []) html += table(t);
+  }
+  const by = Object.entries(rep.generated_by).filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`).join(", ");
+  const rej = Object.values(res.templates || {}).filter((t) => t.rejected).map((t) => `${t.template_id}: ${t.rejected}`);
+  html += `<p class="note">Wording by ${esc(by)}${res.cached ? " · saved report" : ""}</p>`;
+  if (rej.length) html += `<p class="note">LLM answer not used - ${esc(rej.join("; "))}</p>`;
+  return html;
+}
+
+function statusCell(s) {
+  const abn = s && (s.status === "ABNORMAL" || s.status === "FAIL");
+  return `<td class="${abn ? "abn" : ""}">${esc(s ? (s.direction || s.status) : "-")}</td>`;
+}
+
+function renderEvidence(site) {
+  let html = header(site, site.label, site.category);
+  if (site.reasons && site.reasons.length) html += `<ul>${site.reasons.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>`;
+  const q2 = site.q2;
+  html += `<h3>Q2 Detector gate - ${esc(q2.status)}</h3>${q2.reason ? `<div class="note">${esc(q2.reason)}</div>` : ""}
+    <table><tr><th>Detector</th><th>Count (60 min)</th><th>Status</th></tr>
+    ${q2.detectors.map((d) => `<tr><td>${d.detector}</td><td>${num(d.count_60min, 0)}</td>${statusCell(d)}</tr>`).join("")}</table>`;
+  if (site.q1) {
+    const q1 = site.q1;
+    html += `<h3>Q1 Traffic - ${esc(q1.status)}</h3>${q1.reason ? `<div class="note">${esc(q1.reason)}</div>` : ""}
+      <table><tr><th>Approach</th><th>Current</th><th>Usual</th><th>Range</th><th>Diff</th><th></th></tr>
+      ${q1.approaches.map((a) => `<tr><td>${esc(a.street || a.link)} ${a.bound ? "[" + esc(a.bound) + "]" : ""}</td>
+        <td>${num(a.current)}</td><td>${num(a.usual)}</td><td>${num(a.p_low)}-${num(a.p_high)}</td>
+        <td>${a.pct_difference == null ? "-" : num(a.pct_difference) + "%"}</td>${statusCell(a)}</tr>`).join("")}</table>
+      ${q1.not_evaluated.length ? `<div class="note">Not evaluated (no history): ${q1.not_evaluated.map((a) => esc(a.street || a.link)).join(", ")}</div>` : ""}`;
+  }
+  if (site.q3) {
+    const c = site.q3.components;
+    html += `<h3>Q3 Signal operation - ${esc(site.q3.status)} (${site.q3.abnormal_count} of 3 abnormal)</h3>
+      <table><tr><th>Measure</th><th>Current</th><th>Usual</th><th>Range</th><th></th></tr>
+      ${[["Cycle length (s)", c.cycle_length], ["Cycle Stability", c.cycle_stability]].map(([n, m]) =>
+        `<tr><td>${n}</td><td>${num(m.current)}</td><td>${num(m.usual)}</td><td>${num(m.p_low)}-${num(m.p_high)}</td>${statusCell(m)}</tr>`).join("")}
+      </table>
+      <div><b>Phase service (green share %) - ${esc(c.phase_service.status)}</b></div>
+      <table><tr><th>Approach</th><th>Current</th><th>Usual</th><th>Range</th><th></th></tr>
+      ${c.phase_service.approaches.map((a) => `<tr><td>${esc(a.street || a.link)} ${a.bound ? "[" + esc(a.bound) + "]" : ""}</td>
+        <td>${a.no_green ? "no green" : num(a.current)}</td><td>${num(a.usual)}</td><td>${num(a.p_low)}-${num(a.p_high)}</td>${statusCell(a)}</tr>`).join("")}
+      </table>`;
+  }
+  return html;
+}
+
+async function openSite(s) {
+  $("panel").innerHTML = header(s, s.label, s.category) + `<div class="spinner">${s.category === "red" && !STATIC ? "Running D001 + D002…" : "Loading…"}</div>`;
+  try {
+    if (STATIC) {
+      const site = STATIC.evidence[s.site];
+      $("panel").innerHTML = renderEvidence(site) + (s.category === "red"
+        ? `<p class="note">D001/D002 run only with the local server (python main.py map).</p>` : "");
+      return;
+    }
+    const res = await api(`/api/diagnose?run=${current.run_id}&site=${s.site}`);
+    $("panel").innerHTML = res.mode === "report" ? renderReport(res, s) : renderEvidence(res.site);
+  } catch (e) {
+    $("panel").innerHTML = header(s, s.label, s.category) + `<p class="abn">${esc(e.message)}</p>`;
+  }
+}
+
+async function screen(end) {
+  $("panel").innerHTML = `<div class="spinner">Screening the network…</div>`;
+  try {
+    showRun(await api("/api/screen" + (end ? "?end=" + encodeURIComponent(end) : "")));
+  } catch (e) {
+    $("panel").innerHTML = `<p class="abn">${esc(e.message)}</p>`;
+  }
+}
+
+if (STATIC) {
+  $("controls").style.display = "none";
+  showRun(STATIC.map);
+} else {
+  $("run").onclick = () => screen($("end").value);
+  $("latest").onclick = () => screen("");
+  screen(new URLSearchParams(location.search).get("end") || "");
+}
+</script>
+</body>
+</html>

@@ -87,6 +87,7 @@ class Period:
 
     def to_dict(self) -> dict:
         return {"start": self.start.isoformat(), "end": self.end.isoformat(), "local": self.label(),
+                "end_local": self.local_end.strftime("%Y-%m-%dT%H:%M"),
                 "slot": self.slot, "weekday": self.local_start.strftime("%A"), "key": self.key}
 
 

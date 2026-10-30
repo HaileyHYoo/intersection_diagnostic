@@ -156,9 +156,11 @@ class FakeSource:
                 for s, n in self.network.items() if s in wanted for a in n["approaches"] + n["extra"]]
 
     # ------------------------------------------------------------------ interface: time series
-    def detector_counts(self, start, end):
+    def detector_counts(self, start, end, sites=None):
         out = []
         for site, n in self.network.items():
+            if sites and site not in sites:
+                continue
             by_link = {a["link"]: a for a in n["approaches"]}
             for stamp in self._ends(start, end, 5):
                 if not to_utc(start) <= stamp <= to_utc(end):
@@ -196,9 +198,11 @@ class FakeSource:
                         out.append({**row, "time": stamp - timedelta(minutes=5), "value": 9999})  # off grid
         return out
 
-    def site_kpi(self, start, end):
+    def site_kpi(self, start, end, sites=None):
         out = []
         for site, n in self.network.items():
+            if sites and site not in sites:
+                continue
             for stamp in self._ends(start, end, 15):
                 if not to_utc(start) <= stamp <= to_utc(end):
                     continue
@@ -217,9 +221,11 @@ class FakeSource:
                                 "value": self._value(site, round(value, 2))})
         return out
 
-    def approach_perf(self, start, end):
+    def approach_perf(self, start, end, sites=None):
         out = []
         for site, n in self.network.items():
+            if sites and site not in sites:
+                continue
             for stamp in self._ends(start, end, 15):
                 if not to_utc(start) <= stamp <= to_utc(end):
                     continue
@@ -280,6 +286,36 @@ class FakeSource:
 
     def cycle_length_fallback(self, start, end):
         return []
+
+    def raw(self, key, start, end, sites=None):
+        """Rows with the schema's tag and field names, as the live feed returns them (for inspect)."""
+        feed = self.schema["influx"]["sources"][key]
+        physical = {v: k for k, v in feed.get("fields", {}).items()}
+        physical = {logical: name for name, logical in physical.items()}
+        owner = {a["link"]: s for s, n in self.network.items() for a in n["approaches"] + n["extra"]}
+        site_tag = lambda s: ids.site_tag(s, feed.get("site_format", "S"))
+        if key == "detector_counts":
+            return [{feed["site_tag"]: site_tag(r["site"]), "field": feed["detector_field"].format(n=r["detector"]),
+                     "time": r["time"], "value": r["value"]} for r in self.detector_counts(start, end, sites)]
+        if key == "link_volume":
+            return [{feed["link_tag"]: self._link_tag(owner[r["link"]], r["link"]), "field": physical["volume"],
+                     "time": r["time"], "value": r["value"]} for r in self.link_volumes(start, end)]
+        if key == "site_kpi":
+            return [{feed["site_tag"]: site_tag(r["site"]), "field": physical[r["field"]], "time": r["time"],
+                     "value": r["value"]} for r in self.site_kpi(start, end, sites)]
+        if key == "approach_perf":
+            return [{feed["site_tag"]: site_tag(r["site"]), feed["link_tag"]: self._link_tag(r["site"], r["link"]),
+                     feed["bound_tag"]: r["bound"], "field": physical[r["field"]], "time": r["time"], "value": r["value"]}
+                    for r in self.approach_perf(start, end, sites)]
+        rows = []
+        for s in sites or list(self.network):
+            fetch = self.tomtom_turn_kpi if key == "tomtom_turn_kpi" else self.tomtom_site_kpi
+            for r in fetch(s, start, end):
+                row = {feed["site_tag"]: site_tag(s), "field": physical[r["field"]], "time": r["time"], "value": r["value"]}
+                if key == "tomtom_turn_kpi":
+                    row.update({feed["approach_tag"]: r["approach"], feed["exit_tag"]: r["exit"]})
+                rows.append(row)
+        return rows
 
     def scenario_period(self) -> Period:
         return Period(self.scenario_end - timedelta(minutes=self.rules["period_minutes"]), self.scenario_end,

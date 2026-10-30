@@ -85,11 +85,23 @@ class LiveSource:
                 for r in self._graph_rows("approaches", {"sites": list(sites)}) if ids.link(r.get("link_id"), self.strip)]
 
     # -------------------------------------------------------------- time series
-    def detector_counts(self, start: datetime, end: datetime) -> list[dict]:
+    def _sites_filter(self, feed: dict, sites):
+        return (feed["site_tag"], [ids.site_tag(s, feed["site_format"]) for s in sites]) if sites else None
+
+    def raw(self, key: str, start: datetime, end: datetime, sites=None) -> list[dict]:
+        """Records as stored (tags not normalised), for the inspection report."""
+        feed = self._feed(key)
+        fields = None if "detector_field" in feed else list(feed["fields"].values())
+        regex = feed.get("detector_field_regex") if fields is None else None
+        tag_in = self._sites_filter(feed, sites) if "site_tag" in feed else None
+        return self._query(key, start, end, fields=fields, field_regex=regex, tag_in=tag_in)
+
+    def detector_counts(self, start: datetime, end: datetime, sites=None) -> list[dict]:
         feed = self._feed("detector_counts")
         pattern = re.compile(re.escape(feed["detector_field"]).replace(r"\{n\}", r"(\d+)") + "$")
         out = []
-        for r in self._query("detector_counts", start, end, field_regex=feed["detector_field_regex"]):
+        for r in self._query("detector_counts", start, end, field_regex=feed["detector_field_regex"],
+                             tag_in=self._sites_filter(feed, sites)):
             m = pattern.match(str(r.get("field")))
             if m:
                 out.append({"site": ids.site(r.get(feed["site_tag"])), "detector": int(m.group(1)),
@@ -112,13 +124,15 @@ class LiveSource:
                 out.append(row)
         return out
 
-    def site_kpi(self, start: datetime, end: datetime) -> list[dict]:
+    def site_kpi(self, start: datetime, end: datetime, sites=None) -> list[dict]:
         feed = self._feed("site_kpi")
-        return self._logical(feed, self._query("site_kpi", start, end, fields=list(feed["fields"].values())), {})
+        rows = self._query("site_kpi", start, end, fields=list(feed["fields"].values()), tag_in=self._sites_filter(feed, sites))
+        return self._logical(feed, rows, {})
 
-    def approach_perf(self, start: datetime, end: datetime) -> list[dict]:
+    def approach_perf(self, start: datetime, end: datetime, sites=None) -> list[dict]:
         feed = self._feed("approach_perf")
-        rows = self._query("approach_perf", start, end, fields=list(feed["fields"].values()))
+        rows = self._query("approach_perf", start, end, fields=list(feed["fields"].values()),
+                           tag_in=self._sites_filter(feed, sites))
         return self._logical(feed, rows, {"link": (feed["link_tag"], lambda v: ids.link(v, self.strip)),
                                           "bound": (feed["bound_tag"], lambda v: v)})
 
