@@ -23,7 +23,7 @@ OUT = ROOT / "production"
 TARGET = OUT / "dash_backend" / "ai_brains" / "intersections" / "diagnostics"
 EXCLUDE_DIRS = {"local", "__pycache__"}
 DOCS = {"docs/PRODUCTION_UPDATE.md": "PRODUCTION_UPDATE.md", "docs/METHOD.md": "METHOD.md",
-        "docs/SCHEMA.md": "SCHEMA.md", "requirements.txt": "requirements.txt", ".env.example": ".env.example"}
+        "docs/SCHEMA.md": "SCHEMA.md", "docs/DATA_MAPPING.md": "DATA_MAPPING.md", "requirements.txt": "requirements.txt", ".env.example": ".env.example"}
 
 
 def source_files() -> list[Path]:
