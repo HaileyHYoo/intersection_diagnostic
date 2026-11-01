@@ -2,6 +2,23 @@
 
 Where each question's data comes from, and how the code turns it into the value that is compared. Every bucket, measurement, field and tag name comes from `diagnostics/config/schema.json` (version `tmp-2026-10-30b`), and every threshold from `diagnostics/config/rules.json`. Changing a name there changes the query; no code change is needed.
 
+## At a glance
+
+| Question | What it checks | Data source | Value used | Abnormal when |
+|---|---|---|---|---|
+| **Q2** Detector health | Are the detectors working? | InfluxDB `scats/volume` (raw 5-min counts) | Vehicles per active detector over the last 60 min | Any detector < 10 vehicles → *Detector Health Issue* |
+| **Q1** Traffic | Is traffic unusual on any approach? | InfluxDB `scats-aggregation/volume` (15-min) | 30-min volume per approach | Outside the usual range (p10–p90) **and** ≥ 10 % from usual |
+| **Q3A** Cycle length | Is the cycle length unusual? | InfluxDB `IntersectionPerfKpi` → `AvgCycle` | 30-min average cycle (s) | Outside the usual range **and** ≥ 10 % from usual |
+| **Q3B** Cycle stability | Is the cycle less stable than usual? | InfluxDB `IntersectionPerfKpi` → `CycleStability` | 30-min average stability | Below p10 (less stable only) |
+| **Q3C** Phase service | Is any approach getting unusual green time? | InfluxDB `IntersectionPerfApproach` → `GreenShare`, `HasGreen` | 30-min green share (%) per approach | Outside the usual range on any approach |
+| **Q4** SCATS interpretation | What does the SCATS evidence say? (Red sites only) | No new data: the saved Q1 + Q3 results | — | Explains the Red result and suggests checks |
+| **Q5** TomTom confirmation | Do road users see the same problem? (Red sites only) | InfluxDB TomTom KPIs + TomTom queue API | Delay and queue length per approach | *Agree* if a flagged approach has the largest delay or longest queue |
+
+- **Usual range:** the same weekday and 30-minute slot in the previous 8 weeks (≥ 5 valid weeks; holidays excluded).
+- **Approaches:** Neo4j EGRESS road links of the intersection.
+- **Q3 result:** abnormal if 2 of the 3 checks (Q3A, Q3B, Q3C) are abnormal.
+- **Category:** Q1 + Q3 abnormal = **Red**; only one of them = **Amber**; neither = **Normal**; not enough data = **Grey**.
+
 **Common to all InfluxDB reads**
 - Every query is filtered by the `Region` tag (site numbers repeat across cities).
 - Times are stored in UTC and the period is converted to UTC for the query.
