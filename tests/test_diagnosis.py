@@ -180,6 +180,21 @@ class LLMGuardTests(unittest.TestCase):
              "direction": None}
         self.assertEqual(d001.position(c), "above its normal range")
 
+    def test_tomtom_caveat_is_always_kept(self):
+        from diagnostics.templates import d002
+
+        class Short:
+            model = "m"
+
+            def complete(self, system, user):
+                import json
+                draft = json.loads(user)["draft_answer"]
+                return json.dumps({**draft, "road_user_impact": draft["road_user_impact"].replace(d002.CAVEAT, "")})
+        svc = service()
+        svc.llm = Short()
+        r = svc.diagnose(svc.screen(END)["run_id"], "4300", reuse=False)
+        self.assertTrue(r["templates"]["D002"]["answer"]["road_user_impact"].endswith(d002.CAVEAT))
+
     def test_a_value_on_a_rounded_bound_gets_more_decimals(self):
         from diagnostics.report import _values
         self.assertEqual(_values({"current": 67.58, "usual": 73.1, "p_low": 67.62, "p_high": 73.5}),

@@ -179,6 +179,7 @@ def measure(source, site: dict, period: Period, rules: dict) -> dict:
 
 
 DELAY_NAMES = {"control_delay": "control delay", "approach_delay": "approach delay"}
+CAVEAT = "Highest among the observed approaches does not mean historically abnormal delay."
 FINDINGS = {"Q1 high": "volume above its normal range", "Q1 low": "volume below its normal range",
             "Q3C abnormal_high": "phase service above its normal range",
             "Q3C abnormal_low": "phase service below its normal range"}
@@ -286,7 +287,7 @@ def written(ev: dict) -> dict:
     else:
         lines.append("The SCATS-identified approaches are not adequately covered by TomTom for this period, "
                      "so the comparison is incomplete.")
-    lines.append("Highest among the observed approaches does not mean historically abnormal delay.")
+    lines.append(CAVEAT)
     if ev["queue"] != "available":
         lines.append("Queue length: " + ev["queue"] + ".")
     return {"road_user_impact": " ".join(lines), "agreement": comp["agreement"], "coverage": ev["coverage_note"]}
@@ -353,5 +354,8 @@ def run(source, site: dict, period: Period, rules: dict, llm=None) -> dict:
     worded = llm_mod.word(llm, SYSTEM, user, ["road_user_impact", "agreement", "coverage"], ev, draft,
                           required={"road_user_impact": named})
     worded["answer"]["agreement"] = draft["agreement"]          # the verdict is code's, never re-worded
+    text = worded["answer"]["road_user_impact"]
+    if "historically abnormal" not in text:                      # methodology 13: always distinguish the two
+        worded["answer"]["road_user_impact"] = text.rstrip() + " " + CAVEAT
     return {"template_id": TEMPLATE, "template_version": spec["version"], "question": spec["question"], "evidence": ev,
             **worded}
