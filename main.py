@@ -9,6 +9,7 @@
     python main.py export-html --run ID --out out/map.html
     python main.py baseline [--start 2026-10-30] [--days 7]   weekly baseline job (+ weekly baseline snapshot)
     python main.py archive --run ID                  write a run's screening JSON log if it is missing
+    python main.py contract-check [--run ID]         validate a stored run against the production contract
     python main.py site-history --site 4397 --from 2026-10-01 --to 2026-10-31   categories over screened periods
     python main.py watch                             (later extension) screen every new period as it completes
     python main.py backfill --from ... --to ...      (later extension) screen past periods one by one
@@ -173,6 +174,35 @@ def cmd_baseline(args):
     print(f"Stored {n} baselines ({svc.settings.baseline_version}).")
 
 
+def cmd_contract_check(args):
+    """Every site of a stored run through the production contract's models and validators."""
+    from collections import Counter
+    from diagnostics.contract import adapter
+    svc = make_service(args, fake=args.fake)
+    run_id = args.run or next((r["run_id"] for r in svc.store.list_runs(50) if r["status"] == "complete"), None)
+    if not run_id:
+        print("No complete screening run in the store; run `python main.py screen` first.")
+        return 1
+    payload = svc.store.get_run(run_id)["payload"]
+    result = adapter.screening_result(payload, svc.settings, run=run_id)
+    S = adapter.S
+    counts = Counter(s.category.value for s in result.sites)
+    print(f"Run {run_id}  {payload['period']['local']}: {len(result.sites)} of {len(payload['sites'])} sites valid "
+          f"under the contract, {len(result.errors)} not representable")
+    print("  categories:", dict(counts))
+    grey = [s for s in result.sites if s.category == S.SiteCategory.GREY]
+    print(f"  Grey with insufficient_data_reason: {sum(bool(s.insufficient_data_reason) for s in grey)} of {len(grey)}")
+    print(f"  Grey because of no green (site_grey_no_green): "
+          f"{sum(bool(s.q3 and s.q3.phase_service and s.q3.phase_service.site_grey_no_green) for s in grey)}")
+    for site, error in list(result.errors.items())[:20]:
+        print(f"  ERROR {site}: {error}")
+    log = S.ScreeningLog.from_run(S.ScreeningRun(
+        run_id=run_id, status=S.RunStatus.COMPLETED, started_at=result.completed_at, result=result,
+        key=S.ScreeningCacheKey(region=result.region, period_end=result.period.end, baseline_version=result.baseline_version)))
+    print(f"  ScreeningLog summary: {log.summary.model_dump()}  ({len(log.model_dump_json()) / 1e6:.1f} MB as JSON)")
+    return 1 if result.errors else 0
+
+
 def cmd_archive(args):
     svc = make_service(args)
     key = svc.archive_run(args.run)
@@ -270,6 +300,12 @@ def main(argv=None) -> int:
     p.add_argument("--start")
     p.add_argument("--days", type=int, default=7)
     p.set_defaults(func=cmd_baseline)
+
+    p = sub.add_parser("contract-check", help="validate a stored run against the production contract")
+    p.add_argument("--run", help="run id (default: the latest complete run)")
+    p.add_argument("--fake", action="store_true", help="read the demo store")
+    p.add_argument("--sites", type=int, default=48)
+    p.set_defaults(func=cmd_contract_check)
 
     p = sub.add_parser("archive", help="write a run's screening JSON log if it is missing")
     p.add_argument("--run", required=True)

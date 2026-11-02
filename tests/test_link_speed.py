@@ -1,7 +1,8 @@
 import copy
+import tempfile
 import unittest
 
-from diagnostics import link_speed, timewin
+from diagnostics import archive, link_speed, timewin
 from diagnostics.contract import adapter, core
 from diagnostics.contract import intersections_diagnostics_schemas as S
 from diagnostics.local.fake import FakeSource
@@ -86,23 +87,36 @@ class LinkSpeedTests(unittest.TestCase):
         self.assertNotIn("link_speed", svc.diagnose(run_id, "4309"))
         self.assertIsNone(svc.diagnose(run_id, "4300")["link_speed"])
 
-    def test_contract_path(self):
+    def test_contract_site_report(self):
         s = Settings()
         source = FakeSource(s.rules, s.schema, END + ":00+11:00", n_sites=20)
         period = timewin.period_ending(END, s.rules)
         result = core.run_screening(S.ScreeningInput(run_id="scr", region="AU-VIC-Melbourne", period=adapter.period_model(period),
                                                      baseline_version="2026-W44", sites=[]), source, s, SQLiteStore(":memory:"))
-        amber = next(x for x in result.sites if x.site_no == "4309")
-        speed = core.run_link_speed(amber, result.period, source, s)
-        self.assertTrue(speed["available"])
-        store = SQLiteStore(":memory:")
-        red = next(x for x in result.sites if x.site_no == "4300")
-        core.run_diagnosis(S.DiagnosisInput(
-            diagnosis_id="d", screening_run_id="scr", region=result.region, period=result.period,
-            site=S.ScreeningSite(site_no="4300"), evidence=red,
-            q4_template=S.TemplateRef(template_id="ID_Q4_SCATS_INTERPRETATION", version="1.0.0"),
-            q5_template=S.TemplateRef(template_id="ID_Q5_TOMTOM_CONFIRMATION", version="1.0.0")), source, s, audit_store=store)
-        self.assertEqual(store.get_audits("diagnosis", "d")[0]["link_speed"]["unit"], "km/h")
+        run = S.ScreeningRun(run_id="scr", status=S.RunStatus.COMPLETED, started_at=result.completed_at,
+                             key=S.ScreeningCacheKey(region="AU-VIC-Melbourne", period_end=result.period.end,
+                                                     baseline_version="2026-W44"), result=result)
+        request = lambda site: S.SiteReportRequest(region="AU-VIC-Melbourne", screening_run_id="scr", site_no=site)
+        amber = core.run_site_report(request("4309"), run, source, s)
+        self.assertIsNone(amber.diagnosis)
+        self.assertTrue(amber.link_speed.available)
+        self.assertEqual(amber.link_speed.period, result.period)
+        self.assertEqual(amber.link_speed.links[0].street_name, "William Street")
+        self.assertIn("Reference speed: unavailable", amber.link_speed.notes[-1])
+        with tempfile.TemporaryDirectory() as d:
+            arch = archive.LocalArchive(d)
+            red = core.run_site_report(request("4300"), run, source, s, archive=arch)
+            self.assertEqual(red.diagnosis.q5.scats_comparison[0].agreement, S.ScatsAgreement.AGREE)
+            self.assertEqual(arch.keys("site-reports/"), ["site-reports/AU-VIC-Melbourne/2026/10/27/0800_scr_4300.json"])
+            amber_again = core.run_site_report(request("4309"), run, source, s, archive=arch)
+            self.assertIsNone(amber_again.diagnosis)
+            self.assertEqual(len(arch.keys("site-reports/")), 1)          # only Red reports are 18.2 records
+        with self.assertRaises(ValueError):
+            core.run_site_report(request("4315"), run, source, s)         # Normal: no report
+        broken = NoSpeed(s.rules, s.schema, END + ":00+11:00", n_sites=20)
+        report = core.run_site_report(request("4309"), run, broken, s)
+        self.assertFalse(report.link_speed.available)
+        self.assertEqual(report.link_speed.notes[0], S.LINK_SPEED_UNAVAILABLE_MESSAGE)
 
 
 if __name__ == "__main__":

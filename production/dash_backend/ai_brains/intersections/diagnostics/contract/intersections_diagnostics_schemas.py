@@ -1,19 +1,19 @@
-"""Intersections Diagnostics layer (V1 screening and diagnostic methodology, 29 Oct 2026).
+"""Intersections Diagnostics layer (V1 screening and diagnostic methodology, speed added, Nov 2026).
 
 Flow covered by this module (Dash callbacks are the backend):
 
-    1. callback -> service       ScreeningRequest, DiagnosisRequest
+    1. callback -> service       ScreeningRequest, SiteReportRequest
     2. service -> core logic     ScreeningInput, DiagnosisInput
     3. core logic -> service     ScreeningResult, DiagnosisResult
-    4. shared run store          ScreeningRun (Redis/Mongo, shared across users)
-    5. service -> dcc.Store      ScreeningPanelData, DisplaySettings
+    4. Platform data             LinkSpeedReport (existing TomTom link speeds, not core logic)
+    5. shared run store          ScreeningRun, SiteReport (Redis, shared across users)
+    6. audit records (S3)        ScreeningLog, SiteReport for Red sites, BaselineSnapshot
+    7. service -> dcc.Store      ScreeningPanelData, DisplaySettings
 
 Level 1 (network screening) runs Q2 -> Q1 + Q3 for every site in a region for one
-completed 30-minute period. Level 2 (on-demand diagnosis) runs Q4 + Q5 for a single
-Red site the operator clicks, reusing the saved Level 1 evidence of the same run.
-
-The diagnostic report is rendered by the callback straight from DiagnosisResult and the
-site's SiteScreeningResult; there is no separate report view model.
+completed 30-minute period. Selecting an Amber site shows its saved Q1/Q3 evidence and
+link speeds; selecting a Red site also runs Level 2 (Q4 + Q5) on that saved evidence.
+Link speed is supplementary and never changes Q1-Q3 or the classification.
 """
 
 from datetime import datetime
@@ -23,6 +23,7 @@ from typing import Annotated
 from pydantic import BaseModel, Field, ValidationInfo, model_validator
 
 TOMTOM_UNAVAILABLE_MESSAGE = "TomTom confirmation unavailable for this intersection or analysis period."
+LINK_SPEED_UNAVAILABLE_MESSAGE = "TomTom link speed unavailable for this intersection or analysis period."
 
 def _is_trusted(info: ValidationInfo) -> bool:
     """Records reloaded from our own store were validated on write; skip the rule checks."""
@@ -95,16 +96,20 @@ SITE_CATEGORY_TO_LEGEND: dict[SiteCategory, LegendCategory] = {
     SiteCategory.DETECTOR_HEALTH_ISSUE: LegendCategory.DETECTOR_HEALTH_ISSUE,
 }
 
+# Sites the operator can select for a report (link speed; Q4/Q5 too for Red)
+SELECTABLE_CATEGORIES = frozenset({SiteCategory.RED, SiteCategory.AMBER_TRAFFIC, SiteCategory.AMBER_SIGNAL})
+
 # Shared models
 
 class AnalysisPeriod(BaseModel):
     """The completed 30-minute screening period plus the 60-minute Q2 window ending with it."""
-    start: datetime = Field(description="Start of the 30-minute period, timezone-aware", examples=["2026-10-30T08:00:00+11:00"])
-    end: datetime = Field(description="End of the 30-minute period, timezone-aware", examples=["2026-10-30T08:30:00+11:00"])
-    detector_window_start: datetime = Field(
+    start: Annotated[datetime, Field(description="Start of the 30-minute period, timezone-aware",
+                                     examples=["2026-10-30T08:00:00+11:00"])]
+    end: Annotated[datetime, Field(description="End of the 30-minute period, timezone-aware", examples=["2026-10-30T08:30:00+11:00"])]
+    detector_window_start: Annotated[datetime, Field(
         description="Start of the Q2 60-minute detector window; it ends at `end`",
         examples=["2026-10-30T07:30:00+11:00"],
-    )
+    )]
     weekday: int = Field(ge=0, le=6, description="ISO weekday - 1 (Monday = 0), used for baseline lookup")
     slot_index: int = Field(ge=0, le=47, description="30-minute slot of the day (00:00 = 0)", examples=[16])
 
@@ -153,16 +158,16 @@ class ScreeningRequest(BaseModel):
         description="End of the period to screen; None means the latest completed 30-minute period",
     )
 
-class DiagnosisRequest(BaseModel):
-    """Built by the callback when the operator clicks a Red site.
+class SiteReportRequest(BaseModel):
+    """Built by the callback when the operator clicks an Amber or Red site.
 
     Carries identifiers only. The service loads the period and the Q1/Q3 evidence from
     the saved ScreeningRun; never rebuild them from the client dcc.Store, which is not
-    the audited evidence of the run. The service also rejects sites that are not Red
-    in that run.
+    the audited evidence of the run. The service rejects sites that are not Amber or
+    Red in that run, and runs Q4/Q5 only for Red ones.
     """
     region: str = Field(examples=["AU-VIC-Melbourne"])
-    screening_run_id: str = Field(description="Run whose saved Q1/Q3 evidence Q4/Q5 must use")
+    screening_run_id: str = Field(description="Run whose saved Q1/Q3 evidence the report (and Q4/Q5) must use")
     site_no: str = Field(examples=["4521"])
 
 class DisplaySettings(BaseModel):
@@ -271,6 +276,10 @@ class Q3CPhaseService(BaseModel):
     status: AssessmentStatus
     unit: str = Field(description="Unit of the established phase-service value", examples=["s/cycle", "%"])
     approaches: list[Q3CPhaseServiceApproach] = Field(default_factory=list)
+    site_grey_no_green: bool = Field(
+        default=False,
+        description="An evaluated approach had no green in the period (HasGreen = 0 or no data); the site is Grey",
+    )
 
     @property
     def affected_approach_ids(self) -> list[str]:
@@ -315,6 +324,8 @@ def classify_site(
         return SiteCategory.GREY
     if AssessmentStatus.INSUFFICIENT_DATA in (q1.status, q3.status):
         return SiteCategory.GREY
+    if q3.phase_service is not None and q3.phase_service.site_grey_no_green:
+        return SiteCategory.GREY
     q1_abnormal = q1.status == AssessmentStatus.ABNORMAL
     q3_abnormal = q3.status == AssessmentStatus.ABNORMAL
     if q1_abnormal and q3_abnormal:
@@ -335,7 +346,12 @@ class SiteScreeningResult(SiteRef):
         default=None,
         description="Site volume for the period as an hourly rate; drives 'Scale radius by value'",
     )
-    notes: list[str] = Field(default_factory=list, description="Why a site is Grey, or other data caveats")
+    insufficient_data_reason: str | None = Field(
+        default=None,
+        description="Required for Grey sites (Section 18.1): why a valid classification was not possible",
+        examples=["Detector records missing for the 60-minute window."],
+    )
+    notes: list[str] = Field(default_factory=list, description="Other data caveats")
 
     @model_validator(mode="after")
     def _check_category(self, info: ValidationInfo):
@@ -344,6 +360,8 @@ class SiteScreeningResult(SiteRef):
         expected = classify_site(self.q2, self.q1, self.q3)
         if self.category != expected:
             raise ValueError(f"site {self.site_no}: category {self.category.value} != decision matrix {expected.value}")
+        if self.category == SiteCategory.GREY and not self.insufficient_data_reason:
+            raise ValueError(f"site {self.site_no}: Grey sites must give an insufficient_data_reason")
         return self
 
 class ScreeningResult(BaseModel):
@@ -391,7 +409,9 @@ class ScatsComparison(BaseModel):
     approach_id: str
     scats_findings: list[str] = Field(description="SCATS flags on this approach", examples=[["Q1 high", "Q3C abnormal_low"]])
     has_largest_delay: bool
-    has_largest_queue: bool
+    has_largest_queue: bool | None = Field(
+        description="None when queue data does not cover this site, so 'largest' is unknown rather than False",
+    )
     agreement: ScatsAgreement
 
 class Q5Output(BaseModel):
@@ -416,7 +436,57 @@ class DiagnosisResult(BaseModel):
     q5: Q5Output | None = Field(default=None, description="None or unavailable -> show Q4 alone")
     completed_at: datetime
 
-# Shared run store (Redis/Mongo): one record per cache key, shared across users
+# Supplementary link speed (Platform TomTom link data, not core logic)
+
+class LinkSpeed(BaseModel):
+    """One incoming TomTom link of the selected site; missing speed is unavailable, never zero."""
+    link_id: str = Field(description="Platform road/link id (EGRESS road into the intersection)")
+    street_name: str = Field(default="")
+    arm: int | None = Field(default=None, description="Intersection arm number from the Platform link mapping")
+    speed_kmh: float | None = Field(description="Mean speed over the analysis period; None when unavailable")
+    reference_speed_kmh: float | None = Field(
+        default=None,
+        description="Existing historical average for the same weekday and time of day, where available",
+    )
+
+class LinkSpeedReport(BaseModel):
+    """Incoming-link speeds for the screening period of the selected site."""
+    site_no: str
+    period: AnalysisPeriod = Field(description="Same 30-minute period as Q1/Q3")
+    links: Annotated[list[LinkSpeed], Field(default_factory=list)]
+    notes: Annotated[list[str], Field(default_factory=list, description="Data-availability notes")]
+
+    @property
+    def available(self) -> bool:
+        return any(link.speed_kmh is not None for link in self.links)
+
+class SiteReport(BaseModel):
+    """What the operator sees after selecting a site, and for Red sites the Section 18.2 record.
+
+    Amber: saved Q1/Q3 evidence and link speed, no Q4/Q5.
+    Red: the same plus the Q4/Q5 DiagnosisResult. Linked to its run by screening_run_id.
+    """
+    region: str
+    screening_run_id: str
+    site_no: str
+    period: AnalysisPeriod
+    evidence: Annotated[SiteScreeningResult, Field(description="Saved Q1/Q3 evidence from the run, unchanged")]
+    diagnosis: DiagnosisResult | None = Field(default=None, description="Set for Red sites only")
+    link_speed: LinkSpeedReport | None = Field(default=None, description="None when the lookup failed")
+    created_at: datetime
+
+    @model_validator(mode="after")
+    def _check_diagnosis(self, info: ValidationInfo):
+        if _is_trusted(info):
+            return self
+        is_red = self.evidence.category == SiteCategory.RED
+        if is_red != (self.diagnosis is not None):
+            raise ValueError("Q4/Q5 diagnosis must be present for Red sites and absent otherwise")
+        if self.evidence.category not in SELECTABLE_CATEGORIES:
+            raise ValueError("only Amber and Red sites have a site report")
+        return self
+
+# Shared run store (Redis): one record per cache key, shared across users
 
 class ScreeningCacheKey(BaseModel):
     region: str
@@ -424,7 +494,8 @@ class ScreeningCacheKey(BaseModel):
     baseline_version: str
 
     def as_key(self) -> str:
-        return f"intersections_diagnostics:screening:{self.region}:{self.period_end.isoformat()}:{self.baseline_version}"
+        """Key within the layer's run store, which adds its own namespace."""
+        return f"screening:{self.region}:{self.period_end.isoformat()}:{self.baseline_version}"
 
 class ScreeningRun(BaseModel):
     """Screening run record and cache entry.
@@ -437,7 +508,7 @@ class ScreeningRun(BaseModel):
     status: RunStatus
     started_at: datetime
     finished_at: datetime | None = None
-    result: ScreeningResult | None = Field(default=None, description="Set when COMPLETED")
+    result: Annotated[ScreeningResult | None, Field(description="Set when COMPLETED")] = None
     error: str | None = Field(default=None, description="Set when FAILED")
 
     def to_store_record(self) -> dict:
@@ -453,12 +524,92 @@ class ScreeningRun(BaseModel):
             return None
         return next((s for s in self.result.sites if s.site_no == site_no), None)
 
+# Historical records (S3, Section 18): kept apart from the Redis run store and never overwritten
+
+class ScreeningSummary(BaseModel):
+    red: int = 0
+    amber: int = Field(default=0, description="Amber traffic and Amber signal together")
+    normal: int = 0
+    grey: int = 0
+    detector_health_issue: int = 0
+    total: int = 0
+
+    @classmethod
+    def from_sites(cls, sites: list[SiteScreeningResult]) -> "ScreeningSummary":
+        summary = cls(total=len(sites))
+        for site in sites:
+            field = "amber" if site.category in (SiteCategory.AMBER_TRAFFIC, SiteCategory.AMBER_SIGNAL) else site.category.value
+            setattr(summary, field, getattr(summary, field) + 1)
+        return summary
+
+class ScreeningLog(BaseModel):
+    """Section 18.3 JSON log: one file per completed screening run.
+
+    `sites` holds every screened site, Normal included, with its Q2/Q1/Q3 results; the
+    detector-issue, abnormality and insufficient-data views in 18.3 are filters over it.
+    `config.detector_min_count_60min` is the Q2 threshold applied.
+    """
+    schema_version: int = 1
+    run_id: str
+    region: str
+    period: AnalysisPeriod
+    baseline_version: str = Field(description="Matches a BaselineSnapshot.version")
+    status: RunStatus
+    executed_at: datetime
+    completed_at: datetime
+    config: ScreeningConfig
+    summary: ScreeningSummary
+    sites: list[SiteScreeningResult]
+    errors: dict[str, str] = Field(default_factory=dict)
+
+    @classmethod
+    def from_run(cls, run: ScreeningRun) -> "ScreeningLog":
+        if run.status != RunStatus.COMPLETED or run.result is None:
+            raise ValueError("only completed screening runs are logged")
+        result = run.result
+        return cls(run_id=run.run_id, region=result.region, period=result.period, baseline_version=result.baseline_version,
+                   status=run.status, executed_at=run.started_at, completed_at=result.completed_at, config=result.config,
+                   summary=ScreeningSummary.from_sites(result.sites), sites=result.sites, errors=result.errors)
+
+    def to_run(self, key: ScreeningCacheKey) -> ScreeningRun:
+        """Rebuild the run so a period already logged is reused instead of screened again."""
+        result = ScreeningResult(run_id=self.run_id, region=self.region, period=self.period, baseline_version=self.baseline_version,
+                                 config=self.config, completed_at=self.completed_at, sites=self.sites, errors=self.errors)
+        return ScreeningRun(run_id=self.run_id, key=key, status=self.status, started_at=self.executed_at,
+                            finished_at=self.completed_at, result=result)
+
+class BaselineValue(BaseModel):
+    """One calculated baseline entry: a metric for a site (and approach) in one weekday slot."""
+    site_no: str
+    approach_id: str | None = Field(default=None, description="None for site-level metrics (Q3A, Q3B)")
+    weekday: int = Field(ge=0, le=6)
+    slot_index: int = Field(ge=0, le=47)
+    metric: str = Field(examples=["q1_volume", "q3a_cycle_length_s", "q3b_cycle_stability", "q3c_phase_service"])
+    reference: float | None
+    p10: float | None
+    p90: float | None
+    n_history_obs: int = Field(ge=0)
+
+class BaselineSnapshot(BaseModel):
+    """Section 18.4 weekly baseline snapshot, written by the researchers' weekly refresh.
+
+    Holds the calculated references only, not the raw SCATS data. Screening logs point to
+    it by `version`, so past classifications can be reproduced after a refresh.
+    """
+    schema_version: int = 1
+    version: str = Field(examples=["2026-W44"])
+    region: str
+    calculated_at: datetime
+    baseline_weeks: int = 8
+    values: list[BaselineValue]
+
 # Panel store (service -> dcc.Store); colours, labels and legend percentages are UI constants
 
 class IntersectionMarker(SiteRef):
     category: SiteCategory
     value_veh_h: float | None = Field(default=None, description="Used when 'Scale radius by value' is on")
     abnormal_approaches: list[str] = Field(default_factory=list, description="Tooltip: Q1/Q3C affected approach names")
+    insufficient_data_reason: str | None = Field(default=None, description="Tooltip for Grey sites")
 
 class DetectorHealthIssue(SiteRef):
     failed_detectors: list[DetectorCount]
@@ -472,12 +623,12 @@ class ScreeningPanelData(BaseModel):
     baseline_version: str | None = None
     from_cache: bool = False
     next_period_end: datetime | None = Field(default=None, description="When the next refresh becomes available")
-    category_counts: dict[SiteCategory, int] = Field(
+    category_counts: Annotated[dict[SiteCategory, int], Field(
         default_factory=dict,
         description="All screened sites per category, Normal included; legend percentages come from this",
-    )
-    markers: list[IntersectionMarker] = Field(default_factory=list, description="Normal sites omitted")
-    detector_health_issues: list[DetectorHealthIssue] = Field(default_factory=list)
+    )]
+    markers: Annotated[list[IntersectionMarker], Field(default_factory=list, description="Normal sites omitted")]
+    detector_health_issues: Annotated[list[DetectorHealthIssue], Field(default_factory=list)]
     error: str | None = None
 
     @classmethod
@@ -500,6 +651,7 @@ class ScreeningPanelData(BaseModel):
                 panel.markers.append(IntersectionMarker(
                     **ref, category=site.category, value_veh_h=site.total_volume_veh_h,
                     abnormal_approaches=[names.get(a, a) for a in affected],
+                    insufficient_data_reason=site.insufficient_data_reason,
                 ))
         return panel
 

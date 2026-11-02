@@ -209,31 +209,36 @@ A site that fails to process is recorded in the run's `errors` (site → reason)
 
 ## 11. Production contract
 
-The production team's service contract (`intersections_diagnostics_schemas.py`, Pydantic) is copied unchanged into `diagnostics/contract/`. The Dash callbacks keep the shared run store; the core functions only compute:
+The production team's service contract (`intersections_diagnostics_schemas.py`, Pydantic, version "speed added, Nov 2026") is copied unchanged into `diagnostics/contract/`. The Dash callbacks keep the shared run store (Redis) and the S3 records; the core functions compute:
 
-- `contract.core.run_screening(ScreeningInput) -> ScreeningResult`. The input's `ScreeningConfig` thresholds override rules.json, and every other rule comes from rules.json. If the input lists sites (with detector IDs and approaches), only those are screened.
-- `contract.core.run_diagnosis(DiagnosisInput) -> DiagnosisResult`. Only Red sites are accepted. D001/D002 run on the saved evidence, unchanged.
+| Function | Contract models | What it does |
+|---|---|---|
+| `core.run_screening` | `ScreeningInput` → `ScreeningResult` | Level 1. The input's `ScreeningConfig` overrides rules.json; every other rule comes from rules.json. With an archive, it also writes this slot's `BaselineSnapshot` (18.4) under the input's `baseline_version`. |
+| `core.run_site_report` | `SiteReportRequest` + saved `ScreeningRun` → `SiteReport` | An Amber or Red click. The evidence and period come from the run. Amber: evidence + `LinkSpeedReport`. Red: also Q4/Q5 (`run_diagnosis`), and with an archive the `SiteReport` is kept as the 18.2 record. Other categories are rejected. |
+| `core.run_diagnosis` | `DiagnosisInput` → `DiagnosisResult` | Q4/Q5 for a Red site, on the saved evidence, unchanged |
+| `core.run_link_speed` | `SiteScreeningResult`, `AnalysisPeriod` → `LinkSpeedReport` | Supplementary link speed alone (`run_site_report` includes it) |
+| `core.write_screening_log` | completed `ScreeningRun` → `ScreeningLog` | The 18.3 log, written once per run, never overwritten |
 
 `contract/adapter.py` converts between our records and the contract:
 - statuses are lower case; percentiles are 10/90;
-- `approach_id` = EGRESS `link_id`, and `detector_id` = n of `d[n]`;
+- `approach_id` = EGRESS `link_id`, `approach_name` = "Street [bound]", and `detector_id` = n of `d[n]`;
 - coordinates are (lon, lat);
-- `count_60min` is rounded to an integer (the Q2 gate itself uses the unrounded total);
+- `count_60min` is rounded to an integer (the Q2 gate itself uses the unrounded total); it is None for a detector that could not be evaluated, as the contract says;
+- **Grey sites** carry their reasons in `insufficient_data_reason` (required by the contract); other caveats are in `notes`;
+- **no green**: `Q3CPhaseService.site_grey_no_green = true`, which the contract's `classify_site()` makes Grey;
+- **unknown queue**: `ScatsComparison.has_largest_queue = None`;
 - Q4 evidence is a list of `EvidenceItem` (statement written by code, values copied);
-- template IDs come from `rules.contract.template_ids`, or from the input's `TemplateRef`.
+- template IDs come from `rules.contract.template_ids`, or from the input's `TemplateRef`;
+- **link speed**: `LinkSpeed.arm` is None (arm numbers are not in the TomTom link mapping we use); `LINK_SPEED_UNAVAILABLE_MESSAGE` heads the notes when no link has a speed; the reference-speed status is the last note;
+- **baseline snapshot**: one `BaselineSnapshot` per weekday and slot (§10.1), metrics `q1_volume`, `q3a_cycle_length_s`, `q3b_cycle_stability`, `q3c_phase_service`.
 
-Two agreed behaviours need contract changes that were asked of the production team. The adapter uses them as soon as the contract has them:
-
-- **Grey for an approach without green.** This needs `Q3CPhaseService.site_grey_no_green` and the matching rule in `classify_site()`. Until then, such a site is reported in `ScreeningResult.errors`, not dropped silently.
-- **Unknown queue.** This needs `ScatsComparison.has_largest_queue: bool | None`. Until then, False is written.
+`python main.py contract-check` passes every site of a stored run through the contract's models and validators (decision matrix, 2-of-3 rule, Grey reason) and prints any site that does not fit.
 
 **Audit on the contract path.** The contract has no place for the configuration, provenance, who wrote a template answer, or a rejected LLM answer. `run_screening` and `run_diagnosis` therefore accept an `audit_store`. When one is given, they save an audit record (`audits` table: kind `screening`/`diagnosis`, keyed by run or diagnosis ID) that holds the config snapshot reference, provenance, alignment counts, registry template IDs, `generated_by` and any LLM rejection. The production `host.py` passes a SQLite store.
 
-The following optional contract fields have been proposed. `adapter.optional()` fills each one only when the contract has it, so no code change is needed once they are added:
+The following optional contract fields have been proposed and are not in the Nov 2026 contract. `adapter.optional()` fills each one only when the contract has it, so no code change is needed if they are added:
 - `Q4Output.generated_by`, `Q4Output.llm_rejected`, `Q5Output.generated_by`, `Q5Output.llm_rejected`;
 - `ScreeningResult.config_version`, `ScreeningResult.audit_ref`, `DiagnosisResult.config_version`, `DiagnosisResult.audit_ref`.
-
-If the production team stores these elsewhere instead, only the audit record is needed and nothing else changes.
 
 
 ## 12. Open items
@@ -243,16 +248,17 @@ If the production team stores these elsewhere instead, only the audit record is 
   - the `scats/volume` value types;
   - end labelling of the 5-minute data;
   - the pattern of off-grid stamps (e.g. 01:10, 04:22:05).
-- **Asked of the production team (contract):**
-  1. `site_grey_no_green` on `Q3CPhaseService` and in `classify_site()`;
-  2. where the 8-week baselines are stored, who runs the weekly refresh, and the `baseline_version` of a past period;
-  3. the time zone of periods, and a UTC cache key (today the same instant gives two keys);
-  4. a config/rules hash in the cache key;
-  5. `has_largest_queue: bool | None`;
-  6. the optional audit fields in §11 (`generated_by`, `llm_rejected`, `config_version`, `audit_ref`), or where audit records should be kept instead;
-  7. the S3 bucket and prefix for the screening logs and baseline snapshots (§10.1), with put/get/list rights; whether the contract's `baseline_version` (e.g. `2026-W44`) should carry the method version too.
+- **Production team (contract, Nov 2026 version).**
+  - Done: `site_grey_no_green` with the `classify_site()` rule; `has_largest_queue: bool | None`; S3 records (`ScreeningLog`, `SiteReport`, `BaselineSnapshot`); link speed (`LinkSpeedReport`, `SiteReport`); the weekly refresh is ours (`BaselineSnapshot`, "written by the researchers' weekly refresh").
+  - Still open:
+    1. the time zone of periods, and a UTC cache key (`ScreeningCacheKey.period_end` is still a local-offset datetime, so the same instant can give two keys);
+    2. a config/rules hash in the cache key or the `baseline_version` (a rule change inside a week reuses the old run and snapshot);
+    3. the optional audit fields in §11, or where audit records should be kept instead;
+    4. the S3 bucket and prefix (`DIAGNOSTICS_ARCHIVE`), with put/get/list rights;
+    5. one `BaselineSnapshot` per weekday and slot (as written now) or one per week: a whole week is about 48 × 7 slots × ~16,000 values, too large for one object;
+    6. `LinkSpeed.arm`: the arm-number mapping, if the UI needs it.
 - **Q3C history (live data).** At site 994 every reference week before 23 Oct 2026 has `HasGreen = 0` on every approach while the cycle runs normally, so Q3C has one usable week. `inspect --history` now shows the GreenShare stored with `HasGreen = 0`, to tell whether HasGreen was not filled before that date (a data-pipeline question for Zay) or whether the records are empty.
-- **Link speed.** Whether an existing historical reference speed exists (bucket, measurement, field); `link_speed_reference` is ready for it. The contract has no model for link speed or for an Amber click: `core.run_link_speed` returns a dict, and `DiagnosisResult.link_speed` is filled once the contract has that field.
+- **Link speed.** Whether an existing historical reference speed exists (bucket, measurement, field); `link_speed_reference` is ready for it.
 - **For the methodology owner:** the Q3 case of one abnormal, one normal and one not-assessable measure (§6).
 - **Template IDs.** D002's registry ID (`ID_Q5_TOMTOM_CONFIRMATION`) is a placeholder until confirmed.
 - **Outside this repository:** the chatbot's `tomtom/engine.py::scats_volume_hours()` groups 15-minute records by their stamp's clock hour. With end labelling, this shifts every hour by 15 minutes (00:45–01:45 instead of 01:00–02:00). It should be fixed in the Chatbot repository.

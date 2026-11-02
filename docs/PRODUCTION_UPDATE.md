@@ -90,21 +90,27 @@ python -c "from datetime import date, timedelta; from dash_backend.ai_brains.int
 ## 4b. With the production contract
 
 ```python
-from dash_backend.ai_brains.intersections.diagnostics.host import run_screening, run_diagnosis
+from dash_backend.ai_brains.intersections.diagnostics.host import run_screening, run_site_report, log_screening
 
 # background callback, after writing the RUNNING ScreeningRun
-result = run_screening(screening_input)            # ScreeningInput -> ScreeningResult
+result = run_screening(screening_input)            # ScreeningInput -> ScreeningResult (+ BaselineSnapshot in S3)
+# ... after writing the COMPLETED ScreeningRun
+log_screening(screening_run)                       # ScreeningLog in S3 (18.3), once per run
 
-# click on a Red site
-diagnosis = run_diagnosis(diagnosis_input, bot)    # DiagnosisInput -> DiagnosisResult
-
-# click on an Amber site: supplementary TomTom incoming-link speed (display only)
-speed = run_link_speed(screening_site, analysis_period)   # ScreeningSite evidence, AnalysisPeriod -> dict
+# click on an Amber or Red site
+report = run_site_report(site_report_request, screening_run, bot)   # SiteReportRequest + ScreeningRun -> SiteReport
+# Amber: evidence + link_speed; Red: also diagnosis (Q4/Q5), and the SiteReport is kept in S3 (18.2)
 ```
 
+`run_diagnosis(DiagnosisInput)` and `run_link_speed(evidence, period)` remain available on their own.
+
 - **The contract module.** The adapter uses its bundled copy of `intersections_diagnostics_schemas.py`. To share one set of classes with the host, call `contract.adapter.use_contract(<the host's module>)` once at start-up.
-- **Audit records.** `host.run_screening` / `host.run_diagnosis` pass a SQLite store as `audit_store`. Each call saves an audit record (config snapshot, data provenance, registry template IDs, who wrote each answer) that the contract has no field for. If the contract gains the optional fields `generated_by`, `llm_rejected`, `config_version` and `audit_ref`, they are filled automatically (see METHOD.md §11).
-- **Sites the contract cannot represent yet.** A site that is Grey because an approach has no green cannot be represented until `Q3CPhaseService.site_grey_no_green` exists. Until then it is listed in `ScreeningResult.errors` with the reason.
+- **Audit records.** `host.run_screening` / `host.run_site_report` pass a SQLite store as `audit_store`. Each call saves an audit record (config snapshot, data provenance, registry template IDs, who wrote each answer) that the contract has no field for. If the contract gains the optional fields `generated_by`, `llm_rejected`, `config_version` and `audit_ref`, they are filled automatically (see METHOD.md §11).
+- **S3 layout** (`DIAGNOSTICS_ARCHIVE=s3://bucket/prefix`; nothing is overwritten):
+  - `screening-logs/{region}/{YYYY}/{MM}/{DD}/{HHMM}_{run_id}.json`: `ScreeningLog`
+  - `site-reports/{region}/{YYYY}/{MM}/{DD}/{HHMM}_{run_id}_{site}.json`: `SiteReport` of a Red site
+  - `baselines/{region}/{baseline_version}/{weekday}/{HHMM}.json.gz`: `BaselineSnapshot` of one weekday and slot
+- **Check before going live:** `python main.py contract-check` validates every site of a stored live run against the contract.
 
 ## 5. Verification
 
@@ -118,11 +124,13 @@ print(view["counts"], view["period"]["local"])
 
 ## 6. To agree with the production team
 
-Sent on 31 Oct 2026: the `site_grey_no_green` flag, baseline storage and versioning, time zones and a UTC cache key, a config hash in the cache key, and `has_largest_queue: bool | None`. Also still open:
+The Nov 2026 contract covers the no-green Grey flag, `has_largest_queue: bool | None`, link speed, `SiteReport` and the S3 records; the code uses all of them. Still open (METHOD.md §12):
 
-- **Audit fields.** Add the optional fields above to the contract, or say where audit records should live.
-- **Link speed.** Amber and Red clicks show the TomTom incoming-link speed (`aimes/speed`). The contract has no model for it: `run_link_speed` returns a dict, and Red diagnoses keep it in the audit record. Add `DiagnosisResult.link_speed` (and an Amber-click model) if the UI should take it from the contract. Is there an existing historical reference speed? `schema.influx.sources.link_speed_reference` is ready for it.
-- **S3.** The bucket and prefix for `DIAGNOSTICS_ARCHIVE`. On the contract path, pass `archive=` to `core.run_screening` (`host.run_screening` does this). The log uses the host's `run_id`.
+- **Cache key.** Time zone of `period_end` (a UTC key), and a rules/config hash in the key or the `baseline_version`.
+- **Audit fields.** The optional fields above, or where audit records should live.
+- **S3.** The bucket and prefix for `DIAGNOSTICS_ARCHIVE`.
+- **Baseline snapshot size.** One `BaselineSnapshot` per weekday and slot (as written now) rather than one per week.
+- **Link speed.** `LinkSpeed.arm` mapping if needed; an existing historical reference speed (`schema.influx.sources.link_speed_reference` is ready for it).
 
 - **Schema.** Replace `config/schema.json` with the final schema (see SCHEMA.md) and change its `version`.
 - **Store.** Use SQLite on a persistent path, or a database. `store.SQLiteStore` is the interface to re-implement.

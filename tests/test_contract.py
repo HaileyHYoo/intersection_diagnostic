@@ -15,16 +15,8 @@ SCHEMA_FILE = Path(adapter.__file__).with_name("intersections_diagnostics_schema
 
 
 def proposed_contract():
-    """The contract with the two changes asked of the production team, to show the adapter picks them up."""
+    """The contract with the optional audit fields proposed to the production team, to show the adapter fills them."""
     text = SCHEMA_FILE.read_text(encoding="utf-8")
-    text = text.replace('''    approaches: list[Q3CPhaseServiceApproach] = Field(default_factory=list)
-''', '''    approaches: list[Q3CPhaseServiceApproach] = Field(default_factory=list)
-    site_grey_no_green: bool = False
-''', 1)
-    text = text.replace('''    if AssessmentStatus.INSUFFICIENT_DATA in (q1.status, q3.status):''', '''    if q3.phase_service and q3.phase_service.site_grey_no_green:
-        return SiteCategory.GREY
-    if AssessmentStatus.INSUFFICIENT_DATA in (q1.status, q3.status):''', 1)
-    text = text.replace("    has_largest_queue: bool\n", "    has_largest_queue: bool | None\n", 1)
     audit = "    generated_by: str | None = None\n    llm_rejected: str | None = None\n"
     text = text.replace("    limitations: list[str] = Field(default_factory=list)\n",
                         "    limitations: list[str] = Field(default_factory=list)\n" + audit, 1)
@@ -47,26 +39,34 @@ class ContractTests(unittest.TestCase):
         cls.saved = cls.svc.store.get_run(cls.svc.screen(END)["run_id"])
         cls.result = adapter.screening_result(cls.saved["payload"], cls.settings)
 
-    def test_every_representable_site_validates(self):
-        expected = {s: c for s, c in self.source.expected().items() if s != "4327"}
+    def test_every_site_validates(self):
         got = {s.site_no: adapter.CATEGORY_BACK[s.category] for s in self.result.sites}
-        self.assertEqual(got, expected)
+        self.assertEqual(got, self.source.expected())
+        self.assertEqual(self.result.errors, {})
 
-    def test_no_green_site_is_reported_until_the_contract_has_the_flag(self):
-        self.assertEqual(list(self.result.errors), ["4327"])
-        self.assertIn("site_grey_no_green", self.result.errors["4327"])
+    def test_no_green_site_is_grey_with_the_flag(self):
+        site = next(s for s in self.result.sites if s.site_no == "4327")
+        self.assertEqual(site.category, S.SiteCategory.GREY)
+        self.assertTrue(site.q3.phase_service.site_grey_no_green)
+        self.assertIn("without green", site.insufficient_data_reason)
+        self.assertTrue(adapter.accepts_none(S.ScatsComparison, "has_largest_queue"))
 
-    def test_proposed_flag_makes_the_no_green_site_grey(self):
-        try:
-            adapter.use_contract(proposed_contract())
-            result = adapter.screening_result(self.saved["payload"], self.settings)
-            self.assertEqual(result.errors, {})
-            site = next(s for s in result.sites if s.site_no == "4327")
-            self.assertEqual(site.category.value, "grey")
-            self.assertTrue(site.q3.phase_service.site_grey_no_green)
-            self.assertTrue(adapter.accepts_none(adapter.S.ScatsComparison, "has_largest_queue"))
-        finally:
-            adapter.use_contract(S)
+    def test_grey_sites_give_a_reason_and_missing_counts_are_none(self):
+        grey = [s for s in self.result.sites if s.category == S.SiteCategory.GREY]
+        self.assertTrue(grey and all(s.insufficient_data_reason for s in grey))
+        self.assertTrue(all(s.insufficient_data_reason is None for s in self.result.sites if s not in grey))
+        ours = {s["site"]: s for s in self.saved["payload"]["sites"]}
+        gap = next(s for s in self.result.sites if s.site_no == "4321")              # detector_gap scenario
+        for d in gap.q2.detectors:
+            row = next(r for r in ours["4321"]["q2"]["detectors"] if str(r["detector"]) == d.detector_id)
+            if row["status"] == "INSUFFICIENT DATA":
+                self.assertEqual((d.count_60min, d.passed), (None, None))
+        no_green = next(s for s in self.result.sites if s.site_no == "4327")
+        back = adapter.site_from_model(no_green)
+        self.assertEqual(back["reasons"][0], no_green.insufficient_data_reason)
+        first = ours["4327"]["q1"]["approaches"][0]
+        self.assertEqual((back["q1"]["approaches"][0]["street"], back["q1"]["approaches"][0]["bound"]),
+                         (first["street"], first["bound"]))
 
     def test_store_round_trip_and_panel(self):
         run = S.ScreeningRun(run_id=self.result.run_id, status=S.RunStatus.COMPLETED, started_at=self.result.completed_at,
@@ -169,7 +169,7 @@ class CoreTests(unittest.TestCase):
 
     def test_screening_keeps_the_hosts_ids(self):
         self.assertEqual((self.result.run_id, self.result.baseline_version), ("scr_test", "2026-W44"))
-        self.assertEqual(len(self.result.sites), 19)
+        self.assertEqual(len(self.result.sites), 20)
 
     def test_host_site_list_limits_the_run(self):
         sites = [S.ScreeningSite(site_no="4300", name="Test", coordinates=(144.96, -37.81),

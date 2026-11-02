@@ -6,15 +6,17 @@ Our records keep every value the methodology needs; the contract is a projection
     percentiles     0.10 / 0.90 (rules)                           -> 10 / 90 (ScreeningConfig)
     approach_id     Neo4j EGRESS link_id;  detector_id = n of d[n]
     coordinates     (lon, lat)
-    count_60min     the 60-minute total rounded to an integer (the gate itself uses the unrounded total)
+    count_60min     the 60-minute total rounded to an integer (the gate itself uses the unrounded total);
+                    None for a detector that could not be evaluated (records missing), as the contract says
+    Grey reasons    insufficient_data_reason (required for Grey); other caveats go to notes
+    link speed      LinkSpeedReport (link_speed.py result); arm is None (not in the TomTom link mapping)
 
-Two agreed behaviours need fields the contract does not have yet. They are used as soon as the contract has
-them, detected from the models themselves:
+Fields detected from the models themselves, so an older contract still works:
 
-    Q3CPhaseService.site_grey_no_green   our Grey rule for an approach without green. Until the field exists,
-                                         such a site cannot pass the contract's decision-matrix validator; it is
-                                         reported in ScreeningResult.errors instead of being dropped silently.
-    ScatsComparison.has_largest_queue    None when the queue is unknown. Until it accepts None, False is written.
+    Q3CPhaseService.site_grey_no_green   our Grey rule for an approach without green (in the Nov 2026 contract).
+                                         Without the field, such a site is reported in ScreeningResult.errors.
+    ScatsComparison.has_largest_queue    None when the queue is unknown (accepted since Nov 2026); else False.
+    SiteScreeningResult.insufficient_data_reason, LinkSpeedReport, SiteReport, ScreeningLog, BaselineSnapshot
 
 Audit fields (methodology 18) the contract does not carry yet are kept in a separate audit record (core.py) and
 written into the contract as soon as these optional fields exist (names proposed to the production team):
@@ -25,6 +27,7 @@ written into the contract as soon as these optional fields exist (names proposed
 """
 from __future__ import annotations
 
+import re
 import typing
 from datetime import datetime, timedelta
 
@@ -134,11 +137,14 @@ def site_model(site: dict, rules: dict) -> S.SiteScreeningResult:
     q2 = site["q2"]
     gate = S.Q2DetectorGate(status=GATE[q2["status"]], detectors=[
         S.DetectorCount(detector_id=str(d["detector"]),
-                        count_60min=None if d["count_60min"] is None else int(round(d["count_60min"])),
+                        count_60min=None if d["count_60min"] is None or d["status"] == INSUFFICIENT
+                        else int(round(d["count_60min"])),
                         passed=None if d["status"] == INSUFFICIENT else d["status"] == "PASS")
         for d in q2["detectors"]])
     q1 = q3 = None
-    notes = list(site.get("reasons", []))
+    grey = site["category"] == "grey"
+    reason_field = has_field(S.SiteScreeningResult, "insufficient_data_reason")
+    notes = [] if grey and reason_field else list(site.get("reasons", []))
     if site["q1"]:
         q1 = S.Q1TrafficAbnormality(status=STATUS[site["q1"]["status"]], approaches=[
             S.Q1Approach(approach_id=a["link"], approach_name=approach_label(a), volume=comparison(a),
@@ -168,7 +174,9 @@ def site_model(site: dict, rules: dict) -> S.SiteScreeningResult:
             phase_service=S.Q3CPhaseService(**service))
     return S.SiteScreeningResult(site_no=site["site"], name=site.get("name") or "", coordinates=_coords(site), q2=gate,
                                  q1=q1, q3=q3, category=CATEGORY[site["category"]],
-                                 total_volume_veh_h=site.get("total_volume_veh_h"), notes=notes)
+                                 total_volume_veh_h=site.get("total_volume_veh_h"), notes=notes,
+                                 **optional(S.SiteScreeningResult, insufficient_data_reason=
+                                            "; ".join(site.get("reasons", [])) if grey else None))
 
 
 def screening_result(payload: dict, settings, run: str | None = None, completed_at: datetime | None = None,
@@ -205,7 +213,9 @@ def network(inp: S.ScreeningInput) -> list[dict] | None:
 def site_from_model(m: S.SiteScreeningResult) -> dict:
     """The contract's saved evidence back in our record form, for D001/D002 (values unchanged)."""
     def row(approach_id, name, hc, status, direction):
-        return {"link": approach_id, "street": name or None, "bound": None, "current": hc.current, "usual": hc.reference,
+        label = re.match(r"^(.*) \[([A-Z]{1,2})\]$", name or "")         # approach_label: "Street [N]"
+        street, bound = (label.group(1), label.group(2)) if label else (name or None, None)
+        return {"link": approach_id, "street": street, "bound": bound, "current": hc.current, "usual": hc.reference,
                 "p_low": hc.p10, "p_high": hc.p90, "n_history": hc.n_history_obs, "pct_difference": hc.pct_diff,
                 "status": status, "direction": direction}
 
@@ -239,7 +249,8 @@ def site_from_model(m: S.SiteScreeningResult) -> dict:
     lon, lat = m.coordinates if m.coordinates else (None, None)
     return {"site": m.site_no, "name": m.name or None, "lat": lat, "lon": lon, "category": CATEGORY_BACK[m.category],
             "label": "Red - Needs Attention" if m.category == S.SiteCategory.RED else m.category.value,
-            "reasons": m.notes, "q1": q1,
+            "reasons": ([m.insufficient_data_reason] if getattr(m, "insufficient_data_reason", None) else []) + m.notes,
+            "q1": q1,
             "q3": {"status": STATUS_BACK[m.q3.status], "abnormal_count": statuses.count(ABNORMAL),
                    "assessable_count": sum(s != INSUFFICIENT for s in statuses), "components": components}}
 
@@ -324,3 +335,17 @@ def q5_output(d002: dict, period: Period, rules: dict, template: S.TemplateRef |
                       scats_comparison=scats, missing_approach_ids=ev["missing_approach_links"],
                       narrative=d002["answer"]["road_user_impact"],
                       **optional(S.Q5Output, generated_by=d002["generated_by"], llm_rejected=d002["rejected"]))
+
+
+# ---------------------------------------------------------------------- supplementary link speed
+def link_speed_report(speed: dict, site_no: str, period: S.AnalysisPeriod):
+    """link_speed.py's result as the contract's LinkSpeedReport (a dict with an older contract)."""
+    if not hasattr(S, "LinkSpeedReport"):
+        return speed
+    notes = list(speed["notes"])
+    if not speed["available"]:
+        notes.insert(0, S.LINK_SPEED_UNAVAILABLE_MESSAGE)
+    notes.append("Reference speed: " + speed["reference"])
+    return S.LinkSpeedReport(site_no=site_no, period=period, notes=notes, links=[
+        S.LinkSpeed(link_id=a["link"], street_name=a.get("street") or "", arm=None, speed_kmh=a["speed_kmh"],
+                    reference_speed_kmh=a["reference_kmh"]) for a in speed["approaches"]])

@@ -57,6 +57,7 @@ python main.py export-html --run <run_id> --out out/map.html
 python main.py baseline --days 7                      # 주간 베이스라인 미리 계산 + 주간 베이스라인 스냅샷 저장
 python main.py site-history --site 4397 --from 2026-10-01 --to 2026-10-31   # 저장된 로그 기준 분류 이력
 python main.py archive --run <run_id>                 # 로그 저장이 실패한 실행의 로그 다시 쓰기
+python main.py contract-check                         # 저장된 최근 실행을 지코 계약(Pydantic)으로 검증
 python main.py watch                                  # (추후 확장) 30분마다 자동 스크리닝, Ctrl+C로 중지
 python main.py backfill --from 2026-10-26T07:00 --to 2026-10-26T10:00   # (추후 확장) 과거 구간 연속 스크리닝
 ```

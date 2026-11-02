@@ -82,7 +82,7 @@ def link_speed(source, site: dict, period: Period, schema: dict) -> dict:
         values = current.get(a["link"], [])
         speed = harmonic(values)
         ref = harmonic(reference.get(a["link"], []))
-        out["approaches"].append({"link": a["link"], "approach": approach_label(a),
+        out["approaches"].append({"link": a["link"], "approach": approach_label(a), "street": a.get("street"),
                                   "speed_kmh": None if speed is None else round(speed, 1),
                                   "samples": sum(1 for v in values if v > 0),
                                   "reference_kmh": None if ref is None else round(ref, 1),

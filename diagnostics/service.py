@@ -139,7 +139,8 @@ class DiagnosticsService:
             return None
         version = history.snapshot_version(period, baseline["version"])
         try:
-            return history.write_baseline_snapshot(self.archive, self.settings.region, baseline, period, version, approaches)
+            return history.write_baseline_snapshot(self.archive, self.settings.region, baseline, period, version, approaches,
+                                                   self.settings.rules["history"]["weeks"])
         except Exception as exc:  # noqa: BLE001 - the screening result does not depend on the archive
             log.warning("Baseline snapshot %s %s not written: %s", version, period.key, exc)
             self.store.save_audit("archive_failed", period.key, {"what": "baseline snapshot", "error": str(exc)})

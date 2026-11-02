@@ -6,8 +6,9 @@ Two separate datasets, never overwritten, kept apart from the current-result sto
         one per completed screening run: metadata, every site's category, Detector Health, traffic and
         signal abnormalities, Grey reasons, the summary counts and the complete Q1-Q3 evidence (18.3)
     baselines/{region}/{baseline_version}/{weekday}/{HHMM}.json.gz
-        the weekly baseline snapshot, one file per weekday and 30-minute slot: per site and approach the
-        usual value, 10th-90th range and number of observations for Q1, Q3A, Q3B and Q3C (18.4)
+        the weekly baseline snapshot, one file per weekday and 30-minute slot, each a production-contract
+        BaselineSnapshot: per site and approach the reference (median), 10th-90th range and number of
+        observations for Q1, Q3A, Q3B and Q3C (18.4)
 
 Dates and times in the keys are the region's local analysis day and slot start (23:30-24:00 is HHMM 2330 of
 its own day).
@@ -220,41 +221,46 @@ def write_screening_log(archive, payload: dict, run: dict, rules: dict) -> str:
 
 
 # ---------------------------------------------------------------------- 18.4 baseline snapshots
-def baseline_snapshot(baseline: dict, period: Period, version: str, approaches: list[dict]) -> dict:
-    """One weekday/slot of the weekly snapshot, per site and approach, from a built baseline (baseline.py)."""
-    trim = lambda env: {k: env.get(k) for k in ("usual", "p_low", "p_high", "n")}
+def baseline_snapshot(baseline: dict, period: Period, version: str, approaches: list[dict], region: str = "",
+                      weeks: int = 8) -> dict:
+    """One weekday/slot of the weekly snapshot as the production contract's BaselineSnapshot (methodology 18.4):
+    one BaselineValue per site metric (Q3A, Q3B) and per approach metric (Q1, Q3C), with the reference (median),
+    the 10th-90th percentile range and the number of valid observations. Extra keys (slot, reference periods,
+    skipped days, method version) are context; the contract model ignores them."""
     links = defaultdict(set)
     for a in approaches:
         links[a["site"]].add(a["link"])
-    sites = {}
+    start = period.local_start
+    where = {"weekday": period.weekday, "slot_index": start.hour * 2 + start.minute // 30}
+
+    def value(site, approach, metric, env):
+        return {"site_no": site, "approach_id": approach, **where, "metric": metric, "reference": env.get("usual"),
+                "p10": env.get("p_low"), "p90": env.get("p_high"), "n_history_obs": env.get("n", 0)}
+
+    values = []
     for site in sorted(set(links) | set(baseline["kpi"]) | set(baseline["green"])):
         kpi, green = baseline["kpi"].get(site, {}), baseline["green"].get(site, {})
-        approach = {}
+        for field, metric in (("cycle_length", "q3a_cycle_length_s"), ("cycle_stability", "q3b_cycle_stability")):
+            if field in kpi:
+                values.append(value(site, None, metric, kpi[field]))
         for link in sorted(links.get(site, set()) | set(green)):
-            row = {}
             if link in baseline["volume"]:
-                row["q1_volume_30min"] = trim(baseline["volume"][link])
+                values.append(value(site, link, "q1_volume", baseline["volume"][link]))
             if link in green:
-                row["q3c_green_share_pct"] = trim(green[link])
-            if row:
-                approach[link] = row
-        entry = {name: trim(kpi[f]) for f, name in (("cycle_length", "q3a_cycle_length"),
-                                                    ("cycle_stability", "q3b_cycle_stability")) if f in kpi}
-        if approach:
-            entry["approaches"] = approach
-        if entry:
-            sites[site] = entry
-    return {"format": BASELINE_FORMAT, "baseline_version": version, "method_version": baseline["version"],
-            "calculated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            "weekday": period.day.strftime("%A"), "slot": period.slot, "analysis_period": period.to_dict(),
+                values.append(value(site, link, "q3c_phase_service", green[link]))
+    return {"schema_version": 1, "version": version, "region": region,
+            "calculated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "baseline_weeks": weeks, "values": values,
+            "format": BASELINE_FORMAT, "method_version": baseline["version"], "weekday_name": period.day.strftime("%A"),
+            "slot": period.slot, "analysis_period": period.to_dict(),
             "reference_periods": [p["end_local"] for p in baseline["reference_periods"]],
-            "skipped_days": baseline["skipped_days"], "sites": sites}
+            "skipped_days": baseline["skipped_days"]}
 
 
 def write_baseline_snapshot(archive, region: str, baseline: dict, period: Period, version: str,
-                            approaches: list[dict]) -> str:
+                            approaches: list[dict], weeks: int = 8) -> str:
     key = baseline_key(region, version, period)
-    archive.put_new(key, gzip.compress(_json(baseline_snapshot(baseline, period, version, approaches))))
+    archive.put_new(key, gzip.compress(_json(baseline_snapshot(baseline, period, version, approaches, region, weeks))))
     return key
 
 
@@ -272,12 +278,18 @@ def screened_periods(archive, region: str, start_day, end_day) -> list[str]:
 
 def site_history(archive, region: str, site: str, start_day, end_day) -> dict:
     """How often a site was each category, over the periods that were actually screened.
-    Unscreened periods are not counted as anything (18.6); several runs of one period count once (the latest)."""
+    Unscreened periods are not counted as anything (18.6); several runs of one period count once (the latest).
+    Reads both our log and the production contract's ScreeningLog (whose category names differ slightly,
+    e.g. detector_health_issue)."""
     per_period = {}
     for key in screened_periods(archive, region, start_day, end_day):
         log = read_json(archive, key)
-        period = log["metadata"]["period"]["end_local"]
-        category = next((s["category"] for s in log["intersections"] if s["site"] == str(site)), None)
+        if "metadata" in log:
+            period = log["metadata"]["period"]["end_local"]
+            category = next((s["category"] for s in log["intersections"] if s["site"] == str(site)), None)
+        else:
+            period = log["period"]["end"][:16]                      # local time with offset in the contract
+            category = next((s["category"] for s in log["sites"] if s["site_no"] == str(site)), None)
         per_period[period] = category                                      # keys are in time order: latest run wins
     counts = Counter(c for c in per_period.values() if c)
     screened = sum(counts.values())

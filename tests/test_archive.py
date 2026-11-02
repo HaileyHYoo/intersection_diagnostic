@@ -91,14 +91,17 @@ class ArchiveTests(unittest.TestCase):
         log = archive.read_json(self.archive, self.logs()[0])
         key = log["metadata"]["baseline_snapshot"]
         self.assertEqual(key, f"baselines/AU-VIC-Melbourne/{log['metadata']['baseline_version']}/Tuesday/0800.json.gz")
-        snap = archive.read_json(self.archive, key)
-        self.assertEqual((snap["weekday"], snap["slot"]), ("Tuesday", "08:00"))
-        site = snap["sites"]["4300"]
-        self.assertEqual(set(site["q3a_cycle_length"]), {"usual", "p_low", "p_high", "n"})
-        approach = site["approaches"]["SWANN4300Q9"]
-        self.assertEqual(approach["q1_volume_30min"]["n"], 8)
-        self.assertIn("q3c_green_share_pct", approach)
-        self.assertNotIn("values", approach["q1_volume_30min"])            # no raw history in the snapshot
+        snap = S.BaselineSnapshot.model_validate(archive.read_json(self.archive, key))   # the contract's 18.4 model
+        self.assertEqual((snap.version, snap.region, snap.baseline_weeks), (log["metadata"]["baseline_version"],
+                                                                            "AU-VIC-Melbourne", 8))
+        values = {(v.site_no, v.approach_id, v.metric): v for v in snap.values}
+        self.assertEqual({(v.weekday, v.slot_index) for v in snap.values}, {(1, 16)})       # Tuesday 08:00
+        cycle = values[("4300", None, "q3a_cycle_length_s")]
+        self.assertEqual(cycle.n_history_obs, 8)
+        self.assertLessEqual(cycle.p10, cycle.reference)
+        self.assertEqual(values[("4300", "SWANN4300Q9", "q1_volume")].n_history_obs, 8)
+        self.assertIn(("4300", "SWANN4300Q9", "q3c_phase_service"), values)
+        self.assertIn(("4300", None, "q3b_cycle_stability"), values)
 
     def test_weekly_job_writes_the_snapshot(self):
         day = timewin.period_ending(END, self.settings.rules).day
@@ -116,15 +119,27 @@ class ArchiveTests(unittest.TestCase):
         self.assertTrue(svc.archive_run(view["run_id"]))
         self.assertEqual(len(self.logs()), 1)
 
-    def test_contract_path_writes_the_log(self):
+    def test_contract_path_writes_snapshot_and_log(self):
         period = timewin.period_ending(END, self.settings.rules)
-        core.run_screening(S.ScreeningInput(run_id="scr_log", region="AU-VIC-Melbourne", period=adapter.period_model(period),
-                                            baseline_version="2026-W44", sites=[]),
-                           self.source, self.settings, SQLiteStore(":memory:"), archive=self.archive)
-        log = archive.read_json(self.archive, self.logs()[0])
-        self.assertEqual(log["metadata"]["run_id"], "scr_log")
-        self.assertEqual(log["metadata"]["contract_baseline_version"], "2026-W44")
-        self.assertTrue(self.archive.get(log["metadata"]["baseline_snapshot"]))
+        started = datetime.now().astimezone()
+        result = core.run_screening(S.ScreeningInput(run_id="scr_log", region="AU-VIC-Melbourne",
+                                                     period=adapter.period_model(period), baseline_version="2026-W44",
+                                                     sites=[]), self.source, self.settings, SQLiteStore(":memory:"),
+                                    archive=self.archive)
+        self.assertEqual(self.logs(), [])                               # the host logs the COMPLETED run
+        snap = archive.read_json(self.archive, "baselines/AU-VIC-Melbourne/2026-W44/Tuesday/0800.json.gz")
+        self.assertEqual(S.BaselineSnapshot.model_validate(snap).version, "2026-W44")
+        run = S.ScreeningRun(run_id="scr_log", status=S.RunStatus.COMPLETED, started_at=started,
+                             key=S.ScreeningCacheKey(region="AU-VIC-Melbourne", period_end=result.period.end,
+                                                     baseline_version="2026-W44"), result=result)
+        key = core.write_screening_log(self.archive, run, self.settings)
+        self.assertEqual(key, "screening-logs/AU-VIC-Melbourne/2026/10/27/0800_scr_log.json")
+        core.write_screening_log(self.archive, run, self.settings)    # never overwritten, never duplicated
+        self.assertEqual(self.logs(), [key])
+        log = S.ScreeningLog.model_validate(archive.read_json(self.archive, key), context={"trusted": True})
+        self.assertEqual((log.baseline_version, log.summary.red, log.summary.total), ("2026-W44", 4, 20))
+        h = archive.site_history(self.archive, "AU-VIC-Melbourne", "4300", "2026-10-27", "2026-10-27")
+        self.assertEqual((h["screened_periods"], h["counts"]), (1, {"red": 1}))
 
     def test_site_history_counts_only_screened_periods(self):
         schedule.backfill(self.svc, "2026-10-27T08:00", END)

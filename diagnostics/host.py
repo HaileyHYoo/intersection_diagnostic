@@ -55,9 +55,29 @@ def run_diagnosis(diagnosis_input, bot=None, settings: Settings | None = None):
                               audit_store=SQLiteStore(settings.db_path))
 
 
-def run_link_speed(evidence, period, settings: Settings | None = None) -> dict:
-    """Contract entry for an Amber (or Red) click: the supplementary TomTom incoming-link speed for the site's
-    saved ScreeningSite evidence and the run's AnalysisPeriod. Display only; it never changes the result."""
+
+def run_site_report(request, run, bot=None, settings: Settings | None = None):
+    """Contract entry for an Amber or Red click: SiteReportRequest + the saved ScreeningRun -> SiteReport.
+    Red sites also get Q4/Q5 (the chatbot's LLM words them) and are kept in the archive (18.2)."""
+    from .contract import core
+    settings = settings or Settings()
+    llm = HostLLM(bot.llm) if bot is not None and getattr(bot, "llm", None) is not None else None
+    return core.run_site_report(request, run, LiveSource(settings), settings, llm,
+                                audit_store=SQLiteStore(settings.db_path),
+                                archive=history.open_archive(settings.archive_location))
+
+
+def log_screening(run, settings: Settings | None = None) -> str | None:
+    """After writing a COMPLETED ScreeningRun: its 18.3 ScreeningLog in the archive (once per run)."""
+    from .contract import core
+    settings = settings or Settings()
+    archive = history.open_archive(settings.archive_location)
+    return core.write_screening_log(archive, run, settings) if archive is not None else None
+
+
+def run_link_speed(evidence, period, settings: Settings | None = None):
+    """The supplementary TomTom incoming-link speed alone (LinkSpeedReport) for a site's saved evidence and the
+    run's AnalysisPeriod; run_site_report already includes it. Display only."""
     from .contract import core
     settings = settings or Settings()
     return core.run_link_speed(evidence, period, LiveSource(settings), settings)
