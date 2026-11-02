@@ -15,7 +15,7 @@ Each question joins a **network list** (what to check, from Neo4j) with **measur
 | **Q3B** Cycle stability | Is the cycle less stable than usual? | Intersection (`scats_site_no`) | InfluxDB `IntersectionPerfKpi` → `CycleStability` | `SiteNo` = `"S"` + `scats_site_no` | Below p10 (less stable only) |
 | **Q3C** Phase service | Is any approach getting unusual green time? | Same approach list as Q1 (EGRESS `link_id`) | InfluxDB `IntersectionPerfApproach` → `GreenShare`, `HasGreen` | `SiteNo` = `"S"` + site; `LinkId` = `link_id` | Green share outside the usual range on any approach |
 | **Q4** SCATS interpretation | What does the SCATS evidence say? (Red sites only) | — | No new data: the saved Q1 + Q3 results | — | Explains the Red result and suggests checks |
-| **Q5** TomTom confirmation | Do road users see the same problem? (Red sites only) | **TomTom mapping file** (from the chatbot, not Neo4j): per site the junction UUID and TomTom `ApproachId` / `ExitId` → Neo4j EGRESS `link_id` and travel direction | **Delay:** InfluxDB `IntersectionTurnKpi` → `ApproachDelaySec`<br>**Queue:** TomTom Junction Analytics API → `queueLengthMeters` (not in InfluxDB) | Delay: `SiteNo` = `"S"` + site, `ApproachId` → `link_id` via the mapping<br>Queue: junction UUID, approach → `link_id` via the mapping | *Agree* if a flagged approach has the largest delay or longest queue |
+| **Q5** TomTom confirmation | Do road users see the same problem? (Red sites only) | **TomTom mapping file** (from the chatbot, not Neo4j): per site the junction UUID and TomTom `ApproachId` / `ExitId` → Neo4j EGRESS `link_id` and travel direction | **Delay:** InfluxDB `IntersectionTurnKpi` → `ControlDelaySec`<br>**Queue:** TomTom Junction Analytics API → `queueLengthMeters` (not in InfluxDB) | Delay: `SiteNo` = `"S"` + site, `ApproachId` → `link_id` via the mapping<br>Queue: junction UUID, approach → `link_id` via the mapping | *Agree* if a flagged approach has the largest delay or longest queue |
 
 - **Usual range:** the same weekday and 30-minute slot in the previous 8 weeks (≥ 5 valid weeks; holidays excluded).
 - **Every InfluxDB and Neo4j query** is also filtered by region (`Region` tag / `Region {tag}`), because site numbers repeat across cities.
@@ -109,7 +109,8 @@ All three measures come from `scats-aggregation`, site tag `SiteNo` in `S` forma
 | Data | Source | Used for |
 |---|---|---|
 | Approach ↔ link mapping | File `data/tomtom_neo4j_links_AU-VIC-Melbourne_final.json` (from the chatbot) | TomTom `ApproachId` → Neo4j EGRESS `link_id`, junction UUID, travel directions of approaches and exits |
-| Approach delay | `scats-aggregation` / `IntersectionTurnKpi`, filter `MinutesPast = 15`, `Provider = TomTom`; tags `SiteNo` (`S…`), `ApproachId`, `ExitId` | `ApproachDelaySec`: mean per approach over the period → **largest-delay approach** |
+| Control delay (ranked) | `scats-aggregation` / `IntersectionTurnKpi`, filter `MinutesPast = 15`, `Provider = TomTom`; tags `SiteNo` (`S…`), `ApproachId`, `ExitId` | `ControlDelaySec`: plain mean of the stored 15-minute turn records per approach over the period, negative = 0 (as the chatbot's `los.py` / `delay_policy.py`) → **largest-delay approach** (`tomtom.delay_metric: "control_delay"`) |
+| Approach delay (reported) | same | `ApproachDelaySec`: mean per approach, shown beside control delay but not ranked |
 | Movement delay, stops | same | `ControlDelaySec`, `MultiStopRate`, weighted by `SampleCount`, per movement (left / through / right from the mapping directions) |
 | Coverage | same | Quarter-hours observed per approach; ≥ 2 (`tomtom.adequate_quarters`) = adequate |
 | Site delay | `scats-aggregation` / `IntersectionKpi`, `Provider = TomTom` | `ControlDelaySec` for the whole junction (context) |

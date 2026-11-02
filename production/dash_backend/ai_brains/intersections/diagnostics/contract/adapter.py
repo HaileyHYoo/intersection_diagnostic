@@ -305,7 +305,7 @@ def q5_output(d002: dict, period: Period, rules: dict, template: S.TemplateRef |
                           missing_approach_ids=ev["missing_approach_links"], narrative=d002["answer"]["road_user_impact"],
                           **optional(S.Q5Output, generated_by=d002["generated_by"], llm_rejected=d002["rejected"]))
     ident = lambda a: a["link"] or f"tomtom:{a['tomtom_approach']}"
-    approaches = [S.TomTomApproachMetrics(approach_id=ident(a), approach_name=a["approach"], delay_s=a["approach_delay_s"],
+    approaches = [S.TomTomApproachMetrics(approach_id=ident(a), approach_name=a["approach"], delay_s=a["delay_s"],
                                           control_delay_s=a["control_delay_s"], multi_stop_rate=a["multi_stop_rate"],
                                           queue_length_m=a["queue_mean_m"] if a["queue_adequate"] else None,
                                           is_observed=a["adequate"]) for a in ev["approaches"]]

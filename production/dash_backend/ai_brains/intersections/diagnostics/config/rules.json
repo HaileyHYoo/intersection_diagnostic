@@ -57,6 +57,10 @@
     "api_enabled": true,
     "adequate_quarters": 2,
     "queue_min_minutes": 15,
+    "delay_metric": "control_delay",
+    "delay_mean": "plain",
+    "negative_delay": "zero",
+    "delay_note": "Decision (1 Nov 2026): Q5 ranks approaches by TomTom control delay (IntersectionTurnKpi ControlDelaySec); approach delay (ApproachDelaySec) is still reported. Per approach and movement it is the plain mean of the stored 15-minute turn records, and a negative delay counts as 0, as in the chatbot's tomtom/los.py and delay_policy.py. Options: delay_metric \"approach_delay\"; delay_mean \"sample_weighted\"; negative_delay \"keep\".",
     "note": "Methodology section 13: Q5 reports approach queue length and the largest queue from the TomTom Junction Analytics queue history (API archive). Needs TOMTOM_API_KEY; without it, or if the call fails, the queue is reported as unavailable and the rest of Q5 still runs."
   },
   "contract": {

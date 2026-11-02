@@ -34,6 +34,8 @@ UNAVAILABLE = "TomTom confirmation unavailable for this intersection or analysis
 AGREE, DISAGREE, NO_COVERAGE = "agreement", "disagreement", "insufficient coverage"
 
 
+DELAY_FIELDS = {"approach_delay", "control_delay"}
+
 def scats_approaches(site: dict) -> dict[str, dict]:
     """{link: {approach, findings}} for the approaches the screening flagged, Q1 first."""
     out = {}
@@ -83,19 +85,30 @@ def measure(source, site: dict, period: Period, rules: dict) -> dict:
 
     names = {a["link"]: a for a in site["q1"]["approaches"]}
     names.update({a["link"]: a for a in site["q3"]["components"]["phase_service"]["approaches"]})
-    acc = defaultdict(lambda: {"quarters": set(), "delay": defaultdict(list), "weighted": defaultdict(list), "movements": {}})
+    tt = rules["tomtom"]
+    metric = tt.get("delay_metric", "control_delay")
+    if tt.get("negative_delay", "zero") == "zero":                     # the chatbot's delay_policy: faster than
+        aligned = {k: ({t: max(v, 0.0) for t, v in s.items()} if k[2] in DELAY_FIELDS else s)   # free flow = no delay
+                   for k, s in aligned.items()}
+    acc = defaultdict(lambda: {"quarters": defaultdict(set), "delay": defaultdict(list), "control": [],
+                               "weighted": defaultdict(list), "movements": {}})
     for (approach, exit_id, field), s in aligned.items():
         a = acc[approach]
-        a["quarters"].update(s)
+        a["quarters"][field].update(s)
         if field == "approach_delay":
             for t, v in s.items():
                 a["delay"][t].append(v)
-        elif field in ("control_delay", "multi_stop_rate"):
+        elif field == "control_delay":
+            # The chatbot's approach and movement control delay (tomtom/los.py): the plain mean of the stored
+            # 15-minute turn records; "sample_weighted" weights them by SampleCount instead.
+            weights = aligned.get((approach, exit_id, "sample_count"), {})
+            pairs = [(v, (weights.get(t, 0) or 0) if tt.get("delay_mean") == "sample_weighted" else 1) for t, v in s.items()]
+            a["control"] += pairs
+            if s:
+                a["movements"].setdefault(exit_id, {})["control_delay_s"] = r1(_weighted(pairs))
+        elif field == "multi_stop_rate":
             weights = aligned.get((approach, exit_id, "sample_count"), {})
             a["weighted"][field] += [(v, weights.get(t, 0) or 0) for t, v in s.items()]
-            mv = a["movements"].setdefault(exit_id, {})
-            if field == "control_delay" and s:
-                mv["control_delay_s"] = r1(_weighted([(v, weights.get(t, 0) or 0) for t, v in s.items()]))
 
     queue, queue_status = _queue(source, site["site"], period, rules)
     min_minutes = rules["tomtom"]["queue_min_minutes"]
@@ -112,36 +125,39 @@ def measure(source, site: dict, period: Period, rules: dict) -> dict:
             turn = movement(info.get("direction"), exits.get(exit_id, {}).get("direction"))
             movements.append({"exit": exit_id, "movement": turn or "unknown", **mv})
         mrate = _weighted(a["weighted"].get("multi_stop_rate", []))
+        approach_delay = r1(mean(delays)) if delays else None
+        control_delay = r1(_weighted(a["control"]))
+        quarters = len(a["quarters"][metric])
         out.append({"tomtom_approach": approach_id, "link": link, "mapped": link is not None,
                     "approach": approach_label(base) if link else f"TomTom approach {approach_id} (not mapped)",
-                    "approach_delay_s": r1(mean(delays)) if delays else None,
-                    "control_delay_s": r1(_weighted(a["weighted"].get("control_delay", []))),
+                    "delay_s": control_delay if metric == "control_delay" else approach_delay,
+                    "approach_delay_s": approach_delay, "control_delay_s": control_delay,
                     "multi_stop_rate": None if mrate is None else round(mrate, 3),
-                    "quarters_observed": len(a["quarters"]),
-                    "adequate": len(a["quarters"]) >= rules["tomtom"]["adequate_quarters"],
+                    "quarters_observed": quarters,
+                    "adequate": quarters >= tt["adequate_quarters"],
                     "queue_mean_m": r1(q["mean_m"]) if q else None, "queue_max_m": r1(q["max_m"]) if q else None,
                     "queue_minutes": q["minutes"] if q else 0,
                     "queue_adequate": bool(q) and q["minutes"] >= min_minutes,
                     "movements": movements})
-    out.sort(key=lambda r: -(r["approach_delay_s"] if r["approach_delay_s"] is not None else -1))
+    out.sort(key=lambda r: -(r["delay_s"] if r["delay_s"] is not None else -1))
     site_rows = source.tomtom_site_kpi(site["site"], period.start, period.end)
-    site_delay = [float(r["value"]) for r in site_rows if r["field"] == "control_delay"]
-    return {"approaches": out, "mapping_size": len(approaches), "queue_status": queue_status,
+    site_delay = [max(float(r["value"]), 0.0) for r in site_rows if r["field"] == "control_delay"]
+    return {"approaches": out, "mapping_size": len(approaches), "queue_status": queue_status, "delay_metric": metric,
             "site_control_delay_s": r1(mean(site_delay)) if site_delay else None}
 
 
 def compare(measured: dict, flagged: dict[str, dict]) -> dict:
     rows = measured["approaches"]
-    delay_rank = [a for a in rows if a["adequate"] and a["approach_delay_s"] is not None and a["link"]]
+    delay_rank = [a for a in rows if a["adequate"] and a["delay_s"] is not None and a["link"]]
     queue_rank = sorted((a for a in rows if a["queue_adequate"] and a["link"]), key=lambda a: -a["queue_mean_m"])
-    top_delay = max(delay_rank, key=lambda a: a["approach_delay_s"], default=None)
+    top_delay = max(delay_rank, key=lambda a: a["delay_s"], default=None)
     top_queue = queue_rank[0] if queue_rank else None
     queue_known = measured["queue_status"] == "available"
     by_link = {a["link"]: a for a in rows if a["link"]}
     per_approach = []
     for link, f in flagged.items():
         a = by_link.get(link)
-        observed = bool(a and a["adequate"] and a["approach_delay_s"] is not None)
+        observed = bool(a and a["adequate"] and a["delay_s"] is not None)
         largest_delay = bool(top_delay and top_delay["link"] == link) if observed else None
         largest_queue = (bool(top_queue and top_queue["link"] == link) if a and a["queue_adequate"] else None) if queue_known else None
         if largest_delay or largest_queue:
@@ -156,7 +172,8 @@ def compare(measured: dict, flagged: dict[str, dict]) -> dict:
     overall = AGREE if AGREE in verdicts else DISAGREE if DISAGREE in verdicts else NO_COVERAGE
     return {"agreement": overall, "per_approach": per_approach,
             "greatest_delay": {"approach": top_delay["approach"], "link": top_delay["link"],
-                               "approach_delay_s": top_delay["approach_delay_s"]} if top_delay else None,
+                               "metric": measured.get("delay_metric", "control_delay"),
+                               "delay_s": top_delay["delay_s"]} if top_delay else None,
             "longest_queue": {"approach": top_queue["approach"], "link": top_queue["link"],
                               "queue_mean_m": top_queue["queue_mean_m"]} if top_queue else None,
             "uncovered_scats_approaches": [p["approach"] for p in per_approach if not p["observed"]]}
@@ -169,8 +186,9 @@ def written(ev: dict) -> dict:
     lines = []
     top = comp["greatest_delay"]
     if top:
-        lines.append(f"The greatest TomTom approach delay among the adequately observed approaches is on {top['approach']} "
-                     f"({top['approach_delay_s']:.1f} s).")
+        name = "control delay" if top["metric"] == "control_delay" else "approach delay"
+        lines.append(f"The greatest TomTom {name} among the adequately observed approaches is on {top['approach']} "
+                     f"({top['delay_s']:.1f} s).")
     longest = comp["longest_queue"]
     if longest:
         lines.append(f"The longest mean queue is on {longest['approach']} ({longest['queue_mean_m']:.1f} m).")
@@ -209,11 +227,11 @@ def run(source, site: dict, period: Period, rules: dict, llm=None) -> dict:
         measured = {"approaches": [], "mapping_size": 0, "site_control_delay_s": None, "queue_status": "unavailable"}
         error = f"{type(exc).__name__}: {exc}"
     rows = measured["approaches"]
-    available = any(a["approach_delay_s"] is not None for a in rows)
+    available = any(a["delay_s"] is not None for a in rows)
     notes = []
     if not measured["mapping_size"]:
         notes.append("the site has no TomTom approach mapping")
-    partial = [a["approach"] for a in rows if a["approach_delay_s"] is not None and not a["adequate"]]
+    partial = [a["approach"] for a in rows if a["delay_s"] is not None and not a["adequate"]]
     if partial:
         notes.append("delay observed in only part of the period: " + ", ".join(partial))
     partial_queue = [a["approach"] for a in rows if a["queue_minutes"] and not a["queue_adequate"]]

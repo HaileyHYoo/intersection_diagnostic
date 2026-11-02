@@ -139,8 +139,11 @@ Every category is returned to the host, and the UI decides what to draw. A click
   - It is **on by default**, as the methodology requires (`tomtom.api_enabled`), and needs `TOMTOM_API_KEY`.
   - Without a key, when the call fails, or for a site without a TomTom junction, the queue is reported as unavailable with the reason, never estimated. "Has the largest queue" is then unknown (None), not "no". The rest of Q5 and Q4 still run.
 - **Metrics per approach.**
-  - Approach delay: mean `ApproachDelaySec`
-  - Control delay and multi-stop rate: weighted by `SampleCount`
+  - **Delay used for the largest-delay approach: control delay (decision, 1 Nov 2026,** `tomtom.delay_metric`**).** The methodology lists approach delay and control delay among the Q5 measures (§13). Control delay is `ControlDelaySec` of `IntersectionTurnKpi`: per approach and per movement, the plain mean of the stored 15-minute turn records. This is the same calculation as the chatbot's `tomtom/los.py`, which the methodology asks Q5 to reuse (`tomtom.delay_mean: "plain"`; `"sample_weighted"` weights by `SampleCount`).
+  - Approach delay (mean `ApproachDelaySec`) is still reported beside it. `delay_metric: "approach_delay"` ranks by it instead.
+  - A negative delay (faster than free flow) counts as 0, as in the chatbot's `delay_policy.py` (`tomtom.negative_delay`).
+  - Multi-stop rate: weighted by `SampleCount`
+  - Contract: `TomTomApproachMetrics.delay_s` is the ranked delay (control delay); `control_delay_s` is also filled.
   - Movements: named left / through / right / u_turn from the mapping's travel directions (Melbourne drives on the left)
   - Queue: mean and maximum of the per-minute queue in the period
   - An approach's delay is *adequately observed* when it has records in both quarter-hours, and its queue when at least `tomtom.queue_min_minutes` (15) minutes have a value. Only adequately observed approaches are ranked.
