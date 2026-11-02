@@ -196,9 +196,11 @@ def cmd_examples(args):
 
 
 def cmd_queue_probe(args):
-    """Tries the queue-archive request variants for one site and period and shows which return rows, so the
-    TOMTOM_QUEUE_* settings can be set from evidence (as the chatbot's probe_queue_archive.py)."""
+    """Tries the queue-archive request variants for one site and period and shows which return queue rows,
+    so the TOMTOM_QUEUE_* settings are set from evidence (as the chatbot's probe_queue_archive.py):
+    the daily archive (from/to) and the hourly archive (day/hour[/quarterHour], archiveType LIVE/HISTORICAL)."""
     import urllib.parse
+    import zipfile
     from datetime import timedelta
     from diagnostics.settings import Settings
     from diagnostics.sources.base import DataUnavailable
@@ -213,24 +215,39 @@ def cmd_queue_probe(args):
         print(f"Site {args.site} has no TomTom junction in the mapping file.")
         return 1
     spec = settings.schema["tomtom_queue"]
-    url = spec["url_template"].replace("{junction_uuid}", urllib.parse.quote(uuid, safe=""))
+    daily = spec["url_template"].replace("{junction_uuid}", urllib.parse.quote(uuid, safe=""))
+    hourly = daily.replace("/data/flat/daily", "/data/flat/hourly")
+
+    def attempt(url, params):
+        try:
+            blob = download(url, params)
+        except DataUnavailable as exc:
+            return str(exc)
+        try:
+            rows = parse_archive(blob, spec)
+        except (zipfile.BadZipFile, DataUnavailable) as exc:
+            text = blob[:160].decode("utf-8", "replace").replace("\n", " ")
+            return f"returned {len(blob)} bytes, not a queue archive ({type(exc).__name__}): {text}"
+        inside = [r for r in rows if period.start < r["time"] <= period.end]
+        span = f"{min(r['time'] for r in rows):%m-%d %H:%M}..{max(r['time'] for r in rows):%m-%d %H:%M} UTC" if rows else "-"
+        return f"OK: {len(rows)} rows ({span}), {len(inside)} in the period"
+
     day = period.day
     print(f"Site {args.site}, junction {uuid}, period {period.label()} ({period.start:%Y-%m-%d %H:%M}-{period.end:%H:%M} UTC)")
-    print(f"{'from':>10} {'to':>10}  {'extra parameters':28} result")
-    for first, last in ((day, day), (day, day + timedelta(days=1)), (day - timedelta(days=1), day)):
-        for extra in ({}, {"archiveType": "HISTORICAL"}, {"archiveType": "LIVE"}):
-            params = {"from": first.isoformat(), "to": last.isoformat(), **extra}
-            try:
-                rows = parse_archive(download(url, params), spec)
-            except DataUnavailable as exc:
-                result = str(exc)
-            else:
-                inside = [r for r in rows if period.start < r["time"] <= period.end]
-                span = f"{min(r['time'] for r in rows):%m-%d %H:%M}..{max(r['time'] for r in rows):%m-%d %H:%M} UTC" if rows else "-"
-                result = f"OK: {len(rows)} rows ({span}), {len(inside)} in the period"
-            print(f"{first.isoformat():>10} {last.isoformat():>10}  {str(extra or '-'):28} {result}")
-    print("Put the parameters of a variant with rows in the period into .env: TOMTOM_QUEUE_HISTORIC_PARAMS for periods "
-          "older than 24 hours, TOMTOM_QUEUE_RECENT_PARAMS for the last 24 hours.")
+    print("\nDaily archive (.../data/flat/daily)")
+    for first, last in ((day, day), (day - timedelta(days=1), day)):
+        params = {"from": first.isoformat(), "to": last.isoformat()}
+        print(f"  {params}  ->  {attempt(daily, params)}")
+    print("\nHourly archive (.../data/flat/hourly)")
+    utc, local = period.start, period.local_start
+    for zone, t in (("UTC", utc), ("Melbourne", local)):
+        for kind in ("LIVE", "HISTORICAL"):
+            for quarter in (None, t.minute // 15):
+                params = {"day": t.date().isoformat(), "hour": t.hour, "archiveType": kind}
+                if quarter is not None:
+                    params["quarterHour"] = quarter
+                print(f"  {zone:9} {params}  ->  {attempt(hourly, params)}")
+    print("\nSend this output back; the working variant becomes the setting for recent and older periods.")
 
 
 def cmd_contract_check(args):

@@ -77,7 +77,14 @@ def download(url: str, params: dict, timeout: float = 120) -> bytes:
             return response.read()
     except (urllib.error.URLError, OSError) as exc:
         code = getattr(exc, "code", None)
-        raise DataUnavailable(f"TomTom queue archive request failed (HTTP {code})" if code else
+        detail = ""
+        if code is not None and hasattr(exc, "read"):
+            try:                                                 # TomTom explains a rejection in the body
+                body = exc.read()[:300].decode("utf-8", "replace")
+                detail = ": " + " ".join(body.replace(query.get("key", "\0"), "***").split())[:200] if body.strip() else ""
+            except Exception:  # noqa: BLE001
+                detail = ""
+        raise DataUnavailable(f"TomTom queue archive request failed (HTTP {code}{detail})" if code else
                               "TomTom queue archive request failed (network)") from None
 
 
