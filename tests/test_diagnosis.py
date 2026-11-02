@@ -87,8 +87,30 @@ class DiagnoseTests(unittest.TestCase):
 
     def test_queue_is_part_of_the_tomtom_section(self):
         section = self.section(self.report("4300"), 3)
-        self.assertIn("longest mean queue is on Swanston Street [N]", section["text"])
+        self.assertIn("and the longest mean queue (", section["text"])
+        self.assertIn("are both on Swanston Street [N]", section["text"])
         self.assertIn("Mean queue (m)", section["tables"][0]["columns"])
+
+    def test_tomtom_answer_names_each_scats_approach(self):
+        agree = self.section(self.report("4300"), 3)["text"]
+        self.assertIn("Swanston Street [N], identified by the SCATS screening (Q1 high; Q3C abnormal_low), "
+                      "has the greatest delay and the longest queue.", agree)
+        mismatch = self.section(self.report("4303"), 3)["text"]
+        self.assertIn("has neither the greatest delay nor the longest queue.", mismatch)
+        self.assertIn("do not confirm", mismatch)
+
+    def test_per_approach_sentences(self):
+        from diagnostics.templates import d002
+        p = lambda **kw: {"approach": "A St [N]", "scats_findings": ["Q1 low"], **kw}
+        s = d002._per_approach_sentence
+        self.assertTrue(s(p(agreement=d002.AGREE, has_largest_delay=True, has_largest_queue=False))
+                        .endswith("has the greatest delay but not the longest queue."))
+        self.assertTrue(s(p(agreement=d002.AGREE, has_largest_delay=False, has_largest_queue=True))
+                        .endswith("has the longest queue but not the greatest delay."))
+        self.assertTrue(s(p(agreement=d002.DISAGREE, has_largest_delay=False, has_largest_queue=None))
+                        .endswith("does not have the greatest delay (queue not known)."))
+        self.assertEqual(s(p(agreement=d002.NO_COVERAGE, has_largest_delay=None, has_largest_queue=None)),
+                         "A St [N], identified by the SCATS screening, has no adequate TomTom coverage in this period.")
 
     def test_other_categories_show_evidence_only(self):
         for site in ("4309", "4318", "4321", "4345"):

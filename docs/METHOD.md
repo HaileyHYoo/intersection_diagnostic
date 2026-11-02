@@ -148,6 +148,7 @@ Every category is returned to the host, and the UI decides what to draw. A click
   - Queue: mean and maximum of the per-minute queue in the period
   - An approach's delay is *adequately observed* when it has records in both quarter-hours, and its queue when at least `tomtom.queue_min_minutes` (15) minutes have a value. Only adequately observed approaches are ranked.
 - **Matching.** TomTom approaches are matched to EGRESS links with the chatbot's verified mapping file (`data/tomtom_neo4j_links_AU-VIC-Melbourne_final.json`), which also gives the junction UUID for the queue archive.
+- **Answer text (code-written).** Where the greatest delay and the longest queue are; then one sentence per SCATS-identified approach (Q1 and Q3C findings) saying whether it has the greatest delay, the longest queue, neither, or no adequate coverage; then the conclusion. A mismatch is always stated, as methodology §13 requires.
 - **Agreement per SCATS-identified approach (decided by code).**
 
   | Result | When |
@@ -260,6 +261,7 @@ The following optional contract fields have been proposed and are not in the Nov
 - **TomTom mapping.** Q5 uses the same approach ↔ link mapping file as the production TomTom layer (identical file, checked by SHA-256 on 2 Nov 2026). A site that is not in it (e.g. 177) has no TomTom confirmation in production either.
 - **Q3C history (live data).** At site 994 every reference week before 23 Oct 2026 has `HasGreen = 0` on every approach while the cycle runs normally, so Q3C has one usable week. `inspect --history` now shows the GreenShare stored with `HasGreen = 0`, to tell whether HasGreen was not filled before that date (a data-pipeline question for Zay) or whether the records are empty.
 - **Link speed.** Whether an existing historical reference speed exists (bucket, measurement, field); `link_speed_reference` is ready for it.
+- **For the methodology owner:** Q5 ranks the largest delay by **control delay** (decision, 1 Nov 2026), while §13 step 3 says "approach delay, largest delay"; both are reported, and `tomtom.delay_metric` switches back.
 - **For the methodology owner:** the Q3 case of one abnormal, one normal and one not-assessable measure (§6).
 - **Template IDs.** D002's registry ID (`ID_Q5_TOMTOM_CONFIRMATION`) is a placeholder until confirmed.
 - **Outside this repository:** the chatbot's `tomtom/engine.py::scats_volume_hours()` groups 15-minute records by their stamp's clock hour. With end labelling, this shifts every hour by 15 minutes (00:45–01:45 instead of 01:00–02:00). It should be fixed in the Chatbot repository.

@@ -184,29 +184,47 @@ def compare(measured: dict, flagged: dict[str, dict]) -> dict:
             "uncovered_scats_approaches": [p["approach"] for p in per_approach if not p["observed"]]}
 
 
+def _per_approach_sentence(p: dict) -> str:
+    """One SCATS-identified approach against the TomTom ranking (methodology 13: report any mismatch)."""
+    who = f"{p['approach']}, identified by the SCATS screening ({'; '.join(p['scats_findings'])}),"
+    if p["agreement"] == NO_COVERAGE:
+        return f"{p['approach']}, identified by the SCATS screening, has no adequate TomTom coverage in this period."
+    delay, queue = p["has_largest_delay"], p["has_largest_queue"]
+    if delay and queue:
+        return f"{who} has the greatest delay and the longest queue."
+    if delay:
+        return f"{who} has the greatest delay" + (" but not the longest queue." if queue is False else ".")
+    if queue:
+        return f"{who} has the longest queue but not the greatest delay."
+    if queue is None:
+        return f"{who} does not have the greatest delay (queue not known)."
+    return f"{who} has neither the greatest delay nor the longest queue."
+
+
 def written(ev: dict) -> dict:
     if not ev["available"]:
         return {"road_user_impact": UNAVAILABLE, "agreement": NO_COVERAGE, "coverage": ev["coverage_note"]}
     comp = ev["comparison"]
     lines = []
-    top = comp["greatest_delay"]
-    if top:
-        name = "control delay" if top["metric"] == "control_delay" else "approach delay"
-        lines.append(f"The greatest TomTom {name} among the adequately observed approaches is on {top['approach']} "
-                     f"({top['delay_s']:.1f} s).")
-    longest = comp["longest_queue"]
-    if longest:
-        lines.append(f"The longest mean queue is on {longest['approach']} ({longest['queue_mean_m']:.1f} m).")
-    flagged = ", ".join(v["approach"] for v in ev["scats_approaches"].values()) or "none"
-    if comp["agreement"] == AGREE:
-        lines.append(f"This corresponds with an approach identified by the SCATS screening ({flagged}), which supports a "
-                     "road-user impact on that approach without establishing its cause.")
-    elif comp["agreement"] == DISAGREE:
-        lines.append(f"The SCATS screening identified {flagged}; the greatest delay"
-                     + (" and the longest queue are" if longest else " is") + " on a different approach, so the TomTom data "
-                     "do not confirm a road-user impact on the SCATS-identified approach.")
+    top, longest = comp["greatest_delay"], comp["longest_queue"]
+    name = "control delay" if top and top["metric"] == "control_delay" else "approach delay"
+    if top and longest and top["link"] == longest["link"]:
+        lines.append(f"The greatest TomTom {name} ({top['delay_s']:.1f} s) and the longest mean queue "
+                     f"({longest['queue_mean_m']:.1f} m) among the adequately observed approaches are both on {top['approach']}.")
     else:
-        lines.append(f"The SCATS-identified approach(es) ({flagged}) are not adequately covered by TomTom for this period, "
+        if top:
+            lines.append(f"The greatest TomTom {name} among the adequately observed approaches is on {top['approach']} "
+                         f"({top['delay_s']:.1f} s).")
+        if longest:
+            lines.append(f"The longest mean queue is on {longest['approach']} ({longest['queue_mean_m']:.1f} m).")
+    lines += [_per_approach_sentence(p) for p in comp["per_approach"]]
+    agreeing = [p["approach"] for p in comp["per_approach"] if p["agreement"] == AGREE]
+    if comp["agreement"] == AGREE:
+        lines.append(f"This supports a road-user impact on {', '.join(agreeing)} without establishing its cause.")
+    elif comp["agreement"] == DISAGREE:
+        lines.append("The TomTom data do not confirm a road-user impact on the SCATS-identified approaches.")
+    else:
+        lines.append("The SCATS-identified approaches are not adequately covered by TomTom for this period, "
                      "so the comparison is incomplete.")
     lines.append("Highest among the observed approaches does not mean historically abnormal delay.")
     if ev["queue"] != "available":
