@@ -111,7 +111,7 @@ All three measures come from `scats-aggregation`, site tag `SiteNo` in `S` forma
 | Approach ↔ link mapping | File `data/tomtom_neo4j_links_AU-VIC-Melbourne_final.json` (from the chatbot) | TomTom `ApproachId` → Neo4j EGRESS `link_id`, junction UUID, travel directions of approaches and exits |
 | Control delay (ranked) | `scats-aggregation` / `IntersectionTurnKpi`, filter `MinutesPast = 15`, `Provider = TomTom`; tags `SiteNo` (`S…`), `ApproachId`, `ExitId` | `ControlDelaySec`: plain mean of the stored 15-minute turn records per approach over the period, negative = 0 (as the chatbot's `los.py` / `delay_policy.py`) → **largest-delay approach** (`tomtom.delay_metric: "control_delay"`) |
 | Approach delay (reported) | same | `ApproachDelaySec`: mean per approach, shown beside control delay but not ranked |
-| Movement delay, stops | same | `ControlDelaySec`, `MultiStopRate`, weighted by `SampleCount`, per movement (left / through / right from the mapping directions) |
+| Movement delay, stops | same | Per movement (left / through / right from the mapping directions): `ControlDelaySec` plain mean (negative = 0); `MultiStopRate` weighted by `SampleCount` |
 | Coverage | same | Quarter-hours observed per approach; ≥ 2 (`tomtom.adequate_quarters`) = adequate |
 | Site delay | `scats-aggregation` / `IntersectionKpi`, `Provider = TomTom` | `ControlDelaySec` for the whole junction (context) |
 | Queue length | TomTom Junction Analytics archive API (`.../archive/{junction_uuid}/data/flat/daily`, `TOMTOM_API_KEY`, stamps in UTC) | Per-minute `queueLengthMeters` per approach within the period: mean and max; ≥ 15 minutes (`tomtom.queue_min_minutes`) = adequate → **longest-queue approach** |
