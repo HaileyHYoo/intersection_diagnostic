@@ -91,6 +91,17 @@ class ExamplesTests(unittest.TestCase):
         self.assertIn("Agreement with SCATS findings: disagreement", text)       # and one that does not
         self.assertIn("Supplementary: TomTom incoming-link speed", text)
         self.assertIn("#### 1. Diagnosis", text)
+        self.assertIn("Report wording: code only (no LLM configured)", text)
+
+        class Failing:
+            model = "test-model"
+
+            def complete(self, *a, **k):
+                raise RuntimeError("no access")
+        svc.llm = Failing()
+        with_llm = examples.build(svc, run_id, red=1)
+        self.assertIn("Report wording: LLM (test-model)", with_llm)
+        self.assertIn("LLM answer not used (code wording shown) - D001: LLM call failed (RuntimeError)", with_llm)
         page = examples.to_html(text)
         self.assertIn("<table>", page)
         self.assertNotIn("**", page)

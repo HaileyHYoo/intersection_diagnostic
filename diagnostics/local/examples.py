@@ -90,13 +90,19 @@ def build(svc, run_id: str, red: int = 2, sites: list[str] | None = None, tries:
     if p.get("notes"):
         lines += [f"- {n}" for n in p["notes"]] + [""]
 
+    lines += [f"- Report wording: {'LLM (' + str(getattr(svc.llm, 'model', '') or 'host client') + '), checked against the evidence' if svc.llm else 'code only (no LLM configured)'}",
+              ""]
     lines += ["## Red - Needs Attention (click: Q4 + Q5 report)", ""]
     reds = pick("red")
     if tomtom_sites is not None:                              # sites with a TomTom mapping first
         reds = sorted(reds, key=lambda s: s["site"] not in tomtom_sites)
     for r in _pick_red(svc, run_id, reds, red, tries):
         md = r["report"]["markdown"].replace("\n## ", "\n#### ")
-        lines += ["### " + md[2:] if md.startswith("# ") else md, "", "---", ""]
+        lines += ["### " + md[2:] if md.startswith("# ") else md, ""]
+        rejected = [f"{t['template_id']}: {t['rejected']}" for t in (r.get("templates") or {}).values() if t.get("rejected")]
+        if rejected:
+            lines += [f"- LLM answer not used (code wording shown) - {x}" for x in rejected] + [""]
+        lines += ["---", ""]
     if not reds:
         lines += ["No Red site in this period.", ""]
 
