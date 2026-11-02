@@ -189,6 +189,21 @@ class LLMGuardTests(unittest.TestCase):
         self.assertEqual(_values({"current": 105.9, "usual": 86.5, "p_low": 77.3, "p_high": 99.7}),
                          ["105.9", "86.5", "77.3-99.7"])
 
+    def test_d001_evidence_keeps_the_decimals_of_the_table(self):
+        from diagnostics.templates import d001
+        site = {"site": "1", "name": "x", "label": "Red", "q1": {"status": "ABNORMAL", "approaches": []},
+                "q3": {"status": "ABNORMAL", "abnormal_count": 2, "components": {
+                    "cycle_length": {"status": "NORMAL", "current": 140.5, "usual": 137.4, "p_low": 132.7, "p_high": 140.9,
+                                     "pct_difference": 2.3, "direction": None},
+                    "cycle_stability": {"status": "ABNORMAL", "current": 67.56, "usual": 73.1, "p_low": 67.63,
+                                        "p_high": 73.46, "pct_difference": -7.6, "direction": "POORER"},
+                    "phase_service": {"status": "NORMAL", "approaches": []}}}}
+        ev = d001.evidence(site, {"local": "p"})
+        self.assertEqual((ev["signal"]["cycle_stability"]["current"], ev["signal"]["cycle_stability"]["normal_range"]),
+                         (67.56, [67.63, 73.46]))
+        self.assertIn("Cycle Stability: 67.56 against a usual 73.10 (normal range 67.63-73.46) - abnormal.",
+                      d001.written(ev)["supporting_evidence"])
+
     def test_numbers_are_compared_by_value(self):
         from diagnostics import llm
         allowed = llm.allowed_numbers({"stability": 0.0, "period": "Fri 30 Oct 2026"})

@@ -19,6 +19,17 @@ def r1(x):
     return None if x is None else round(float(x), 1)
 
 
+def decimals(row: dict) -> int:
+    """1 decimal, or more when the current value rounds onto a range bound it is not equal to (e.g. 67.56 against a
+    10th percentile of 67.63 would both read 67.6 and look like a value on the range)."""
+    current = row.get("current")
+    for d in (1, 2, 3):
+        if current is None or not any(b is not None and b != current and round(b, d) == round(current, d)
+                                      for b in (row.get("p_low"), row.get("p_high"))):
+            return d
+    return 3
+
+
 def approach_label(row: dict) -> str:
     street, bound = row.get("street"), row.get("bound")
     if street and bound:
@@ -39,8 +50,10 @@ def evidence(site: dict, period: dict) -> dict:
                for a in comps["phase_service"]["approaches"] if a["status"] == ABNORMAL]
 
     def measure(c, normal_outside: str):
-        out = {"status": c["status"], "current": r1(c["current"]), "usual": r1(c["usual"]),
-               "normal_range": [r1(c["p_low"]), r1(c["p_high"])], "pct_difference": r1(c["pct_difference"]),
+        d = decimals(c)
+        rd = lambda x: None if x is None else round(float(x), d)
+        out = {"status": c["status"], "current": rd(c["current"]), "usual": rd(c["usual"]),
+               "normal_range": [rd(c["p_low"]), rd(c["p_high"])], "pct_difference": r1(c["pct_difference"]), "decimals": d,
                "direction": c["direction"], "reason": c.get("reason"), "position": position(c)}
         if c["status"] == NORMAL and out["position"] not in (None, "within its normal range"):
             out["why_normal"] = normal_outside
@@ -130,9 +143,10 @@ def written(ev: dict) -> dict:
     for name, m, unit in (("Cycle length", cl, " s"), ("Cycle Stability", cs, "")):
         if m["status"] == ABNORMAL or m["current"] is not None:
             lo, hi = m["normal_range"]
-            rng = f" (normal range {lo:.1f}-{hi:.1f}{unit})" if lo is not None else ""
-            cur = f"{m['current']:.1f}{unit}" if m["current"] is not None else "not available"
-            usual = f"{m['usual']:.1f}{unit}" if m["usual"] is not None else "not available"
+            d = m.get("decimals", 1)
+            rng = f" (normal range {lo:.{d}f}-{hi:.{d}f}{unit})" if lo is not None else ""
+            cur = f"{m['current']:.{d}f}{unit}" if m["current"] is not None else "not available"
+            usual = f"{m['usual']:.{d}f}{unit}" if m["usual"] is not None else "not available"
             why = f" ({m['position']}; {m['why_normal']})" if m.get("why_normal") else ""
             support.append(f"{name}: {cur} against a usual {usual}{rng} - {m['status'].lower()}{why}.")
         else:

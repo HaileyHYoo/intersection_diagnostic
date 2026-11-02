@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 from . import link_speed as speed
-from .templates.d001 import approach_label
+from .templates.d001 import approach_label, decimals
 
 
 def _range(row: dict, digits: int = 1) -> str:
@@ -23,14 +23,7 @@ def _fmt(x, unit="", digits: int = 1):
 
 
 def _digits(row: dict) -> int:
-    """1 decimal, or more when the current value rounds onto a range bound it is not equal to (e.g. 67.58 against a
-    10th percentile of 67.62 would both show as 67.6 and look inside the range)."""
-    current = row.get("current")
-    for digits in (1, 2, 3):
-        if current is None or not any(b is not None and b != current and round(b, digits) == round(current, digits)
-                                      for b in (row.get("p_low"), row.get("p_high"))):
-            return digits
-    return 3
+    return decimals(row)                                # the same rule as the D001 evidence and wording
 
 
 def _values(row: dict) -> list[str]:
