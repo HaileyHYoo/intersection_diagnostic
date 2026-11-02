@@ -37,6 +37,32 @@ class QueueArchiveTests(unittest.TestCase):
         q.rows("abc/1", datetime(2026, 10, 26, 21, 0, tzinfo=UTC), datetime(2026, 10, 26, 21, 30, tzinfo=UTC))
         self.assertEqual(len(calls), 1)                                                              # cached
 
+    def test_recent_and_historical_archives_like_production(self):
+        import os
+        from unittest import mock
+        blob = archive("time,approachId,queueLengthMeters\n2026-10-26T21:01:00Z,A,10\n")
+        start, end = datetime(2026, 10, 26, 21, 0, tzinfo=UTC), datetime(2026, 10, 26, 21, 30, tzinfo=UTC)
+        calls = []
+        env = {"TOMTOM_QUEUE_HISTORIC_PARAMS": '{"archiveType": "HISTORICAL"}', "TOMTOM_QUEUE_RECENT_PARAMS": ""}
+        with mock.patch.dict(os.environ, env):
+            old = QueueArchive(self.spec, fetch=lambda url, params: calls.append(params) or blob,
+                               now=lambda: datetime(2026, 10, 29, tzinfo=UTC))           # > 24 h ago: historical
+            self.assertEqual(len(old.rows("j", start, end)), 1)
+            recent = QueueArchive(self.spec, fetch=lambda url, params: calls.append(params) or blob,
+                                  now=lambda: datetime(2026, 10, 26, 22, tzinfo=UTC))    # < 24 h ago: recent
+            recent.rows("j", start, end)
+        self.assertEqual(calls[0]["archiveType"], "HISTORICAL")
+        self.assertNotIn("archiveType", calls[1])
+
+    def test_historical_failure_names_the_setting(self):
+        def fail(url, params):
+            raise DataUnavailable("TomTom queue archive request failed (HTTP 404)")
+        q = QueueArchive(self.spec, fetch=fail, now=lambda: datetime(2026, 11, 4, tzinfo=UTC))
+        with self.assertRaises(DataUnavailable) as ctx:
+            q.rows("j", datetime(2026, 11, 2, 4, tzinfo=UTC), datetime(2026, 11, 2, 4, 30, tzinfo=UTC))
+        self.assertIn("historical archive", str(ctx.exception))
+        self.assertIn("TOMTOM_QUEUE_HISTORIC_PARAMS", str(ctx.exception))
+
     def test_queue_file_without_approach_column_fails(self):
         q = QueueArchive(self.spec, fetch=lambda url, params: archive("time,queueLengthMeters\n2026-10-26T21:01:00Z,5\n"))
         with self.assertRaises(DataUnavailable):

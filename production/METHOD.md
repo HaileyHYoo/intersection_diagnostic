@@ -135,7 +135,7 @@ Every category is returned to the host, and the UI decides what to draw. A click
 
 - **Data and period.** TomTom KPIs stored in InfluxDB (`IntersectionTurnKpi`, `IntersectionKpi`) for the same 30-minute period.
 - **Queue length.** The methodology (section 13) asks for approach queue length and the largest queue, from the timestamped TomTom Junction Analytics queue history. That history is only available from the Junction Analytics API (archive), not from InfluxDB.
-  - The archive reader is implemented (`sources/tomtom_queue.py`), using the same endpoint and parsing as the chatbot's TomTom layer.
+  - The archive reader is implemented (`sources/tomtom_queue.py`), using the same endpoint and parsing as the chatbot's TomTom layer. As there, a period is split at now − 24 h: the recent part uses the recent (live) archive, the older part the historical archive, with the same settings (`TOMTOM_QUEUE_HISTORIC_PARAMS`, `TOMTOM_QUEUE_RECENT_PARAMS`, URL templates). A period older than 24 h needs the historical settings of the account.
   - It is **on by default**, as the methodology requires (`tomtom.api_enabled`), and needs `TOMTOM_API_KEY`.
   - Without a key, when the call fails, or for a site without a TomTom junction, the queue is reported as unavailable with the reason, never estimated. "Has the largest queue" is then unknown (None), not "no". The rest of Q5 and Q4 still run.
 - **Metrics per approach.**

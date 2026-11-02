@@ -12,6 +12,10 @@ from . import link_speed as speed
 from .templates.d001 import approach_label
 
 
+def _range(row: dict) -> str:
+    return "-" if row.get("p_low") is None and row.get("p_high") is None else f"{_fmt(row.get('p_low'))}-{_fmt(row.get('p_high'))}"
+
+
 def _fmt(x, unit=""):
     return "-" if x is None else f"{x:.1f}{unit}"
 
@@ -20,16 +24,16 @@ def evidence_tables(site: dict) -> list[dict]:
     q1, q3 = site["q1"], site["q3"]
     traffic = {"title": "Approach volume (30 min)",
                "columns": ["Approach", "Current", "Usual", "Normal range", "Difference", "Status"],
-               "rows": [[approach_label(a), _fmt(a["current"]), _fmt(a["usual"]), f"{_fmt(a['p_low'])}-{_fmt(a['p_high'])}",
+               "rows": [[approach_label(a), _fmt(a["current"]), _fmt(a["usual"]), _range(a),
                          _fmt(a["pct_difference"], "%"), (a["direction"] or a["status"]).title()]
                         for a in q1["approaches"]]}
     comps = q3["components"]
     signal = {"title": "Signal operation", "columns": ["Measure", "Current", "Usual", "Normal range", "Status"],
-              "rows": [[name, _fmt(c["current"]), _fmt(c["usual"]), f"{_fmt(c['p_low'])}-{_fmt(c['p_high'])}", c["status"].title()]
+              "rows": [[name, _fmt(c["current"]), _fmt(c["usual"]), _range(c), c["status"].title()]
                        for name, c in (("Cycle length (s)", comps["cycle_length"]), ("Cycle Stability", comps["cycle_stability"]))]}
     service = {"title": "Phase service by approach (green share %)",
                "columns": ["Approach", "Current", "Usual", "Normal range", "Status"],
-               "rows": [[approach_label(a), _fmt(a["current"]), _fmt(a["usual"]), f"{_fmt(a['p_low'])}-{_fmt(a['p_high'])}",
+               "rows": [[approach_label(a), _fmt(a["current"]), _fmt(a["usual"]), _range(a),
                          (a["direction"] or a["status"]).title()] for a in comps["phase_service"]["approaches"]]}
     return [traffic, signal, service]
 

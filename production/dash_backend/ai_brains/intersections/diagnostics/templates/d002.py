@@ -252,7 +252,7 @@ def written(ev: dict) -> dict:
     lines += [_per_approach_sentence(p) for p in comp["per_approach"]]
     agreeing = [p["approach"] for p in comp["per_approach"] if p["agreement"] == AGREE]
     if comp["agreement"] == AGREE:
-        lines.append(f"This supports a road-user impact on {', '.join(agreeing)} without establishing its cause.")
+        lines.append(f"This supports a road-user impact on {_and(agreeing)} without establishing its cause.")
     elif comp["agreement"] == DISAGREE:
         lines.append("The TomTom data do not confirm a road-user impact on the SCATS-identified approaches.")
     else:
