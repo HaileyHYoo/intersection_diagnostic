@@ -179,6 +179,9 @@ def measure(source, site: dict, period: Period, rules: dict) -> dict:
 
 
 DELAY_NAMES = {"control_delay": "control delay", "approach_delay": "approach delay"}
+FINDINGS = {"Q1 high": "volume above its normal range", "Q1 low": "volume below its normal range",
+            "Q3C abnormal_high": "phase service above its normal range",
+            "Q3C abnormal_low": "phase service below its normal range"}
 
 
 def _delay(a: dict, metric: str):
@@ -231,7 +234,7 @@ def _per_approach_sentence(p: dict) -> str:
     """One SCATS-identified approach against the TomTom rankings (methodology 13: report any mismatch)."""
     if p["agreement"] == NO_COVERAGE:
         return f"{p['approach']}, identified by the SCATS screening, has no adequate TomTom coverage in this period."
-    who = f"{p['approach']}, identified by the SCATS screening ({'; '.join(p['scats_findings'])}),"
+    who = f"{p['approach']}, identified by the SCATS screening ({'; '.join(FINDINGS.get(f, f) for f in p['scats_findings'])}),"
     by = p.get("largest_by_delay") or {"delay": p["has_largest_delay"]}
     names = {m: "the greatest " + DELAY_NAMES.get(m, "delay") for m in by}
     has = [names[m] for m, v in by.items() if v]
@@ -293,7 +296,9 @@ SYSTEM = """You explain the TomTom road-user evidence for one intersection flagg
 Use only the evidence JSON. State whether the greatest delay and the longest queue are on a SCATS-identified approach
 and report any mismatch. Highest among observed approaches is not historically abnormal delay. Missing approaches
 are partial coverage, never zero. Do not say that signal settings caused congestion, queues or delay. Every number
-must appear in the evidence or the draft.
+must appear in the evidence or the draft. Keep one statement for every SCATS-identified approach (agreement, mismatch
+or no coverage), naming it exactly as in the evidence. State the findings only: no interpretation such as "despite",
+"as expected" or reasons. Write plain English, not codes such as abnormal_high or Q3C.
 Return JSON with keys: road_user_impact (string), agreement (copy the evidence value), coverage (string)."""
 
 
@@ -344,7 +349,9 @@ def run(source, site: dict, period: Period, rules: dict, llm=None) -> dict:
         return {"template_id": TEMPLATE, "template_version": spec["version"], "question": spec["question"], "evidence": ev,
                 "answer": draft, "generated_by": "code", "rejected": None}
     user = json.dumps({"question": spec["question"], "evidence": ev, "draft_answer": draft}, ensure_ascii=False)
-    worded = llm_mod.word(llm, SYSTEM, user, ["road_user_impact", "agreement", "coverage"], ev, draft)
+    named = [p["approach"] for p in comparison["per_approach"]]
+    worded = llm_mod.word(llm, SYSTEM, user, ["road_user_impact", "agreement", "coverage"], ev, draft,
+                          required={"road_user_impact": named})
     worded["answer"]["agreement"] = draft["agreement"]          # the verdict is code's, never re-worded
     return {"template_id": TEMPLATE, "template_version": spec["version"], "question": spec["question"], "evidence": ev,
             **worded}

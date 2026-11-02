@@ -106,22 +106,40 @@ def allowed_numbers(*objects) -> set[str]:
     return out
 
 
-def check(answer: dict | None, keys: list[str], allowed: set[str]) -> list[str]:
-    """Problems with an LLM answer; empty when it can be used."""
+def _value(token: str) -> float | None:
+    try:
+        return round(abs(float(token)), 2)
+    except ValueError:
+        return None
+
+
+def check(answer: dict | None, keys: list[str], allowed: set[str], required: dict[str, list[str]] | None = None) -> list[str]:
+    """Problems with an LLM answer; empty when it can be used.
+
+    Numbers are compared by value (0.00, 0.0 and 00 are the same number). `required` lists, per answer key, the
+    names that must still appear (e.g. every SCATS-identified approach), so the LLM cannot drop a finding."""
     if answer is None:
         return ["the answer is not JSON"]
     problems = [f"missing '{k}'" for k in keys if k not in answer]
     text = json.dumps({k: answer.get(k) for k in keys}, ensure_ascii=False)
-    invented = sorted({n for n in NUMBER.findall(text) if n not in allowed and n.lstrip("-") not in allowed})
+    values = {_value(a) for a in allowed} - {None}
+    invented = sorted({n for n in NUMBER.findall(text) if n not in allowed and n.lstrip("-") not in allowed
+                       and _value(n) not in values})
     if invented:
         problems.append("numbers not in the evidence: " + ", ".join(invented[:8]))
     claims = sorted({m.group(0).lower() for m in FORBIDDEN.finditer(text)})
     if claims:
         problems.append("forbidden wording: " + ", ".join(claims))
+    for key, names in (required or {}).items():
+        part = json.dumps(answer.get(key), ensure_ascii=False)
+        omitted = [n for n in dict.fromkeys(names) if n and n not in part]
+        if omitted:
+            problems.append(f"'{key}' omits: " + ", ".join(omitted))
     return problems
 
 
-def word(llm, system: str, user: str, keys: list[str], evidence: dict, fallback: dict) -> dict:
+def word(llm, system: str, user: str, keys: list[str], evidence: dict, fallback: dict,
+         required: dict[str, list[str]] | None = None) -> dict:
     """{'answer', 'generated_by', 'rejected'}: the LLM's answer when it passes the check, else the fallback."""
     if llm is None:
         return {"answer": fallback, "generated_by": "code", "rejected": None}
@@ -130,7 +148,7 @@ def word(llm, system: str, user: str, keys: list[str], evidence: dict, fallback:
     except Exception as exc:  # noqa: BLE001 - the report is still produced from code
         return {"answer": fallback, "generated_by": "code", "rejected": f"LLM call failed ({type(exc).__name__})"}
     answer = parse_json(raw)
-    problems = check(answer, keys, allowed_numbers(evidence, fallback))
+    problems = check(answer, keys, allowed_numbers(evidence, fallback), required)
     if problems:
         return {"answer": fallback, "generated_by": "code", "rejected": "; ".join(problems)}
     return {"answer": {k: answer[k] for k in keys}, "generated_by": f"llm:{getattr(llm, 'model', '')}", "rejected": None}

@@ -93,7 +93,8 @@ class DiagnoseTests(unittest.TestCase):
 
     def test_tomtom_answer_names_each_scats_approach(self):
         agree = self.section(self.report("4300"), 3)["text"]
-        self.assertIn("Swanston Street [N], identified by the SCATS screening (Q1 high; Q3C abnormal_low), "
+        self.assertIn("Swanston Street [N], identified by the SCATS screening (volume above its normal range; "
+                      "phase service below its normal range), "
                       "has the greatest control delay, the greatest approach delay and the longest queue.", agree)
         mismatch = self.section(self.report("4303"), 3)["text"]
         self.assertIn("has neither the greatest control delay, the greatest approach delay nor the longest queue.", mismatch)
@@ -162,6 +163,19 @@ class LLMGuardTests(unittest.TestCase):
         d001 = r["templates"]["D001"]
         self.assertEqual(d001["generated_by"], "code")
         self.assertIn("73.9", d001["rejected"])
+
+    def test_numbers_are_compared_by_value(self):
+        from diagnostics import llm
+        allowed = llm.allowed_numbers({"stability": 0.0, "period": "Fri 30 Oct 2026"})
+        self.assertEqual(llm.check({"a": "Stability was 0.00 (00) at 15:00"}, ["a"], allowed | {"15"}), [])
+        self.assertTrue(llm.check({"a": "Stability was 7.5"}, ["a"], allowed))      # a real invented number
+
+    def test_an_omitted_approach_is_rejected(self):
+        from diagnostics import llm
+        required = {"a": ["A St [N]", "B St [E]"]}
+        self.assertEqual(llm.check({"a": "A St [N] agrees; B St [E] does not"}, ["a"], set(), required), [])
+        problems = llm.check({"a": "A St [N] agrees"}, ["a"], set(), required)
+        self.assertEqual(problems, ["'a' omits: B St [E]"])
 
     def test_forbidden_claims_are_rejected(self):
         problems = llm_mod.check({"diagnosis": "The detector is faulty and the delay is caused by SCATS."},

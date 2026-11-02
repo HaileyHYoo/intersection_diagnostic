@@ -131,6 +131,9 @@ Use only the evidence JSON. Rules:
 - Do not reclassify the site, invent or recalculate figures, mention databases or queries, or propose signal-timing changes.
 - Suggested checks must be conservative (review, investigate, verify, check, monitor) and tied to the evidence.
 - Every number you write must appear in the evidence or in the draft answer.
+- Name every abnormal approach exactly as written in the evidence (e.g. "Swanston Street [N]").
+- Write plain English: do not copy field names or codes such as HIGH, LOW, POORER, abnormal_high or Q3C; say
+  "above its normal range", "below its normal range", "poorer than usual".
 Return JSON with keys: diagnosis (string), supporting_evidence (list of strings), suggested_checks (list of strings)."""
 
 
@@ -139,6 +142,8 @@ def run(site: dict, period: dict, llm=None) -> dict:
     ev = evidence(site, period)
     draft = written(ev)
     user = json.dumps({"question": spec["question"], "evidence": ev, "draft_answer": draft}, ensure_ascii=False)
-    worded = llm_mod.word(llm, SYSTEM, user, ["diagnosis", "supporting_evidence", "suggested_checks"], ev, draft)
+    named = [a["approach"] for a in ev["traffic"]["abnormal_approaches"] + ev["signal"]["phase_service"]["abnormal_approaches"]]
+    worded = llm_mod.word(llm, SYSTEM, user, ["diagnosis", "supporting_evidence", "suggested_checks"], ev, draft,
+                          required={"diagnosis": named, "supporting_evidence": named})
     return {"template_id": TEMPLATE, "template_version": spec["version"], "question": spec["question"],
             "evidence": ev, **worded}
