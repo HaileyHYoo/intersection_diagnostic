@@ -71,6 +71,27 @@ def _queue(source, site: str, period: Period, rules: dict) -> tuple[dict, str]:
     return out, "available" if out else "unavailable - the queue archive returned no rows for this period"
 
 
+def _street(name) -> str:
+    return " ".join(str(name or "").lower().split())
+
+
+def resolve_stubs(approaches: dict, names: dict) -> dict[str, str]:
+    """{TomTom approach: site EGRESS link} for approaches the mapping file ties to a link upstream of the site's
+    approach link (stub_hops > 0; the approach link itself is a short stub). Such an approach is the site's
+    approach on the same street when exactly one approach of the site on that street has no other TomTom
+    approach; otherwise it stays unmatched (never guessed)."""
+    taken = {info.get("link") for info in approaches.values() if info.get("link") in names}
+    out = {}
+    for approach_id, info in approaches.items():
+        if info.get("link") in names or not info.get("stub_hops") or not info.get("street"):
+            continue
+        candidates = [l for l, row in names.items() if l not in taken and _street(row.get("street")) == _street(info["street"])]
+        if len(candidates) == 1:
+            out[approach_id] = candidates[0]
+            taken.add(candidates[0])
+    return out
+
+
 def measure(source, site: dict, period: Period, rules: dict) -> dict:
     mapping = source.tomtom_mapping(site["site"])
     rows = source.tomtom_turn_kpi(site["site"], period.start, period.end)
@@ -113,10 +134,12 @@ def measure(source, site: dict, period: Period, rules: dict) -> dict:
     queue, queue_status = _queue(source, site["site"], period, rules)
     min_minutes = rules["tomtom"]["queue_min_minutes"]
     approaches, exits = mapping.get("approaches", {}), mapping.get("exits", {})
+    via_stub = resolve_stubs(approaches, names)
     out = []
     for approach_id in sorted(set(acc) | set(queue)):
         a, info = acc[approach_id], approaches.get(approach_id, {})
-        link = info.get("link")
+        mapped_link = info.get("link")
+        link = via_stub.get(approach_id, mapped_link)
         on_site = link in names                         # one of the site's screened (EGRESS) approaches
         base = names.get(link, {"link": link, "street": info.get("street"), "bound": info.get("direction")})
         label = approach_label(base) if on_site else \
@@ -134,6 +157,8 @@ def measure(source, site: dict, period: Period, rules: dict) -> dict:
         control_delay = r1(_weighted(a["control"]))
         quarters = len(a["quarters"][metric])
         out.append({"tomtom_approach": approach_id, "link": link, "mapped": link is not None, "on_site": on_site,
+                    "mapped_link": mapped_link, "via_stub": approach_id in via_stub,
+                    "stub_hops": info.get("stub_hops", 0),
                     "approach": label if link else f"TomTom approach {approach_id} (not mapped)",
                     "delay_s": control_delay if metric == "control_delay" else approach_delay,
                     "approach_delay_s": approach_delay, "control_delay_s": control_delay,
@@ -295,6 +320,10 @@ def run(source, site: dict, period: Period, rules: dict, llm=None) -> dict:
     unmapped = [a["tomtom_approach"] for a in rows if not a["mapped"]]
     if unmapped:
         notes.append("TomTom approaches without a link mapping: " + ", ".join(unmapped))
+    stubbed = [f"{a['approach']} (mapping link {a['mapped_link']}, {a['stub_hops']} link(s) upstream)"
+               for a in rows if a.get("via_stub")]
+    if stubbed:
+        notes.append("TomTom approaches matched through the mapping's upstream link (same street): " + ", ".join(stubbed))
     off_site = [a["approach"] for a in rows if a["mapped"] and not a.get("on_site", True)]
     if off_site:
         notes.append("TomTom approaches mapped to a link that is not one of the site's screened approaches: "

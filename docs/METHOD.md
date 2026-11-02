@@ -149,6 +149,7 @@ Every category is returned to the host, and the UI decides what to draw. A click
   - Queue: mean and maximum of the per-minute queue in the period
   - An approach's delay is *adequately observed* when it has records in both quarter-hours, and its queue when at least `tomtom.queue_min_minutes` (15) minutes have a value. Only adequately observed approaches are ranked.
 - **Matching.** TomTom approaches are matched to EGRESS links with the chatbot's verified mapping file (`data/tomtom_neo4j_links_AU-VIC-Melbourne_final.json`), which also gives the junction UUID for the queue archive.
+  - **Stub links (decision, 3 Nov 2026).** For about 11 % of approaches the mapping gives the link upstream of a short stub (`stub_hops` > 0), not the site's EGRESS link itself. Such a TomTom approach is the site's approach on the same street when exactly one approach of the site on that street has no other TomTom approach; otherwise it stays unmatched. Each such match is stated in the coverage note with the mapping's link (seen live at sites 719 and 5266).
 - **Answer text (code-written).** Where the greatest delay and the longest queue are; then one sentence per SCATS-identified approach (Q1 and Q3C findings) saying whether it has the greatest delay, the longest queue, neither, or no adequate coverage; then the conclusion. A mismatch is always stated, as methodology §13 requires.
 - **Agreement per SCATS-identified approach (decided by code).**
 

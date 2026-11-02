@@ -30,7 +30,8 @@ def _arms(entries: dict) -> dict:
         if isinstance(link, list):
             link = link[0] if link else None
         out[str(tomtom_id)] = {"link": ids.link(link), "street": entry.get("street_name"),
-                               "direction": entry.get("direction"), "name": entry.get("name")}
+                               "direction": entry.get("direction"), "name": entry.get("name"),
+                               "stub_hops": entry.get("stub_hops") or 0}
     return out
 
 

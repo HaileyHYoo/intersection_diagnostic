@@ -152,3 +152,44 @@ class OffSiteApproachTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StubHopTests(unittest.TestCase):
+    """The mapping ties some TomTom approaches to the link upstream of a short stub (stub_hops > 0)."""
+
+    def setUp(self):
+        from diagnostics import tomtom_map
+        from diagnostics.settings import package_file
+        self.mapping = tomtom_map.load(str(package_file(Settings().schema["tomtom_mapping"]["file"])))["719"]
+
+    def test_site_719_from_the_real_mapping(self):
+        # site 719's screened approaches (Neo4j EGRESS); the NE link id is a stand-in, the others are in the mapping
+        names = {"MAINF8M8F75C": {"street": "Main Road", "bound": "SW"},
+                 "PARAF793F76C": {"street": "Para Road", "bound": "SE"},
+                 "MAINNE_STUB": {"street": "Main Road", "bound": "NE"}}
+        resolved = d002.resolve_stubs(self.mapping["approaches"], names)
+        self.assertEqual(resolved, {"-384864518": "MAINNE_STUB"})        # Main Road East Bound, stub_hops 1
+
+    def test_ambiguous_street_stays_unmatched(self):
+        names = {"PARAF793F76C": {"street": "Para Road", "bound": "SE"},
+                 "MAIN_A": {"street": "Main Road", "bound": "NE"}, "MAIN_B": {"street": "Main Road", "bound": "SW"}}
+        approaches = {k: v for k, v in self.mapping["approaches"].items() if k != "-804488984"}   # no SW mapping
+        self.assertEqual(d002.resolve_stubs(approaches, names), {})       # two Main Road candidates: no guess
+
+    def test_resolved_approach_is_compared_and_disclosed(self):
+        rules = copy.deepcopy(Settings().rules)
+        period = timewin.period_ending(END, rules)
+
+        class Source(StubTomTom):
+            def tomtom_mapping(self, site):
+                m = super().tomtom_mapping(site)
+                m["approaches"]["B"] = {"link": "UPSTREAM", "street": "B Street", "direction": "WEST", "stub_hops": 1}
+                return m
+
+        source = Source(period)
+        result = d002.run(source, {**site(), "q3": {"components": {"phase_service": {"approaches": []}}}}, period, rules)
+        b = next(a for a in result["evidence"]["approaches"] if a["tomtom_approach"] == "B")
+        self.assertEqual((b["link"], b["mapped_link"], b["approach"]), ("LB", "UPSTREAM", "B Street [E]"))
+        self.assertEqual(result["evidence"]["comparison"]["per_approach"][0]["agreement"], d002.AGREE)
+        self.assertIn("matched through the mapping's upstream link (same street): B Street [E] (mapping link UPSTREAM",
+                      result["evidence"]["coverage_note"])
