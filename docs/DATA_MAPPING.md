@@ -4,20 +4,24 @@ Where each question's data comes from, and how the code turns it into the value 
 
 ## At a glance
 
-| Question | What it checks | Data source | Value used | Abnormal when |
-|---|---|---|---|---|
-| **Q2** Detector health | Are the detectors working? | InfluxDB `scats/volume` (raw 5-min counts) | Vehicles per active detector over the last 60 min | Any detector < 10 vehicles → *Detector Health Issue* |
-| **Q1** Traffic | Is traffic unusual on any approach? | InfluxDB `scats-aggregation/volume` (15-min) | 30-min volume per approach | Outside the usual range (p10–p90) **and** ≥ 10 % from usual |
-| **Q3A** Cycle length | Is the cycle length unusual? | InfluxDB `IntersectionPerfKpi` → `AvgCycle` | 30-min average cycle (s) | Outside the usual range **and** ≥ 10 % from usual |
-| **Q3B** Cycle stability | Is the cycle less stable than usual? | InfluxDB `IntersectionPerfKpi` → `CycleStability` | 30-min average stability | Below p10 (less stable only) |
-| **Q3C** Phase service | Is any approach getting unusual green time? | InfluxDB `IntersectionPerfApproach` → `GreenShare`, `HasGreen` | 30-min green share (%) per approach | Outside the usual range on any approach |
-| **Q4** SCATS interpretation | What does the SCATS evidence say? (Red sites only) | No new data: the saved Q1 + Q3 results | — | Explains the Red result and suggests checks |
-| **Q5** TomTom confirmation | Do road users see the same problem? (Red sites only) | **Delay:** InfluxDB `IntersectionTurnKpi` → `ApproachDelaySec` (TomTom data stored in InfluxDB)<br>**Queue:** TomTom Junction Analytics API → `queueLengthMeters` (not in InfluxDB) | 30-min delay and queue length per approach | *Agree* if a flagged approach has the largest delay or longest queue |
+Each question joins a **network list** (what to check, from Neo4j) with **measured data** (InfluxDB or the TomTom API) through a matching key.
+
+| Question | What it checks | Network list (Neo4j) | Measured data | Matched by | Abnormal when |
+|---|---|---|---|---|---|
+| **Sites** | Which intersections are screened | `(:Intersection)-[:IN]-(:Region {tag})`, signalised, with `scats_site_no`, lat/lon, street names | — | — | — |
+| **Q2** Detector health | Are the detectors working? | **Detector list per intersection:** `(:Detector)-[:BELONG_TO]->(:Intersection)` → `detector_number`, `active` (only active ones are checked) | InfluxDB `scats/volume` → field `d[n]` (raw 5-min counts) | `SiteNo` = `scats_site_no`; `n` in `d[n]` = `detector_number` | Any active detector < 10 vehicles in 60 min → *Detector Health Issue* |
+| **Q1** Traffic | Is traffic unusual on any approach? | **Approach list per intersection:** `(:Intersection)-[:EGRESS]-(:Road)` → `link_id`, `street_name` | InfluxDB `scats-aggregation/volume` → `Volume` (15-min) | `DetectorGroupId` = `link_id` | 30-min volume outside the usual range (p10–p90) **and** ≥ 10 % from usual |
+| **Q3A** Cycle length | Is the cycle length unusual? | Intersection (`scats_site_no`) | InfluxDB `IntersectionPerfKpi` → `AvgCycle` | `SiteNo` = `"S"` + `scats_site_no` | Outside the usual range **and** ≥ 10 % from usual |
+| **Q3B** Cycle stability | Is the cycle less stable than usual? | Intersection (`scats_site_no`) | InfluxDB `IntersectionPerfKpi` → `CycleStability` | `SiteNo` = `"S"` + `scats_site_no` | Below p10 (less stable only) |
+| **Q3C** Phase service | Is any approach getting unusual green time? | Same approach list as Q1 (EGRESS `link_id`) | InfluxDB `IntersectionPerfApproach` → `GreenShare`, `HasGreen` | `SiteNo` = `"S"` + site; `LinkId` = `link_id` | Green share outside the usual range on any approach |
+| **Q4** SCATS interpretation | What does the SCATS evidence say? (Red sites only) | — | No new data: the saved Q1 + Q3 results | — | Explains the Red result and suggests checks |
+| **Q5** TomTom confirmation | Do road users see the same problem? (Red sites only) | **TomTom mapping file** (from the chatbot, not Neo4j): per site the junction UUID and TomTom `ApproachId` / `ExitId` → Neo4j EGRESS `link_id` and travel direction | **Delay:** InfluxDB `IntersectionTurnKpi` → `ApproachDelaySec`<br>**Queue:** TomTom Junction Analytics API → `queueLengthMeters` (not in InfluxDB) | Delay: `SiteNo` = `"S"` + site, `ApproachId` → `link_id` via the mapping<br>Queue: junction UUID, approach → `link_id` via the mapping | *Agree* if a flagged approach has the largest delay or longest queue |
 
 - **Usual range:** the same weekday and 30-minute slot in the previous 8 weeks (≥ 5 valid weeks; holidays excluded).
-- **Approaches:** Neo4j EGRESS road links of the intersection.
+- **Every InfluxDB and Neo4j query** is also filtered by region (`Region` tag / `Region {tag}`), because site numbers repeat across cities.
 - **Q3 result:** abnormal if 2 of the 3 checks (Q3A, Q3B, Q3C) are abnormal.
 - **Category:** Q1 + Q3 abnormal = **Red**; only one of them = **Amber**; neither = **Normal**; not enough data = **Grey**.
+- **Missing from the network list = not checked.** A detector not linked by `BELONG_TO` (or not `active`), or a road link not linked by `EGRESS`, is never assessed, even if InfluxDB has data for it.
 
 **Common to all InfluxDB reads**
 - Every query is filtered by the `Region` tag (site numbers repeat across cities).
