@@ -11,6 +11,7 @@
     python main.py archive --run ID                  write a run's screening JSON log if it is missing
     python main.py contract-check [--run ID]         validate a stored run against the production contract
     python main.py examples [--run ID | --end ...]   example outputs per category (Markdown + HTML) for review
+    python main.py queue-probe --site 719 --end 2026-11-02T15:30   which TomTom queue-archive request works
     python main.py site-history --site 4397 --from 2026-10-01 --to 2026-10-31   categories over screened periods
     python main.py watch                             (later extension) screen every new period as it completes
     python main.py backfill --from ... --to ...      (later extension) screen past periods one by one
@@ -194,6 +195,44 @@ def cmd_examples(args):
     print("Saved:", examples.save_html(text, run_id, args.out_dir))
 
 
+def cmd_queue_probe(args):
+    """Tries the queue-archive request variants for one site and period and shows which return rows, so the
+    TOMTOM_QUEUE_* settings can be set from evidence (as the chatbot's probe_queue_archive.py)."""
+    import urllib.parse
+    from datetime import timedelta
+    from diagnostics.settings import Settings
+    from diagnostics.sources.base import DataUnavailable
+    from diagnostics.sources.live import LiveSource
+    from diagnostics.sources.tomtom_queue import download, parse_archive
+    from diagnostics.timewin import period_ending
+    settings = Settings()
+    source = LiveSource(settings)
+    period = period_ending(args.end, settings.rules)
+    uuid = source.tomtom_mapping(args.site)["uuid"]
+    if not uuid:
+        print(f"Site {args.site} has no TomTom junction in the mapping file.")
+        return 1
+    spec = settings.schema["tomtom_queue"]
+    url = spec["url_template"].replace("{junction_uuid}", urllib.parse.quote(uuid, safe=""))
+    day = period.day
+    print(f"Site {args.site}, junction {uuid}, period {period.label()} ({period.start:%Y-%m-%d %H:%M}-{period.end:%H:%M} UTC)")
+    print(f"{'from':>10} {'to':>10}  {'extra parameters':28} result")
+    for first, last in ((day, day), (day, day + timedelta(days=1)), (day - timedelta(days=1), day)):
+        for extra in ({}, {"archiveType": "HISTORICAL"}, {"archiveType": "LIVE"}):
+            params = {"from": first.isoformat(), "to": last.isoformat(), **extra}
+            try:
+                rows = parse_archive(download(url, params), spec)
+            except DataUnavailable as exc:
+                result = str(exc)
+            else:
+                inside = [r for r in rows if period.start < r["time"] <= period.end]
+                span = f"{min(r['time'] for r in rows):%m-%d %H:%M}..{max(r['time'] for r in rows):%m-%d %H:%M} UTC" if rows else "-"
+                result = f"OK: {len(rows)} rows ({span}), {len(inside)} in the period"
+            print(f"{first.isoformat():>10} {last.isoformat():>10}  {str(extra or '-'):28} {result}")
+    print("Put the parameters of a variant with rows in the period into .env: TOMTOM_QUEUE_HISTORIC_PARAMS for periods "
+          "older than 24 hours, TOMTOM_QUEUE_RECENT_PARAMS for the last 24 hours.")
+
+
 def cmd_contract_check(args):
     """Every site of a stored run through the production contract's models and validators."""
     from collections import Counter
@@ -320,6 +359,11 @@ def main(argv=None) -> int:
     p.add_argument("--start")
     p.add_argument("--days", type=int, default=7)
     p.set_defaults(func=cmd_baseline)
+
+    p = sub.add_parser("queue-probe", help="which TomTom queue-archive request works for a site and period")
+    p.add_argument("--site", required=True)
+    p.add_argument("--end", required=True, help="period end, e.g. 2026-11-02T15:30")
+    p.set_defaults(func=cmd_queue_probe)
 
     p = sub.add_parser("examples", help="example outputs per category (Markdown + HTML) for review")
     p.add_argument("--run", help="run id (default: the latest complete run)")

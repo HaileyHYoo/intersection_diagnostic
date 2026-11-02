@@ -44,7 +44,7 @@ def tomtom_tables(d002: dict) -> list[dict]:
         return []
     queue = d002["evidence"]["queue"] == "available"
     approach = {"title": "TomTom approach performance (same 30 min)",
-                "columns": ["Approach", "Approach delay (s)", "Control delay (s)", "Multi-stop rate", "Quarter-hours"]
+                "columns": ["Approach", "Approach delay (s)", "Control delay (s)", "Multi-stop rate", "15-min periods observed (of 2)"]
                 + (["Mean queue (m)", "Max queue (m)", "Queue minutes"] if queue else []),
                 "rows": [[a["approach"], _fmt(a["approach_delay_s"]), _fmt(a["control_delay_s"]),
                           "-" if a["multi_stop_rate"] is None else f"{a['multi_stop_rate']:.3f}", str(a["quarters_observed"])]
