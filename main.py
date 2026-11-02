@@ -234,6 +234,8 @@ def cmd_queue_probe(args):
 
     day = period.day
     print(f"Site {args.site}, junction {uuid}, period {period.label()} ({period.start:%Y-%m-%d %H:%M}-{period.end:%H:%M} UTC)")
+    if args.arrival:
+        return _arrival_probe(uuid, period, args)
     print("\nDaily archive (.../data/flat/daily)")
     for first, last in ((day, day), (day - timedelta(days=1), day)):
         params = {"from": first.isoformat(), "to": last.isoformat()}
@@ -248,6 +250,38 @@ def cmd_queue_probe(args):
                     params["quarterHour"] = quarter
                 print(f"  {zone:9} {params}  ->  {attempt(hourly, params)}")
     print("\nSend this output back; the working variant becomes the setting for recent and older periods.")
+
+
+def _arrival_probe(uuid, period, args):
+    """The raw-data arrival-times archive (hourly; day/hour/quarterHour/archiveType as the chatbot's
+    fetch_tomtom_archive.py), saved as received, to see whether it holds a queue length at all."""
+    import json
+    import urllib.parse
+    from diagnostics.sources.base import DataUnavailable
+    from diagnostics.sources.tomtom_queue import download
+    url = ("https://api.tomtom.com/junction-analytics/junctions/1/archive/" + urllib.parse.quote(uuid, safe="")
+           + "/raw-data/arrival-times/hourly")
+    start = period.start
+    out = Path(args.out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    for kind in ("LIVE", "HISTORICAL"):
+        params = {"day": start.strftime("%Y-%m-%d"), "hour": start.hour, "quarterHour": start.minute // 15, "archiveType": kind}
+        try:
+            blob = download(url, params)
+        except DataUnavailable as exc:
+            print(f"  arrival-times {kind:10} {params}: {exc}")
+            continue
+        path = out / f"arrival_{args.site}_{start:%Y%m%dT%H%M}Z_{kind}.bin"
+        path.write_bytes(blob)
+        text = blob[:200000].decode("utf-8", "replace")
+        try:
+            data = json.loads(blob)
+            keys = list(data)[:15] if isinstance(data, dict) else f"list of {len(data)}"
+        except ValueError:
+            keys = "not JSON (first bytes: " + repr(blob[:12]) + ")"
+        print(f"  arrival-times {kind:10} {params}: OK {len(blob)} bytes, top-level {keys}, "
+              f"mentions queue: {'queue' in text.lower()}  -> saved {path}")
+    print("Send the saved file(s); they hold no API key.")
 
 
 def cmd_contract_check(args):
@@ -380,6 +414,8 @@ def main(argv=None) -> int:
     p = sub.add_parser("queue-probe", help="which TomTom queue-archive request works for a site and period")
     p.add_argument("--site", required=True)
     p.add_argument("--end", required=True, help="period end, e.g. 2026-11-02T15:30")
+    p.add_argument("--arrival", action="store_true", help="try the raw-data arrival-times archive instead")
+    p.add_argument("--out-dir", default=str(ROOT / "out"))
     p.set_defaults(func=cmd_queue_probe)
 
     p = sub.add_parser("examples", help="example outputs per category (Markdown + HTML) for review")
