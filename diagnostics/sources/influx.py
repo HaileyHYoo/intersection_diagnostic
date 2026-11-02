@@ -21,6 +21,9 @@ def flux_time(value: datetime) -> str:
     return "time(v: " + flux_string(value.strftime("%Y-%m-%dT%H:%M:%SZ")) + ")"
 
 
+PUSHDOWN_MAX = 200   # as the chatbot: "==" / "or" predicates are pushed down to storage, contains() is not
+
+
 def build_flux(bucket: str, measurement: str, start: datetime, stop: datetime, *, region_tag: str, region: str,
                filters: dict | None = None, fields: list[str] | None = None, field_regex: str | None = None,
                tag_in: tuple[str, list[str]] | None = None, keep: list[str] | None = None) -> str:
@@ -36,8 +39,16 @@ def build_flux(bucket: str, measurement: str, start: datetime, stop: datetime, *
         lines.append(f"  |> filter(fn: (r) => r._field =~ /{field_regex}/)")
     if tag_in:
         tag, values = tag_in
-        lines.append(f"  |> filter(fn: (r) => contains(value: r[{flux_string(tag)}], "
-                     f"set: [{', '.join(flux_string(v) for v in values)}]))")
+        values = sorted({str(v) for v in values})
+        if not values:
+            lines.append("  |> filter(fn: (r) => false)")
+        elif len(values) <= PUSHDOWN_MAX:
+            # A contains() filter makes InfluxDB read every series of the period (HTTP 504 on aimes/speed).
+            lines.append("  |> filter(fn: (r) => " + " or ".join(f"r[{flux_string(tag)}] == {flux_string(v)}"
+                                                                for v in values) + ")")
+        else:
+            lines.append(f"  |> filter(fn: (r) => contains(value: r[{flux_string(tag)}], "
+                         f"set: [{', '.join(flux_string(v) for v in values)}]))")
     if keep:
         lines.append("  |> keep(columns: [" + ", ".join(flux_string(c) for c in ["_time", "_value", "_field", *keep]) + "])")
     return "\n".join(lines)

@@ -57,7 +57,7 @@ def _pick_red(svc, run_id: str, reds: list[dict], wanted: int, tries: int) -> li
     for s in reds:
         if done >= tries or len(kept) >= wanted:
             break
-        r = svc.diagnose(run_id, s["site"])
+        r = svc.diagnose(run_id, s["site"], reuse=False)           # always the current code, never a saved report
         done += 1
         d002 = (r.get("templates") or {}).get("D002") or {}
         verdict = d002.get("answer", {}).get("agreement") if d002.get("evidence", {}).get("available") else None
@@ -69,7 +69,7 @@ def _pick_red(svc, run_id: str, reds: list[dict], wanted: int, tries: int) -> li
             if len(kept) >= wanted:
                 break
             if all(k["site"] != s["site"] for k in kept):
-                kept.append(svc.diagnose(run_id, s["site"]))
+                kept.append(svc.diagnose(run_id, s["site"], reuse=False))
     return kept[:wanted]
 
 

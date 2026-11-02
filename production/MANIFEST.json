@@ -27,7 +27,7 @@
     "sources/__init__.py": "1de4837fbbd12b0b9d32736483b4301b69f26ed097a974ca27a7bf764e3a19cc",
     "sources/base.py": "7e2e7e5cebb0e6cc8448306608328d0eec732905fefeece94d4a9c36a9f60929",
     "sources/graph.py": "406a19a18fcf1deeec4a29ae2c0438d43f2679292364f22d2e438d3cc533d71e",
-    "sources/influx.py": "63e1cf1bf5168712d2db4ec19e3bf51ed7ce6d62a384b0cbbd93b382c7f17b2f",
+    "sources/influx.py": "feda9ccf2cba13fae99e26bb5a377795de64b1f101606bc8c80207f0e7eda667",
     "sources/live.py": "dd648017a0bbc634f950744164e8459622d40aa7494192722c3c4656cfb30e51",
     "sources/tomtom_queue.py": "9e95ef83f685dd60468056431bad991829c74d5ef8686b2c980b82c98766b99f",
     "stats.py": "bf0f1bc877a67fedd741289155d196ff48d7b957a5408b3a54e8b7d9cf3aa1af",

@@ -49,7 +49,7 @@ class LiveSourceTests(unittest.TestCase):
         flux = src.influx.queries[0]
         self.assertIn('from(bucket: "scats")', flux)
         self.assertIn('r["Region"] == "AU-VIC-Melbourne"', flux)
-        self.assertIn('set: ["4397"]', flux)                       # plain site number in the scats bucket
+        self.assertIn('r["SiteNo"] == "4397"', flux)                       # plain site number in the scats bucket
 
     def test_link_ids_are_normalised_and_fields_logical(self):
         src = self.source({"IntersectionPerfApproach": [
@@ -58,7 +58,7 @@ class LiveSourceTests(unittest.TestCase):
         rows = src.approach_perf(T, T, sites=["4268"])
         self.assertEqual(rows, [{"site": "4268", "field": "green_share", "time": T, "value": 50.0,
                                  "link": "21FF5WFG64", "bound": "E"}])
-        self.assertIn('set: ["S4268"]', src.influx.queries[0])
+        self.assertIn('r["SiteNo"] == "S4268"', src.influx.queries[0])
 
     def test_graph_rows(self):
         src = self.source(graph={"BELONG_TO": [{"site": 4397, "detector": "5", "active": True},

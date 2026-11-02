@@ -240,7 +240,11 @@ class FluxTests(unittest.TestCase):
         self.assertIn('r["Region"] == "AU-VIC-Melbourne"', flux)
         self.assertIn('r["MinutesPast"] == "15"', flux)
         self.assertIn("r._field =~ /^d\\[[0-9]+\\]$/", flux)
-        self.assertIn('set: ["S1", "S2"]', flux)
+        self.assertIn('r["SiteNo"] == "S1" or r["SiteNo"] == "S2"', flux)         # pushed down to storage
+        from diagnostics.sources.influx import PUSHDOWN_MAX
+        many = build_flux("b", "m", datetime(2026, 1, 1, tzinfo=timezone.utc), datetime(2026, 1, 1, 1, tzinfo=timezone.utc),
+                          region_tag="Region", region="R", tag_in=("T", [str(i) for i in range(PUSHDOWN_MAX + 1)]))
+        self.assertIn("contains(value:", many)
         self.assertIn('time(v: "2026-01-01T01:00:00Z")', flux)
 
 
