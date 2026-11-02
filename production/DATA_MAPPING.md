@@ -12,7 +12,7 @@ Where each question's data comes from, and how the code turns it into the value 
 | **Q3B** Cycle stability | Is the cycle less stable than usual? | InfluxDB `IntersectionPerfKpi` → `CycleStability` | 30-min average stability | Below p10 (less stable only) |
 | **Q3C** Phase service | Is any approach getting unusual green time? | InfluxDB `IntersectionPerfApproach` → `GreenShare`, `HasGreen` | 30-min green share (%) per approach | Outside the usual range on any approach |
 | **Q4** SCATS interpretation | What does the SCATS evidence say? (Red sites only) | No new data: the saved Q1 + Q3 results | — | Explains the Red result and suggests checks |
-| **Q5** TomTom confirmation | Do road users see the same problem? (Red sites only) | InfluxDB TomTom KPIs + TomTom queue API | Delay and queue length per approach | *Agree* if a flagged approach has the largest delay or longest queue |
+| **Q5** TomTom confirmation | Do road users see the same problem? (Red sites only) | **Delay:** InfluxDB `IntersectionTurnKpi` → `ApproachDelaySec` (TomTom data stored in InfluxDB)<br>**Queue:** TomTom Junction Analytics API → `queueLengthMeters` (not in InfluxDB) | 30-min delay and queue length per approach | *Agree* if a flagged approach has the largest delay or longest queue |
 
 - **Usual range:** the same weekday and 30-minute slot in the previous 8 weeks (≥ 5 valid weeks; holidays excluded).
 - **Approaches:** Neo4j EGRESS road links of the intersection.
