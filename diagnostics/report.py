@@ -46,8 +46,11 @@ def tomtom_tables(d002: dict) -> list[dict]:
                           "-" if a["multi_stop_rate"] is None else f"{a['multi_stop_rate']:.3f}", str(a["quarters_observed"])]
                          + ([_fmt(a["queue_mean_m"]), _fmt(a["queue_max_m"]), str(a["queue_minutes"])] if queue else [])
                          for a in rows]}
-    moves = {"title": "TomTom movements (control delay, s)", "columns": ["Approach", "Movement", "Control delay (s)"],
-             "rows": [[a["approach"], m["movement"], _fmt(m.get("control_delay_s"))] for a in rows for m in a["movements"]]}
+    to = lambda m: " ".join(x for x in (m.get("to_street"), f"({m['to_direction'].lower()}bound)" if m.get("to_direction")
+                                         else None) if x) or "-"
+    moves = {"title": "TomTom movements (control delay, s)", "columns": ["Approach", "Movement", "To", "Control delay (s)"],
+             "rows": [[a["approach"], m["movement"], to(m), _fmt(m.get("control_delay_s"))]
+                      for a in rows for m in a["movements"]]}
     return [approach] + ([moves] if moves["rows"] else [])
 
 

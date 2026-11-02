@@ -96,5 +96,42 @@ class ControlDelayTests(unittest.TestCase):
         self.assertEqual(comp["agreement"], d002.DISAGREE)
 
 
+class OffSiteApproachTests(unittest.TestCase):
+    """A TomTom approach mapped to a link that is not one of the site's screened approaches, and exit names."""
+
+    def test_label_note_and_exit_column(self):
+        rules = copy.deepcopy(Settings().rules)
+        period = timewin.period_ending(END, rules)
+
+        class Source(StubTomTom):
+            def tomtom_mapping(self, site):
+                m = super().tomtom_mapping(site)
+                m["approaches"]["C"] = {"link": "LX", "street": "Main Road", "direction": "EAST"}
+                m["exits"] = {"X1": {"street": "A Street", "direction": "SOUTH"}, "X2": {"street": "C Road", "direction": "EAST"}}
+                return m
+
+            def tomtom_turn_kpi(self, site, start, end):
+                return super().tomtom_turn_kpi(site, start, end) + [
+                    {"approach": "C", "exit": "X1", "field": f, "time": t, "value": v}
+                    for t in self.ends for f, v in (("approach_delay", 5), ("control_delay", 5), ("sample_count", 2))]
+
+        source = Source(period)
+        m = d002.measure(source, site(), period, rules)
+        by = {a["tomtom_approach"]: a for a in m["approaches"]}
+        self.assertEqual(by["C"]["approach"], "Main Road (eastbound, link LX)")
+        self.assertFalse(by["C"]["on_site"])
+        self.assertEqual(by["B"]["approach"], "B Street [E]")
+        x1 = next(mv for mv in by["B"]["movements"] if mv["exit"] == "X1")
+        self.assertEqual((x1["to_street"], x1["to_direction"]), ("A Street", "SOUTH"))
+        site_record = {**site(), "q3": {"components": {"phase_service": {"approaches": []}}}}
+        result = d002.run(source, site_record, period, rules)
+        self.assertIn("not one of the site's screened approaches: Main Road (eastbound, link LX)",
+                      result["evidence"]["coverage_note"])
+        from diagnostics.report import tomtom_tables
+        moves = tomtom_tables(result)[1]
+        self.assertEqual(moves["columns"], ["Approach", "Movement", "To", "Control delay (s)"])
+        self.assertIn("A Street (southbound)", [r[2] for r in moves["rows"]])
+
+
 if __name__ == "__main__":
     unittest.main()

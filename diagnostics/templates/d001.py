@@ -81,7 +81,8 @@ def written(ev: dict) -> dict:
     diagnosis = ("Traffic: " + ("; ".join(parts) or "no approach is outside its normal range") + ". Signal operation: "
                  + ("; ".join(signal) or "no measure is outside its normal range") + ".")
     if ev["same_approach"]:
-        diagnosis += (" The traffic and phase-service findings concern the same approach ("
+        diagnosis += (" The traffic and phase-service findings concern the same approach"
+                      + ("es (" if len(ev["same_approach"]) > 1 else " (")
                       + ", ".join(ev["same_approach"]) + "); this is an association, not proof that the signal caused the traffic change.")
     elif ps["abnormal_approaches"]:
         diagnosis += " The phase-service finding is on a different approach from the traffic finding; they are reported separately."

@@ -83,7 +83,7 @@ def measure(source, site: dict, period: Period, rules: dict) -> dict:
     label = feed.get("timestamp_label", "end")
     aligned = {k: {t: v for t, v in aligner.align(points, 15, label).items() if t in ends} for k, points in series.items()}
 
-    names = {a["link"]: a for a in site["q1"]["approaches"]}
+    names = {a["link"]: a for a in site["q1"]["approaches"] + site["q1"].get("not_evaluated", [])}
     names.update({a["link"]: a for a in site["q3"]["components"]["phase_service"]["approaches"]})
     tt = rules["tomtom"]
     metric = tt.get("delay_metric", "control_delay")
@@ -117,19 +117,24 @@ def measure(source, site: dict, period: Period, rules: dict) -> dict:
     for approach_id in sorted(set(acc) | set(queue)):
         a, info = acc[approach_id], approaches.get(approach_id, {})
         link = info.get("link")
+        on_site = link in names                         # one of the site's screened (EGRESS) approaches
         base = names.get(link, {"link": link, "street": info.get("street"), "bound": info.get("direction")})
+        label = approach_label(base) if on_site else \
+            f"{info.get('street') or 'TomTom approach'} ({(info.get('direction') or '?').lower()}bound, link {link})"
         delays = [mean(v) for v in a["delay"].values() if v]
         q = queue.get(approach_id)
         movements = []
         for exit_id, mv in sorted(a["movements"].items()):
-            turn = movement(info.get("direction"), exits.get(exit_id, {}).get("direction"))
-            movements.append({"exit": exit_id, "movement": turn or "unknown", **mv})
+            out_arm = exits.get(exit_id, {})
+            turn = movement(info.get("direction"), out_arm.get("direction"))
+            movements.append({"exit": exit_id, "movement": turn or "unknown", "to_street": out_arm.get("street"),
+                              "to_direction": out_arm.get("direction"), **mv})
         mrate = _weighted(a["weighted"].get("multi_stop_rate", []))
         approach_delay = r1(mean(delays)) if delays else None
         control_delay = r1(_weighted(a["control"]))
         quarters = len(a["quarters"][metric])
-        out.append({"tomtom_approach": approach_id, "link": link, "mapped": link is not None,
-                    "approach": approach_label(base) if link else f"TomTom approach {approach_id} (not mapped)",
+        out.append({"tomtom_approach": approach_id, "link": link, "mapped": link is not None, "on_site": on_site,
+                    "approach": label if link else f"TomTom approach {approach_id} (not mapped)",
                     "delay_s": control_delay if metric == "control_delay" else approach_delay,
                     "approach_delay_s": approach_delay, "control_delay_s": control_delay,
                     "multi_stop_rate": None if mrate is None else round(mrate, 3),
@@ -240,6 +245,10 @@ def run(source, site: dict, period: Period, rules: dict, llm=None) -> dict:
     unmapped = [a["tomtom_approach"] for a in rows if not a["mapped"]]
     if unmapped:
         notes.append("TomTom approaches without a link mapping: " + ", ".join(unmapped))
+    off_site = [a["approach"] for a in rows if a["mapped"] and not a.get("on_site", True)]
+    if off_site:
+        notes.append("TomTom approaches mapped to a link that is not one of the site's screened approaches: "
+                     + ", ".join(off_site))
     if error:
         notes.append("TomTom data could not be read (" + error[:120] + ")")
     comparison = compare(measured, flagged) if available else None
