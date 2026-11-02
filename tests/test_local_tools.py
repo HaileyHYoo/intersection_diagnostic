@@ -77,6 +77,25 @@ class SummaryTests(unittest.TestCase):
         self.assertIn("categories", summary.text(result))
 
 
+class ExamplesTests(unittest.TestCase):
+    def test_examples_cover_every_category(self):
+        from diagnostics.local import examples
+        svc = service()
+        run_id = svc.screen(END)["run_id"]
+        text = examples.build(svc, run_id, synthetic=True)
+        for heading in ("## Red - Needs Attention", "## Amber - Traffic Abnormality", "## Amber - Signal-Operation",
+                        "## Grey - Insufficient Data", "## Detector Health Issue", "## Normal"):
+            self.assertIn(heading, text)
+        self.assertIn("Synthetic demo network", text)
+        self.assertIn("Agreement with SCATS findings: agreement", text)          # one Red that agrees
+        self.assertIn("Agreement with SCATS findings: disagreement", text)       # and one that does not
+        self.assertIn("Supplementary: TomTom incoming-link speed", text)
+        self.assertIn("#### 1. Diagnosis", text)
+        page = examples.to_html(text)
+        self.assertIn("<table>", page)
+        self.assertNotIn("**", page)
+
+
 class HistoryTests(unittest.TestCase):
     def test_history_shows_why_phase_service_has_one_value(self):
         s = Settings()

@@ -10,6 +10,7 @@
     python main.py baseline [--start 2026-10-30] [--days 7]   weekly baseline job (+ weekly baseline snapshot)
     python main.py archive --run ID                  write a run's screening JSON log if it is missing
     python main.py contract-check [--run ID]         validate a stored run against the production contract
+    python main.py examples [--run ID | --end ...]   example outputs per category (Markdown + HTML) for review
     python main.py site-history --site 4397 --from 2026-10-01 --to 2026-10-31   categories over screened periods
     python main.py watch                             (later extension) screen every new period as it completes
     python main.py backfill --from ... --to ...      (later extension) screen past periods one by one
@@ -174,6 +175,25 @@ def cmd_baseline(args):
     print(f"Stored {n} baselines ({svc.settings.baseline_version}).")
 
 
+def cmd_examples(args):
+    from diagnostics import tomtom_map
+    from diagnostics.local import examples
+    from diagnostics.settings import package_file
+    svc = make_service(args, fake=args.fake)
+    if args.end:
+        run_id = svc.screen(args.end)["run_id"]
+    else:
+        run_id = args.run or next((r["run_id"] for r in svc.store.list_runs(50) if r["status"] == "complete"), None)
+    if not run_id:
+        print("No complete screening run in the store; run `python main.py screen` first or pass --end.")
+        return 1
+    mapped = {s for s, m in tomtom_map.load(str(package_file(svc.settings.schema["tomtom_mapping"]["file"]))).items()
+              if m.get("uuid")} if not args.fake else None
+    text = examples.build(svc, run_id, red=args.red, sites=args.site, tomtom_sites=mapped, synthetic=args.fake)
+    print("Saved:", examples.save(text, run_id, args.out_dir))
+    print("Saved:", examples.save_html(text, run_id, args.out_dir))
+
+
 def cmd_contract_check(args):
     """Every site of a stored run through the production contract's models and validators."""
     from collections import Counter
@@ -300,6 +320,16 @@ def main(argv=None) -> int:
     p.add_argument("--start")
     p.add_argument("--days", type=int, default=7)
     p.set_defaults(func=cmd_baseline)
+
+    p = sub.add_parser("examples", help="example outputs per category (Markdown + HTML) for review")
+    p.add_argument("--run", help="run id (default: the latest complete run)")
+    p.add_argument("--end", help="screen this period first (e.g. 2026-11-02T15:30) and use it")
+    p.add_argument("--red", type=int, default=2, help="number of Red reports")
+    p.add_argument("--site", nargs="*", help="prefer these sites as the examples")
+    p.add_argument("--fake", action="store_true", help="use the demo store")
+    p.add_argument("--sites", type=int, default=48)
+    p.add_argument("--out-dir", default=str(ROOT / "out"))
+    p.set_defaults(func=cmd_examples)
 
     p = sub.add_parser("contract-check", help="validate a stored run against the production contract")
     p.add_argument("--run", help="run id (default: the latest complete run)")
