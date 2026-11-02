@@ -164,6 +164,22 @@ class LLMGuardTests(unittest.TestCase):
         self.assertEqual(d001["generated_by"], "code")
         self.assertIn("73.9", d001["rejected"])
 
+    def test_within_contradiction_is_rejected(self):
+        from diagnostics.templates import d001
+        ev = {"signal": {"cycle_length_s": {"position": "within its normal range"},
+                         "cycle_stability": {"position": "above its normal range"}}}
+        bad = {"diagnosis": "x", "supporting_evidence": ["Signal stability was normal, with 86.4 within its normal range."]}
+        self.assertEqual(d001.contradictions(bad, ev), ["says stability is within its normal range; it is above its normal range"])
+        good = {"diagnosis": "x", "supporting_evidence": ["Cycle stability was 86.4, above its normal range; only poorer "
+                                                          "stability is flagged. Cycle length was within its normal range."]}
+        self.assertEqual(d001.contradictions(good, ev), [])
+
+    def test_position_explains_a_normal_value_outside_the_range(self):
+        from diagnostics.templates import d001
+        c = {"status": "NORMAL", "current": 86.4, "usual": 54.9, "p_low": 16.1, "p_high": 78.7, "pct_difference": 57.4,
+             "direction": None}
+        self.assertEqual(d001.position(c), "above its normal range")
+
     def test_a_value_on_a_rounded_bound_gets_more_decimals(self):
         from diagnostics.report import _values
         self.assertEqual(_values({"current": 67.58, "usual": 73.1, "p_low": 67.62, "p_high": 73.5}),

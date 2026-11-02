@@ -139,7 +139,7 @@ def check(answer: dict | None, keys: list[str], allowed: set[str], required: dic
 
 
 def word(llm, system: str, user: str, keys: list[str], evidence: dict, fallback: dict,
-         required: dict[str, list[str]] | None = None) -> dict:
+         required: dict[str, list[str]] | None = None, validate=None) -> dict:
     """{'answer', 'generated_by', 'rejected'}: the LLM's answer when it passes the check, else the fallback."""
     if llm is None:
         return {"answer": fallback, "generated_by": "code", "rejected": None}
@@ -149,6 +149,8 @@ def word(llm, system: str, user: str, keys: list[str], evidence: dict, fallback:
         return {"answer": fallback, "generated_by": "code", "rejected": f"LLM call failed ({type(exc).__name__})"}
     answer = parse_json(raw)
     problems = check(answer, keys, allowed_numbers(evidence, fallback), required)
+    if not problems and validate is not None:
+        problems = validate(answer)                     # template-specific factual checks
     if problems:
         return {"answer": fallback, "generated_by": "code", "rejected": "; ".join(problems)}
     return {"answer": {k: answer[k] for k in keys}, "generated_by": f"llm:{getattr(llm, 'model', '')}", "rejected": None}

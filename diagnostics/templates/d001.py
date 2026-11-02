@@ -6,9 +6,10 @@ writes a complete answer from it, and the LLM (when available) may only re-word 
 from __future__ import annotations
 
 import json
+import re
 
 from .. import llm as llm_mod
-from ..stats import ABNORMAL
+from ..stats import ABNORMAL, NORMAL
 from . import definition
 
 TEMPLATE = "D001"
@@ -37,10 +38,13 @@ def evidence(site: dict, period: dict) -> dict:
                 "direction": a["direction"]}
                for a in comps["phase_service"]["approaches"] if a["status"] == ABNORMAL]
 
-    def measure(c):
-        return {"status": c["status"], "current": r1(c["current"]), "usual": r1(c["usual"]),
-                "normal_range": [r1(c["p_low"]), r1(c["p_high"])], "pct_difference": r1(c["pct_difference"]),
-                "direction": c["direction"], "reason": c.get("reason")}
+    def measure(c, normal_outside: str):
+        out = {"status": c["status"], "current": r1(c["current"]), "usual": r1(c["usual"]),
+               "normal_range": [r1(c["p_low"]), r1(c["p_high"])], "pct_difference": r1(c["pct_difference"]),
+               "direction": c["direction"], "reason": c.get("reason"), "position": position(c)}
+        if c["status"] == NORMAL and out["position"] not in (None, "within its normal range"):
+            out["why_normal"] = normal_outside
+        return out
 
     t_links, s_links = {a["link"] for a in traffic}, {a["link"] for a in service}
     labels = {a["link"]: a["approach"] for a in traffic + service}
@@ -49,14 +53,45 @@ def evidence(site: dict, period: dict) -> dict:
         "classification": site["label"],
         "traffic": {"status": q1["status"], "approaches_assessed": len(q1["approaches"]), "abnormal_approaches": traffic},
         "signal": {"status": q3["status"], "abnormal_measures": q3["abnormal_count"],
-                   "cycle_length_s": measure(comps["cycle_length"]),
-                   "cycle_stability": {**measure(comps["cycle_stability"]),
+                   "cycle_length_s": measure(comps["cycle_length"], "outside its normal range but less than 10% from "
+                                             "usual, so it is not flagged (methodology: both conditions are needed)"),
+                   "cycle_stability": {**measure(comps["cycle_stability"], "more stable than usual; only poorer "
+                                                 "stability is flagged"),
                                        "meaning": "higher is more stable; only poorer stability is flagged"},
                    "phase_service": {"status": comps["phase_service"]["status"], "abnormal_approaches": service}},
         "same_approach": sorted(labels[k] for k in t_links & s_links),
         "traffic_only_approaches": sorted(labels[k] for k in t_links - s_links),
         "signal_only_approaches": sorted(labels[k] for k in s_links - t_links),
     }
+
+
+def position(c: dict) -> str | None:
+    """Where the current value lies against the 10th-90th range, from the unrounded values."""
+    if c.get("current") is None or c.get("p_low") is None or c.get("p_high") is None:
+        return None
+    if c["current"] < c["p_low"]:
+        return "below its normal range"
+    if c["current"] > c["p_high"]:
+        return "above its normal range"
+    return "within its normal range"
+
+
+def contradictions(answer: dict, ev: dict) -> list[str]:
+    """A sentence that calls a measure 'within' its range when it is outside it (seen live from the LLM)."""
+    words = {"cycle_length_s": ("cycle length",), "cycle_stability": ("stability",)}
+    texts = [answer.get("diagnosis") or ""] + list(answer.get("supporting_evidence") or [])
+    sentences = [s for t in texts for s in re.split(r"(?<=[.;])\s+", str(t))]
+    problems = []
+    for key, names in words.items():
+        m = ev["signal"][key]
+        if m.get("position") in (None, "within its normal range"):
+            continue
+        for s in sentences:
+            low = s.lower()
+            if any(n in low for n in names) and "within" in low and "not within" not in low:
+                problems.append(f"says {names[0]} is within its normal range; it is {m['position']}")
+                break
+    return problems
 
 
 def _pct(x):
@@ -98,7 +133,8 @@ def written(ev: dict) -> dict:
             rng = f" (normal range {lo:.1f}-{hi:.1f}{unit})" if lo is not None else ""
             cur = f"{m['current']:.1f}{unit}" if m["current"] is not None else "not available"
             usual = f"{m['usual']:.1f}{unit}" if m["usual"] is not None else "not available"
-            support.append(f"{name}: {cur} against a usual {usual}{rng} - {m['status'].lower()}.")
+            why = f" ({m['position']}; {m['why_normal']})" if m.get("why_normal") else ""
+            support.append(f"{name}: {cur} against a usual {usual}{rng} - {m['status'].lower()}{why}.")
         else:
             support.append(f"{name}: not assessed ({m.get('reason') or 'insufficient data'}).")
     for a in ps["abnormal_approaches"]:
@@ -132,6 +168,8 @@ Use only the evidence JSON. Rules:
 - Suggested checks must be conservative (review, investigate, verify, check, monitor) and tied to the evidence.
 - Every number you write must appear in the evidence or in the draft answer.
 - Name every abnormal approach exactly as written in the evidence (e.g. "Swanston Street [N]").
+- For cycle length and cycle stability, state the position given in the evidence ("position"); never call a value
+  within its normal range unless the position says so. If "why_normal" is given, use it to explain a normal status.
 - Write plain English: do not copy field names or codes such as HIGH, LOW, POORER, abnormal_high or Q3C; say
   "above its normal range", "below its normal range", "poorer than usual".
 Return JSON with keys: diagnosis (string), supporting_evidence (list of strings), suggested_checks (list of strings)."""
@@ -144,6 +182,7 @@ def run(site: dict, period: dict, llm=None) -> dict:
     user = json.dumps({"question": spec["question"], "evidence": ev, "draft_answer": draft}, ensure_ascii=False)
     named = [a["approach"] for a in ev["traffic"]["abnormal_approaches"] + ev["signal"]["phase_service"]["abnormal_approaches"]]
     worded = llm_mod.word(llm, SYSTEM, user, ["diagnosis", "supporting_evidence", "suggested_checks"], ev, draft,
-                          required={"diagnosis": named, "supporting_evidence": named})
+                          required={"diagnosis": named, "supporting_evidence": named},
+                          validate=lambda answer: contradictions(answer, ev))
     return {"template_id": TEMPLATE, "template_version": spec["version"], "question": spec["question"],
             "evidence": ev, **worded}
