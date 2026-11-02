@@ -12,28 +12,46 @@ from . import link_speed as speed
 from .templates.d001 import approach_label
 
 
-def _range(row: dict) -> str:
-    return "-" if row.get("p_low") is None and row.get("p_high") is None else f"{_fmt(row.get('p_low'))}-{_fmt(row.get('p_high'))}"
+def _range(row: dict, digits: int = 1) -> str:
+    if row.get("p_low") is None and row.get("p_high") is None:
+        return "-"
+    return f"{_fmt(row.get('p_low'), digits=digits)}-{_fmt(row.get('p_high'), digits=digits)}"
 
 
-def _fmt(x, unit=""):
-    return "-" if x is None else f"{x:.1f}{unit}"
+def _fmt(x, unit="", digits: int = 1):
+    return "-" if x is None else f"{x:.{digits}f}{unit}"
+
+
+def _digits(row: dict) -> int:
+    """1 decimal, or more when the current value rounds onto a range bound it is not equal to (e.g. 67.58 against a
+    10th percentile of 67.62 would both show as 67.6 and look inside the range)."""
+    current = row.get("current")
+    for digits in (1, 2, 3):
+        if current is None or not any(b is not None and b != current and round(b, digits) == round(current, digits)
+                                      for b in (row.get("p_low"), row.get("p_high"))):
+            return digits
+    return 3
+
+
+def _values(row: dict) -> list[str]:
+    d = _digits(row)
+    return [_fmt(row.get("current"), digits=d), _fmt(row.get("usual"), digits=d), _range(row, d)]
 
 
 def evidence_tables(site: dict) -> list[dict]:
     q1, q3 = site["q1"], site["q3"]
     traffic = {"title": "Approach volume (30 min)",
                "columns": ["Approach", "Current", "Usual", "Normal range", "Difference", "Status"],
-               "rows": [[approach_label(a), _fmt(a["current"]), _fmt(a["usual"]), _range(a),
+               "rows": [[approach_label(a), *_values(a),
                          _fmt(a["pct_difference"], "%"), (a["direction"] or a["status"]).title()]
                         for a in q1["approaches"]]}
     comps = q3["components"]
     signal = {"title": "Signal operation", "columns": ["Measure", "Current", "Usual", "Normal range", "Status"],
-              "rows": [[name, _fmt(c["current"]), _fmt(c["usual"]), _range(c), c["status"].title()]
+              "rows": [[name, *_values(c), c["status"].title()]
                        for name, c in (("Cycle length (s)", comps["cycle_length"]), ("Cycle Stability", comps["cycle_stability"]))]}
     service = {"title": "Phase service by approach (green share %)",
                "columns": ["Approach", "Current", "Usual", "Normal range", "Status"],
-               "rows": [[approach_label(a), _fmt(a["current"]), _fmt(a["usual"]), _range(a),
+               "rows": [[approach_label(a), *_values(a),
                          (a["direction"] or a["status"]).title()] for a in comps["phase_service"]["approaches"]]}
     return [traffic, signal, service]
 

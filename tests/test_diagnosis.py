@@ -164,6 +164,15 @@ class LLMGuardTests(unittest.TestCase):
         self.assertEqual(d001["generated_by"], "code")
         self.assertIn("73.9", d001["rejected"])
 
+    def test_a_value_on_a_rounded_bound_gets_more_decimals(self):
+        from diagnostics.report import _values
+        self.assertEqual(_values({"current": 67.58, "usual": 73.1, "p_low": 67.62, "p_high": 73.5}),
+                         ["67.58", "73.10", "67.62-73.50"])
+        self.assertEqual(_values({"current": 80.0, "usual": 80.0, "p_low": 80.0, "p_high": 83.8}),
+                         ["80.0", "80.0", "80.0-83.8"])                               # equal, not merely rounded
+        self.assertEqual(_values({"current": 105.9, "usual": 86.5, "p_low": 77.3, "p_high": 99.7}),
+                         ["105.9", "86.5", "77.3-99.7"])
+
     def test_numbers_are_compared_by_value(self):
         from diagnostics import llm
         allowed = llm.allowed_numbers({"stability": 0.0, "period": "Fri 30 Oct 2026"})
