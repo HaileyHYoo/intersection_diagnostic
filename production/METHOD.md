@@ -1,6 +1,6 @@
 # Intersections Diagnostics V1 — how the code implements the methodology
 
-Source methodology: *Intersections Diagnostics, V1 Screening and Diagnostic Methodology* (M. Sarvi, 29 Oct 2026).
+Source methodology: *Intersections Diagnostics, V1 Screening and Diagnostic Methodology* (M. Sarvi, 29 Oct 2026), with the updates on historical records (§18) and supplementary link speed (version "Speed added", 2 Nov 2026).
 The methodology is the guideline. This page lists what the code does, including the decisions agreed on top of the
 methodology. Each decision is marked **(decision)** and is a switch or value in `diagnostics/config/rules.json`.
 
@@ -159,6 +159,20 @@ Every category is returned to the host, and the UI decides what to draw. A click
   Overall, the site agrees if any flagged approach agrees, and disagrees if any is observed without agreeing. Partial coverage and unmapped approaches are stated.
 - **No data.** The answer is "TomTom confirmation unavailable for this intersection or analysis period." D001 still runs.
 
+### 9.1 Supplementary TomTom link speed (methodology update, 2 Nov 2026)
+
+| | |
+|---|---|
+| **When** | Clicking an **Amber** site (traffic or signal) or a **Red** site (`link_speed.categories`). Normal, Grey and Detector Health clicks do not read it. |
+| **Links** | The site's incoming links: the Neo4j EGRESS links of the screening (evaluated and not evaluated) |
+| **Source** | InfluxDB `aimes` / `speed`, field `Speed` (km/h), `DetectorGroupId` = `link_id`, `Provider = TomTom`, Region tag. This is the chatbot's link-speed feed (`road_closure_analysis/closure_did.py`). It is independent of Junction Analytics. |
+| **Value** | Harmonic mean of the positive samples in the same 30-minute period, [start, end), as the chatbot reads link speed (`binned_query`, `how="pace"`). A 0 km/h sample is not used. |
+| **Reference speed** | Shown only when an existing historical reference speed is configured (`schema.influx.sources.link_speed_reference`). None was found in the InfluxDB inventory or the chatbot (`speed_prediction` is a forecast, not a reference), so it reads "unavailable". No speed baseline is calculated, as the methodology says. |
+| **Amber** | Shown with the saved Q1/Q3 evidence. Q4/Q5 are not run. |
+| **Red** | A table in report section 3, beside the TomTom delay and queue. It is not part of D002, its LLM input or its agreement. It is kept in the diagnosis record (18.2). |
+| **Missing** | A link without samples shows "unavailable"; a feed that cannot be read gives a note with the reason. Nothing else changes. |
+| **Never** | Used for Q1, Q2, Q3, the Q5 agreement or the category. No network-wide speed screening. |
+
 ## 10. Report, storage and audit
 
 The report has four fixed sections: Diagnosis, Supporting Evidence, TomTom Road-User Impact and Suggested Engineering Checks.
@@ -238,6 +252,7 @@ If the production team stores these elsewhere instead, only the audit record is 
   6. the optional audit fields in §11 (`generated_by`, `llm_rejected`, `config_version`, `audit_ref`), or where audit records should be kept instead;
   7. the S3 bucket and prefix for the screening logs and baseline snapshots (§10.1), with put/get/list rights; whether the contract's `baseline_version` (e.g. `2026-W44`) should carry the method version too.
 - **Q3C history (live data).** At site 994 every reference week before 23 Oct 2026 has `HasGreen = 0` on every approach while the cycle runs normally, so Q3C has one usable week. `inspect --history` now shows the GreenShare stored with `HasGreen = 0`, to tell whether HasGreen was not filled before that date (a data-pipeline question for Zay) or whether the records are empty.
+- **Link speed.** Whether an existing historical reference speed exists (bucket, measurement, field); `link_speed_reference` is ready for it. The contract has no model for link speed or for an Amber click: `core.run_link_speed` returns a dict, and `DiagnosisResult.link_speed` is filled once the contract has that field.
 - **For the methodology owner:** the Q3 case of one abnormal, one normal and one not-assessable measure (§6).
 - **Template IDs.** D002's registry ID (`ID_Q5_TOMTOM_CONFIRMATION`) is a placeholder until confirmed.
 - **Outside this repository:** the chatbot's `tomtom/engine.py::scats_volume_hours()` groups 15-minute records by their stamp's clock hour. With end labelling, this shifts every hour by 15 minutes (00:45–01:45 instead of 01:00–02:00). It should be fixed in the Chatbot repository.

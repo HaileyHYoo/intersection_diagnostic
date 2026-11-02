@@ -2,11 +2,13 @@
 
     1. Diagnosis                    D001
     2. Supporting Evidence          D001 over the saved Q1/Q3 results (with the code-built tables)
-    3. TomTom Road-User Impact      D002 over code-calculated TomTom evidence
+    3. TomTom Road-User Impact      D002 over code-calculated TomTom evidence, plus the supplementary TomTom
+                                    incoming-link speed (link_speed.py; not part of D002 or its agreement)
     4. Suggested Engineering Checks D001
 """
 from __future__ import annotations
 
+from . import link_speed as speed
 from .templates.d001 import approach_label
 
 
@@ -49,20 +51,31 @@ def tomtom_tables(d002: dict) -> list[dict]:
     return [approach] + ([moves] if moves["rows"] else [])
 
 
-def assemble(site: dict, period: dict, d001: dict, d002: dict | None) -> dict:
+def speed_part(link_speed: dict | None) -> tuple[list[str], list[dict]]:
+    if link_speed is None:
+        return [], []
+    bullets = [f"Supplementary link speed: {note}" for note in link_speed["notes"]]
+    bullets.append("Reference speed: " + link_speed["reference"])
+    return bullets, [speed.table(link_speed)] if link_speed["approaches"] else []
+
+
+def assemble(site: dict, period: dict, d001: dict, d002: dict | None, link_speed: dict | None = None) -> dict:
     a1 = d001["answer"]
     sections = [
         {"title": "1. Diagnosis", "text": a1["diagnosis"], "producer": "D001"},
         {"title": "2. Supporting Evidence", "bullets": a1["supporting_evidence"], "tables": evidence_tables(site),
          "producer": "D001"},
     ]
+    speed_bullets, speed_tables = speed_part(link_speed)
     if d002 is None:
-        sections.append({"title": "3. TomTom Road-User Impact", "text": "TomTom confirmation was not run.", "producer": "D002"})
+        sections.append({"title": "3. TomTom Road-User Impact", "text": "TomTom confirmation was not run.",
+                         "bullets": speed_bullets, "tables": speed_tables, "producer": "D002"})
     else:
         a2 = d002["answer"]
         sections.append({"title": "3. TomTom Road-User Impact", "text": a2["road_user_impact"],
-                         "bullets": [f"Agreement with SCATS findings: {a2['agreement']}", f"Coverage: {a2['coverage']}"],
-                         "tables": tomtom_tables(d002), "producer": "D002"})
+                         "bullets": [f"Agreement with SCATS findings: {a2['agreement']}", f"Coverage: {a2['coverage']}"]
+                         + speed_bullets,
+                         "tables": tomtom_tables(d002) + speed_tables, "producer": "D002"})
     sections.append({"title": "4. Suggested Engineering Checks", "bullets": a1["suggested_checks"], "producer": "D001"})
     report = {"site": site["site"], "intersection": site.get("name"), "classification": site["label"],
               "period": period, "sections": sections,

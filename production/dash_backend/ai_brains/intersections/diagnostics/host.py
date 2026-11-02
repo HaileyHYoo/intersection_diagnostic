@@ -53,3 +53,11 @@ def run_diagnosis(diagnosis_input, bot=None, settings: Settings | None = None):
     llm = HostLLM(bot.llm) if bot is not None and getattr(bot, "llm", None) is not None else None
     return core.run_diagnosis(diagnosis_input, LiveSource(settings), settings, llm,
                               audit_store=SQLiteStore(settings.db_path))
+
+
+def run_link_speed(evidence, period, settings: Settings | None = None) -> dict:
+    """Contract entry for an Amber (or Red) click: the supplementary TomTom incoming-link speed for the site's
+    saved ScreeningSite evidence and the run's AnalysisPeriod. Display only; it never changes the result."""
+    from .contract import core
+    settings = settings or Settings()
+    return core.run_link_speed(evidence, period, LiveSource(settings), settings)

@@ -97,6 +97,9 @@ result = run_screening(screening_input)            # ScreeningInput -> Screening
 
 # click on a Red site
 diagnosis = run_diagnosis(diagnosis_input, bot)    # DiagnosisInput -> DiagnosisResult
+
+# click on an Amber site: supplementary TomTom incoming-link speed (display only)
+speed = run_link_speed(screening_site, analysis_period)   # ScreeningSite evidence, AnalysisPeriod -> dict
 ```
 
 - **The contract module.** The adapter uses its bundled copy of `intersections_diagnostics_schemas.py`. To share one set of classes with the host, call `contract.adapter.use_contract(<the host's module>)` once at start-up.
@@ -118,6 +121,7 @@ print(view["counts"], view["period"]["local"])
 Sent on 31 Oct 2026: the `site_grey_no_green` flag, baseline storage and versioning, time zones and a UTC cache key, a config hash in the cache key, and `has_largest_queue: bool | None`. Also still open:
 
 - **Audit fields.** Add the optional fields above to the contract, or say where audit records should live.
+- **Link speed.** Amber and Red clicks show the TomTom incoming-link speed (`aimes/speed`). The contract has no model for it: `run_link_speed` returns a dict, and Red diagnoses keep it in the audit record. Add `DiagnosisResult.link_speed` (and an Amber-click model) if the UI should take it from the contract. Is there an existing historical reference speed? `schema.influx.sources.link_speed_reference` is ready for it.
 - **S3.** The bucket and prefix for `DIAGNOSTICS_ARCHIVE`. On the contract path, pass `archive=` to `core.run_screening` (`host.run_screening` does this). The log uses the host's `run_id`.
 
 - **Schema.** Replace `config/schema.json` with the final schema (see SCHEMA.md) and change its `version`.

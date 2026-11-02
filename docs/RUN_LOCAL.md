@@ -64,6 +64,7 @@ python main.py backfill --from 2026-10-26T07:00 --to 2026-10-26T10:00   # (추�
 - **기록 저장(문건 18장).** 스크리닝이 끝날 때마다 JSON 로그 1개를 저장하고, 그 실행에 쓰인 베이스라인은 주간 스냅샷에 저장합니다. 위치는 `DIAGNOSTICS_ARCHIVE`입니다. 기본값은 DB 파일 옆 `archive/` 폴더이고, 프로덕션에서는 `s3://버킷/경로`를 씁니다. 이미 있는 파일은 덮어쓰지 않습니다.
   - `archive/screening-logs/AU-VIC-Melbourne/2026/10/30/1430_<run_id>.json`
   - `archive/baselines/AU-VIC-Melbourne/2026-W44.<방법 버전>/Friday/1430.json.gz`
+- **링크 속도(보조 정보).** 지도에서 Amber나 Red 교차로를 클릭하면, 들어오는 링크(EGRESS)의 TomTom 속도(`aimes/speed`, 같은 30분의 조화평균)가 함께 나옵니다. Red는 리포트 3번 섹션에 표로 나옵니다. 분류에는 쓰지 않습니다. `inspect`의 `link speed (period)` 줄로 실데이터를 확인할 수 있습니다.
 - 가짜 데이터(`demo`, `--fake`)는 `out/demo_archive/`에 따로 저장하므로 실데이터 기록과 섞이지 않습니다.
 
 - 시각에 오프셋이 없으면 멜번 현지 시각으로 봅니다.

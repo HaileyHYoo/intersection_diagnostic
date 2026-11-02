@@ -5,6 +5,10 @@ functions only compute:
 
     run_screening(ScreeningInput)  -> ScreeningResult    Level 1 for the input's region and period
     run_diagnosis(DiagnosisInput)  -> DiagnosisResult    Level 2 for one Red site, from its saved evidence
+    run_link_speed(ScreeningSite evidence, AnalysisPeriod) -> dict
+                                   supplementary TomTom incoming-link speed for an Amber (or Red) click; the
+                                   contract has no model for it yet (DiagnosisResult.link_speed is filled once
+                                   the contract has that field)
 
 The input's ScreeningConfig thresholds override rules.json; every other rule (exclusions, alignment, the
 no-green rule, ...) comes from rules.json. Baselines are read from, or built into, the baseline store.
@@ -23,6 +27,7 @@ import logging
 from datetime import datetime, timezone
 
 from .. import archive as history
+from .. import link_speed as speed
 from .. import screening
 from ..baseline import BaselineBuilder
 from ..settings import Settings, config_snapshot, load_rules
@@ -90,6 +95,14 @@ def _archive(archive, inp, settings, period, baseline, result, payload, started)
         settings.rules)
 
 
+def run_link_speed(evidence, period_model, source, settings: Settings | None = None) -> dict:
+    """Supplementary TomTom incoming-link speed for one selected site (methodology, speed addition).
+    Display only: it never changes the screening result."""
+    settings = settings or Settings()
+    period = adapter.period_from_model(period_model, settings.rules)
+    return speed.link_speed(source, adapter.site_from_model(evidence), period, settings.schema)
+
+
 def run_diagnosis(inp, source, settings: Settings | None = None, llm=None, audit_store=None):
     """DiagnosisInput -> DiagnosisResult."""
     S = adapter.S
@@ -101,6 +114,7 @@ def run_diagnosis(inp, source, settings: Settings | None = None, llm=None, audit
     mark = len(getattr(source, "provenance", []))
     r1 = d001.run(site, period.to_dict(), llm)
     r2 = d002.run(source, site, period, settings.rules, llm)
+    link_speed = speed.link_speed(source, site, period, settings.schema) if speed.applies("red", settings.rules) else None
     refs = {"D001": inp.q4_template, "D002": inp.q5_template}
     audit_ref = None
     if audit_store is not None:
@@ -108,9 +122,11 @@ def run_diagnosis(inp, source, settings: Settings | None = None, llm=None, audit
         audit_ref = str(audit_store.save_audit("diagnosis", inp.diagnosis_id, {
             "diagnosis_id": inp.diagnosis_id, "screening_run_id": inp.screening_run_id, "site": inp.site.site_no,
             "period": period.to_dict(), "config_version": settings.rules_version, "provenance": _reads(source, mark),
-            "templates": {t["template_id"]: {**t, "registry": refs[t["template_id"]].model_dump()} for t in (r1, r2)}}))
+            "templates": {t["template_id"]: {**t, "registry": refs[t["template_id"]].model_dump()} for t in (r1, r2)},
+            "link_speed": link_speed}))
     return S.DiagnosisResult(diagnosis_id=inp.diagnosis_id, screening_run_id=inp.screening_run_id, site_no=inp.site.site_no,
                              period=inp.period, q4=adapter.q4_output(site, r1, settings.rules, inp.q4_template),
                              q5=adapter.q5_output(r2, period, settings.rules, inp.q5_template),
                              completed_at=datetime.now().astimezone(),
-                             **adapter.optional(S.DiagnosisResult, config_version=settings.rules_version, audit_ref=audit_ref))
+                             **adapter.optional(S.DiagnosisResult, config_version=settings.rules_version, audit_ref=audit_ref,
+                                                link_speed=link_speed))

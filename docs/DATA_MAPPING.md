@@ -16,6 +16,7 @@ Each question joins a **network list** (what to check, from Neo4j) with **measur
 | **Q3C** Phase service | Is any approach getting unusual green time? | Same approach list as Q1 (EGRESS `link_id`) | InfluxDB `IntersectionPerfApproach` → `GreenShare`, `HasGreen` | `SiteNo` = `"S"` + site; `LinkId` = `link_id` | Green share outside the usual range on any approach |
 | **Q4** SCATS interpretation | What does the SCATS evidence say? (Red sites only) | — | No new data: the saved Q1 + Q3 results | — | Explains the Red result and suggests checks |
 | **Q5** TomTom confirmation | Do road users see the same problem? (Red sites only) | **TomTom mapping file** (from the chatbot, not Neo4j): per site the junction UUID and TomTom `ApproachId` / `ExitId` → Neo4j EGRESS `link_id` and travel direction | **Delay:** InfluxDB `IntersectionTurnKpi` → `ControlDelaySec`<br>**Queue:** TomTom Junction Analytics API → `queueLengthMeters` (not in InfluxDB) | Delay: `SiteNo` = `"S"` + site, `ApproachId` → `link_id` via the mapping<br>Queue: junction UUID, approach → `link_id` via the mapping | *Agree* if a flagged approach has the largest delay or longest queue |
+| **Link speed** (supplementary) | How fast is traffic on the incoming links? (Amber and Red clicks) | Same approach list as Q1 (EGRESS `link_id`) | InfluxDB `aimes/speed` → `Speed` (km/h), `Provider = TomTom`; reference speed only if an existing one is configured | `DetectorGroupId` = `link_id` | Never: display only, harmonic mean over the same 30 min; does not change any result |
 
 - **Usual range:** the same weekday and 30-minute slot in the previous 8 weeks (≥ 5 valid weeks; holidays excluded).
 - **Every InfluxDB and Neo4j query** is also filtered by region (`Region` tag / `Region {tag}`), because site numbers repeat across cities.
@@ -124,3 +125,14 @@ All three measures come from `scats-aggregation`, site tag `SiteNo` in `S` forma
 - **No TomTom data for the period:** the fixed "TomTom unavailable" message.
 - **Read but not used in the result:** `TurnRatioPct` (IntersectionTurnKpi), and `AvgStopsPerCar` and `AvgSpeedkmh` (IntersectionKpi).
 - **Code:** `templates/d002.py`, `sources/tomtom_queue.py`, `tomtom_map.py`.
+
+## Supplementary link speed (Amber and Red clicks)
+
+| | |
+|---|---|
+| **Links** | The site's EGRESS links (Neo4j), as screened |
+| **Source** | InfluxDB `aimes` / `speed`, field `Speed` (km/h); tags `DetectorGroupId` (= `link_id`), `Region`, `Provider = TomTom`. `TrafficCondition` (a string) is not read. |
+| **Value** | Harmonic mean of the positive samples in [start, end) of the 30-minute period (as the chatbot) |
+| **Reference** | `link_speed_reference` feed, off: no existing historical reference speed found |
+| **Shown** | Amber: under the Q1/Q3 evidence. Red: report section 3, beside delay and queue. |
+| **Code** | `link_speed.py`, `sources/live.py: link_speeds`, `contract/core.py: run_link_speed` |

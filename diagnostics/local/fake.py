@@ -211,6 +211,31 @@ class FakeSource:
                         out.append({**row, "time": stamp - timedelta(minutes=5), "value": 9999})  # off grid
         return out
 
+    def link_speeds(self, links, start, end, key="link_speed"):
+        """TomTom speed samples every 5 minutes in [start, end). The red_agree site's northern approach is slow now;
+        the red_disagree site's western approach has no speed; a 0 km/h sample is included (it is not used)."""
+        from ..sources.base import DataUnavailable
+        if key != "link_speed":
+            raise DataUnavailable("no reference-speed feed in the synthetic network")
+        self.provenance.append({"source": "fake", "feed": "link_speed", "links": len(links), "start": str(start)})
+        owner = {a["link"]: (s, n, a) for s, n in self.network.items() for a in n["approaches"]}
+        out, t = [], to_utc(start)
+        while t < to_utc(end):
+            for link in links:
+                if link not in owner:
+                    continue
+                site, n, a = owner[link]
+                if n["scenario"] == "red_disagree" and a["bound"] == "W":
+                    continue
+                speed = (20 + 40 * unit(site, a["bound"], "speed")) * self._noise(t, site, a["bound"], "spd", scale=0.1)
+                if n["scenario"] == "red_agree" and a["bound"] == "N" and self._current(t + timedelta(minutes=5)):
+                    speed *= 0.5
+                out.append({"link": link, "time": t, "value": round(speed, 1)})
+                if t.minute == 0 and a["bound"] == "E":
+                    out.append({"link": link, "time": t + timedelta(seconds=30), "value": 0.0})
+            t += timedelta(minutes=5)
+        return out
+
     def site_kpi(self, start, end, sites=None):
         self.provenance.append({"source": "fake", "feed": "site_kpi", "start": str(start), "stop": str(end)})
         out = []

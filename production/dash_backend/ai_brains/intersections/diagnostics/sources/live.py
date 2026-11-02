@@ -139,6 +139,15 @@ class LiveSource:
         return self._logical(feed, rows, {"link": (feed["link_tag"], lambda v: ids.link(v, self.strip)),
                                           "bound": (feed["bound_tag"], lambda v: v)})
 
+    def link_speeds(self, links: list[str], start: datetime, end: datetime, key: str = "link_speed") -> list[dict]:
+        """TomTom speed samples {link, time, value} for the given links (supplementary; key "link_speed_reference"
+        reads the reference-speed feed when one is configured)."""
+        feed = self._feed(key)
+        if not links:
+            return []
+        rows = self._query(key, start, end, fields=list(feed["fields"].values()), tag_in=(feed["link_tag"], list(links)))
+        return [{"link": ids.link(r.get(feed["link_tag"]), self.strip), "time": r["time"], "value": r["value"]} for r in rows]
+
     def tomtom_site_kpi(self, site: str, start: datetime, end: datetime) -> list[dict]:
         feed = self._feed("tomtom_site_kpi")
         rows = self._query("tomtom_site_kpi", start, end, fields=list(feed["fields"].values()),

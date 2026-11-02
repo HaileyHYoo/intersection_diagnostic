@@ -10,6 +10,7 @@ expected grid, duplicates, value types and sample rows; then:
                 with the raw IDs that needed normalising
     stamps      the first and last stamps in the window, to confirm end-of-interval labelling
     tomtom      the site's junction UUID and approach mapping, and the queue archive rows for the window
+    link_speed  TomTom speed samples of the site's EGRESS links in the analysis period (supplementary)
 
     python main.py inspect --site 994 --end 2026-10-30T15:00 --history
 
@@ -157,6 +158,17 @@ def inspect(source, settings: Settings, site: str, end=None, hours: float = 2.0)
                                               "mapped_link": mapping["approaches"].get(a, {}).get("link")}
                                           for a, v in per.items()}}
     report["checks"]["tomtom"] = tomtom
+    links = [a["link"] for a in approaches]
+    speed_rows = attempt("influx.link_speed", lambda: source.link_speeds(links, period.start, period.end)) if links else []
+    if speed_rows is not None:
+        from ..link_speed import _per_link, harmonic
+        per_link = _per_link(speed_rows, period)                      # the samples a click uses: [start, end)
+        report["checks"]["link_speed"] = {
+            "links": len(links), "rows": len(speed_rows),
+            "per_link": {k: {"samples": sum(x > 0 for x in v), "harmonic_kmh": None if harmonic(v) is None else round(harmonic(v), 1)}
+                         for k, v in sorted(per_link.items())},
+            "links_without_speed": sorted(set(links) - set(per_link)),
+            "samples": [{k: str(v) for k, v in r.items()} for r in speed_rows[:3]]}
     report["checks"]["period_values"] = attempt("period_values", lambda: period_values(source, settings, site, period, approaches))
     return report
 
@@ -230,6 +242,11 @@ def summary(report: dict) -> str:
     lines.append(f"  tomtom: junction {t.get('junction_uuid')}, mapped approaches {t.get('mapped_approaches')}, "
                  + (f"queue rows {q['rows']} over {len(q['approaches'])} approaches" if q else
                     t.get("queue_skipped") or "queue not read (see errors)"))
+    s = report["checks"].get("link_speed")
+    if s:
+        lines.append(f"  link speed (period): {s['rows']} samples, per link {{"
+                     + ", ".join(f"{k}: {v['harmonic_kmh']} km/h ({v['samples']})" for k, v in s["per_link"].items())
+                     + f"}}, without speed {s['links_without_speed']}")
     for k, v in report["errors"].items():
         lines.append(f"  ERROR {k}: {v}")
     return "\n".join(lines)

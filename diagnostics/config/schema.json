@@ -108,6 +108,34 @@
         },
         "timestamp_label": "end",
         "timestamp_note": "End-labelled, confirmed 30 Oct 2026 (site 4397): the last record equals the window end; the latest quarter can arrive some minutes late."
+      },
+      "link_speed": {
+        "purpose": "Supplementary TomTom incoming-link speed, shown on an Amber or Red click (methodology, speed addition). Never used for Q1-Q3 or the classification.",
+        "bucket": "aimes",
+        "measurement": "speed",
+        "link_tag": "DetectorGroupId",
+        "fields": {
+          "speed": "Speed"
+        },
+        "filters": {
+          "Provider": "TomTom"
+        },
+        "unit": "km/h",
+        "aggregation": "harmonic",
+        "window": "[start, end)",
+        "note": "The chatbot's link-speed feed (road_closure_analysis/closure_did.py SPEED: DetectorGroupId = Road.link_id confirmed). A period's speed is the harmonic mean of the positive samples in [start, end), as the chatbot's binned_query(how='pace'). TrafficCondition is a string field and is not read."
+      },
+      "link_speed_reference": {
+        "purpose": "Existing historical reference speed per link, displayed beside the current speed when available. None is configured: no existing reference-speed series was found in the InfluxDB inventory or the chatbot (speed_prediction is a forecast, not a reference). Set enabled and the names once the production team confirms one; no new speed baseline is calculated (methodology).",
+        "enabled": false,
+        "bucket": "",
+        "measurement": "",
+        "link_tag": "DetectorGroupId",
+        "fields": {
+          "speed": ""
+        },
+        "filters": {},
+        "unit": "km/h"
       }
     },
     "fallbacks": {

@@ -63,6 +63,11 @@
     "delay_note": "Decision (1 Nov 2026): Q5 ranks approaches by TomTom control delay (IntersectionTurnKpi ControlDelaySec); approach delay (ApproachDelaySec) is still reported. Per approach and movement it is the plain mean of the stored 15-minute turn records, and a negative delay counts as 0, as in the chatbot's tomtom/los.py and delay_policy.py. Options: delay_metric \"approach_delay\"; delay_mean \"sample_weighted\"; negative_delay \"keep\".",
     "note": "Methodology section 13: Q5 reports approach queue length and the largest queue from the TomTom Junction Analytics queue history (API archive). Needs TOMTOM_API_KEY; without it, or if the call fails, the queue is reported as unavailable and the rest of Q5 still runs."
   },
+  "link_speed": {
+    "enabled": true,
+    "categories": ["amber_traffic", "amber_signal", "red"],
+    "note": "Methodology (speed addition): on an Amber or Red click, show the TomTom speed of the site's incoming (EGRESS) links for the same 30-minute period, and an existing historical reference speed where one is available. Supplementary only: it never changes Q1, Q2, Q3, the Q5 agreement or the category. Missing speed is shown as unavailable. No network-wide speed screening and no speed baseline."
+  },
   "contract": {
     "template_ids": {
       "D001": {"template_id": "ID_Q4_SCATS_INTERPRETATION", "version": "1.0.0"},

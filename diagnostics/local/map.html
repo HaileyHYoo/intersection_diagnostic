@@ -178,7 +178,18 @@ function statusCell(s) {
   return `<td class="${abn ? "abn" : ""}">${esc(s ? (s.direction || s.status) : "-")}</td>`;
 }
 
-function renderEvidence(site) {
+function renderSpeed(ls) {
+  if (!ls) return "";
+  let html = `<h3>Supplementary: TomTom incoming-link speed</h3>
+    <div class="note">Same 30 minutes; not used for the classification. Reference speed: ${esc(ls.reference)}</div>`;
+  if (ls.approaches.length) html += `<table><tr><th>Approach</th><th>Speed (km/h)</th><th>Samples</th><th>Reference (km/h)</th></tr>
+    ${ls.approaches.map((a) => `<tr><td>${esc(a.approach)}</td><td>${a.speed_kmh == null ? "unavailable" : num(a.speed_kmh)}</td>
+      <td>${a.samples}</td><td>${num(a.reference_kmh)}</td></tr>`).join("")}</table>`;
+  if (ls.notes.length) html += `<div class="note">${ls.notes.map(esc).join("; ")}</div>`;
+  return html;
+}
+
+function renderEvidence(site, linkSpeed) {
   let html = header(site, site.label, site.category);
   if (site.reasons && site.reasons.length) html += `<ul>${site.reasons.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>`;
   const q2 = site.q2;
@@ -207,7 +218,7 @@ function renderEvidence(site) {
         <td>${a.no_green ? "no green" : num(a.current)}</td><td>${num(a.usual)}</td><td>${num(a.p_low)}-${num(a.p_high)}</td>${statusCell(a)}</tr>`).join("")}
       </table>`;
   }
-  return html;
+  return html + renderSpeed(linkSpeed);
 }
 
 async function openSite(s) {
@@ -216,11 +227,13 @@ async function openSite(s) {
     if (STATIC) {
       const site = STATIC.evidence[s.site];
       $("panel").innerHTML = renderEvidence(site) + (s.category === "red"
-        ? `<p class="note">D001/D002 run only with the local server (python main.py map).</p>` : "");
+        ? `<p class="note">D001/D002 run only with the local server (python main.py map).</p>` : "")
+        + (["red", "amber_traffic", "amber_signal"].includes(s.category)
+          ? `<p class="note">TomTom link speed is read only with the local server (python main.py map).</p>` : "");
       return;
     }
     const res = await api(`/api/diagnose?run=${current.run_id}&site=${s.site}`);
-    $("panel").innerHTML = res.mode === "report" ? renderReport(res, s) : renderEvidence(res.site);
+    $("panel").innerHTML = res.mode === "report" ? renderReport(res, s) : renderEvidence(res.site, res.link_speed);
   } catch (e) {
     $("panel").innerHTML = header(s, s.label, s.category) + `<p class="abn">${esc(e.message)}</p>`;
   }

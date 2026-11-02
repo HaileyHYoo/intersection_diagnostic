@@ -3,9 +3,11 @@
     screen(period_end=None)      Level 1 for the latest completed period (or a chosen one). A complete run
                                  for the same region, period, baseline version and rules is returned from
                                  the store; a run already in progress is waited for, not started twice.
-    site_evidence(run_id, site)  The saved Q2/Q1/Q3 evidence of one site (any category, no LLM).
-    diagnose(run_id, site)       What a click runs: D001 + D002 and the four-section report for a Red site;
-                                 the saved evidence for every other category (rules.click decides).
+    site_evidence(run_id, site)  The saved Q2/Q1/Q3 evidence of one site (any category, no LLM); for Amber,
+                                 also the supplementary TomTom incoming-link speed (rules.link_speed).
+    diagnose(run_id, site)       What a click runs: D001 + D002 and the four-section report for a Red site
+                                 (with the supplementary link speed in section 3); the saved evidence for
+                                 every other category (rules.click decides).
     refresh_baselines(days)      The weekly baseline job; writes the weekly baseline snapshot.
     archive_run(run_id)          Writes a run's screening JSON log if it is missing (e.g. S3 was unreachable).
 
@@ -20,6 +22,7 @@ import time
 from datetime import datetime
 
 from . import archive as history
+from . import link_speed as speed
 from . import screening
 from .baseline import BaselineBuilder
 from .report import assemble
@@ -175,10 +178,20 @@ class DiagnosticsService:
                 return run, s
         raise KeyError(f"Site {site} is not in run {run_id}.")
 
+    def _link_speed(self, run: dict, s: dict) -> dict | None:
+        if not speed.applies(s["category"], self.settings.rules):
+            return None
+        period = period_ending(run["payload"]["period"]["end"], self.settings.rules)
+        return speed.link_speed(self.source, s, period, self.settings.schema)
+
     def site_evidence(self, run_id: str, site: str) -> dict:
         run, s = self._site(run_id, site)
-        return {"mode": "evidence", "run_id": run_id, "period": run["payload"]["period"],
-                "baseline": run["payload"]["baseline"], "site": s}
+        out = {"mode": "evidence", "run_id": run_id, "period": run["payload"]["period"],
+               "baseline": run["payload"]["baseline"], "site": s}
+        link_speed = self._link_speed(run, s)
+        if link_speed is not None:
+            out["link_speed"] = link_speed
+        return out
 
     def diagnose(self, run_id: str, site: str, reuse: bool = True) -> dict:
         run, s = self._site(run_id, site)
@@ -194,11 +207,12 @@ class DiagnosticsService:
         mark = len(getattr(self.source, "provenance", []))
         r1 = d001.run(s, p["period"], self.llm) if "D001" in templates else None
         r2 = d002.run(self.source, s, period, self.settings.rules, self.llm) if "D002" in templates else None
-        report = assemble(s, p["period"], r1, r2)
+        link_speed = self._link_speed(run, s)
+        report = assemble(s, p["period"], r1, r2, link_speed)
         registry = self.settings.rules.get("contract", {}).get("template_ids", {})
         templates = {t["template_id"]: {**t, "registry": registry.get(t["template_id"])} for t in (r1, r2) if t}
         record = {"mode": "report", "run_id": run_id, "site": s["site"], "period": p["period"], "report": report,
-                  "templates": templates, "config_version": self.settings.rules_version,
+                  "templates": templates, "link_speed": link_speed, "config_version": self.settings.rules_version,
                   "provenance": self._provenance_since(mark)}
         record["id"] = self.store.save_diagnosis(run_id, s["site"], record)
         return {**record, "cached": False}
