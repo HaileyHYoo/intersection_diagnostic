@@ -9,7 +9,7 @@ Our records keep every value the methodology needs; the contract is a projection
     count_60min     the 60-minute total rounded to an integer (the gate itself uses the unrounded total);
                     None for a detector that could not be evaluated (records missing), as the contract says
     Grey reasons    insufficient_data_reason (required for Grey); other caveats go to notes
-    link speed      LinkSpeedReport (link_speed.py result); arm is None (not in the TomTom link mapping)
+    link speed      LinkSpeedReport (link_speed.py result); arm from the production operational sheet (arms.py)
 
 Fields detected from the models themselves, so an older contract still works:
 
@@ -347,5 +347,5 @@ def link_speed_report(speed: dict, site_no: str, period: S.AnalysisPeriod):
         notes.insert(0, S.LINK_SPEED_UNAVAILABLE_MESSAGE)
     notes.append("Reference speed: " + speed["reference"])
     return S.LinkSpeedReport(site_no=site_no, period=period, notes=notes, links=[
-        S.LinkSpeed(link_id=a["link"], street_name=a.get("street") or "", arm=None, speed_kmh=a["speed_kmh"],
+        S.LinkSpeed(link_id=a["link"], street_name=a.get("street") or "", arm=a.get("arm"), speed_kmh=a["speed_kmh"],
                     reference_speed_kmh=a["reference_kmh"]) for a in speed["approaches"]])

@@ -183,7 +183,7 @@ class DiagnosticsService:
         if not speed.applies(s["category"], self.settings.rules):
             return None
         period = period_ending(run["payload"]["period"]["end"], self.settings.rules)
-        return speed.link_speed(self.source, s, period, self.settings.schema)
+        return speed.link_speed(self.source, s, period, self.settings.schema, self.settings.region)
 
     def site_evidence(self, run_id: str, site: str) -> dict:
         run, s = self._site(run_id, site)

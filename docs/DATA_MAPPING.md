@@ -134,5 +134,6 @@ All three measures come from `scats-aggregation`, site tag `SiteNo` in `S` forma
 | **Source** | InfluxDB `aimes` / `speed`, field `Speed` (km/h); tags `DetectorGroupId` (= `link_id`), `Region`, `Provider = TomTom`. `TrafficCondition` (a string) is not read. |
 | **Value** | Harmonic mean of the positive samples in [start, end) of the 30-minute period (as the chatbot) |
 | **Reference** | `link_speed_reference` feed, off: no existing historical reference speed found |
+| **Arm** | Production backend only: SCATS operational sheet (S3, `OperationalSheetClient`) + graph `(Road)-[:HAS]->(Detector)` rows (`LINK_CYPHER`), link rule of `operational_sheet.build_sheet` |
 | **Shown** | Amber: under the Q1/Q3 evidence. Red: report section 3, beside delay and queue. |
 | **Code** | `link_speed.py`, `sources/live.py: link_speeds`, `contract/core.py: run_link_speed` |

@@ -117,7 +117,7 @@ def run_link_speed(evidence, period_model, source, settings: Settings | None = N
     contract's LinkSpeedReport. Display only: it never changes the screening result."""
     settings = settings or Settings()
     period = adapter.period_from_model(period_model, settings.rules)
-    result = speed.link_speed(source, adapter.site_from_model(evidence), period, settings.schema)
+    result = speed.link_speed(source, adapter.site_from_model(evidence), period, settings.schema, settings.region)
     return adapter.link_speed_report(result, evidence.site_no, period_model)
 
 

@@ -6,6 +6,8 @@ For the site's incoming (EGRESS) links and the same 30-minute period as Q1/Q3:
                       as the chatbot's link-speed reading (binned_query how="pace")
     reference speed   an existing historical reference speed, only when one is configured
                       (schema link_speed_reference); no speed baseline is calculated here
+    arm               the link's intersection arm from the production operational sheet (arms.py),
+                      in the production backend only
 
 It is display information only: Q1, Q2, Q3, the Q5 agreement and the category never read it. A link without
 samples, or a feed that cannot be read, is reported as unavailable with the reason, never estimated.
@@ -15,6 +17,7 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import datetime
 
+from . import arms as arm_lookup
 from .templates.d001 import approach_label
 from .timewin import Period, to_utc
 
@@ -55,7 +58,7 @@ def _per_link(rows: list[dict], period: Period) -> dict[str, list[float]]:
     return out
 
 
-def link_speed(source, site: dict, period: Period, schema: dict) -> dict:
+def link_speed(source, site: dict, period: Period, schema: dict, region: str | None = None) -> dict:
     approaches = incoming_links(site)
     links = [a["link"] for a in approaches]
     out = {"metric": METRIC, "period": period.label(), "unit": "km/h", "affects_classification": False,
@@ -78,11 +81,15 @@ def link_speed(source, site: dict, period: Period, schema: dict) -> dict:
             out["reference"] = f"unavailable - {type(exc).__name__}: {str(exc)[:120]}"
     else:
         out["reference"] = "unavailable - no existing historical reference speed is configured"
+    arms, arm_note = arm_lookup.link_arms(source, site["site"], region) if region else ({}, None)
+    if arm_note:
+        out["notes"].append(arm_note)
     for a in approaches:
         values = current.get(a["link"], [])
         speed = harmonic(values)
         ref = harmonic(reference.get(a["link"], []))
         out["approaches"].append({"link": a["link"], "approach": approach_label(a), "street": a.get("street"),
+                                  "arm": arms.get(a["link"]),
                                   "speed_kmh": None if speed is None else round(speed, 1),
                                   "samples": sum(1 for v in values if v > 0),
                                   "reference_kmh": None if ref is None else round(ref, 1),
@@ -97,7 +104,9 @@ def link_speed(source, site: dict, period: Period, schema: dict) -> dict:
 def table(speed: dict) -> dict:
     """The report table (section 3, supplementary)."""
     fmt = lambda x: "-" if x is None else f"{x:.1f}"
+    with_arm = any(a.get("arm") is not None for a in speed["approaches"])
     return {"title": "Supplementary: TomTom incoming-link speed (same 30 min; not used for the classification)",
-            "columns": ["Approach", "Speed (km/h)", "Samples", "Reference (km/h)"],
-            "rows": [[a["approach"], fmt(a["speed_kmh"]) if a["speed_kmh"] is not None else "unavailable",
-                      str(a["samples"]), fmt(a["reference_kmh"])] for a in speed["approaches"]]}
+            "columns": ["Approach"] + (["Arm"] if with_arm else []) + ["Speed (km/h)", "Samples", "Reference (km/h)"],
+            "rows": [[a["approach"]] + (["-" if a.get("arm") is None else str(a["arm"])] if with_arm else [])
+                     + [fmt(a["speed_kmh"]) if a["speed_kmh"] is not None else "unavailable",
+                        str(a["samples"]), fmt(a["reference_kmh"])] for a in speed["approaches"]]}

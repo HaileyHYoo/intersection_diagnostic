@@ -130,7 +130,7 @@ The Nov 2026 contract covers the no-green Grey flag, `has_largest_queue: bool | 
 - **Audit fields.** The optional fields above, or where audit records should live.
 - **S3.** The bucket and prefix for `DIAGNOSTICS_ARCHIVE`.
 - **Baseline snapshot size.** One `BaselineSnapshot` per weekday and slot (as written now) rather than one per week.
-- **Link speed.** `LinkSpeed.arm` mapping if needed; an existing historical reference speed (`schema.influx.sources.link_speed_reference` is ready for it).
+- **Link speed.** An existing historical reference speed (`schema.influx.sources.link_speed_reference` is ready for it). `LinkSpeed.arm` reuses the backend's operational-sheet modules (`db.operational_sheet_client`, `operational_sheet`, `operational_sheet_store`), as the TomTom layer does; no new configuration.
 
 - **Schema.** Replace `config/schema.json` with the final schema (see SCHEMA.md) and change its `version`.
 - **Store.** Use SQLite on a persistent path, or a database. `store.SQLiteStore` is the interface to re-implement.

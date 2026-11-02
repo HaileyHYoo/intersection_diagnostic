@@ -121,3 +121,95 @@ class LinkSpeedTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ArmTests(unittest.TestCase):
+    """The production operational-sheet modules, simulated, give LinkSpeed.arm; without them arm is None."""
+
+    def setUp(self):
+        import sys
+        import types
+        from diagnostics import arms
+        calls = self.calls = []
+
+        class Client:
+            location = "s3://sheets"
+
+            def __init__(self, region_tag):
+                calls.append(("client", region_tag))
+
+            def get_site(self, site):
+                return ({"site": site}, "2026-10-01") if site != "4303" else None
+
+        class SheetDB:
+            def __init__(self, docs, origin=None):
+                self.docs = docs
+
+            def close(self):
+                calls.append(("closed",))
+
+        def build_sheet(db, site, link_rows=None, link_error=None):
+            return {"links": [{"link_id": "SWANN4300Q9", "arm_no": 1}, {"link_id": "FLINE4300Q9", "arm_no": None},
+                              {"link_id": "SWANS4300Q9", "arm_no": 3}]}
+
+        base = "dash_backend.ai_brains.intersections"
+        mods = {base + ".db.operational_sheet_client": types.SimpleNamespace(OperationalSheetClient=Client),
+                base + ".operational_sheet": types.SimpleNamespace(build_sheet=build_sheet, LINK_CYPHER="MATCH ..."),
+                base + ".operational_sheet_store": types.SimpleNamespace(OperationalSheetDB=SheetDB)}
+        for name in ("dash_backend", "dash_backend.ai_brains", base, base + ".db"):
+            mods.setdefault(name, types.ModuleType(name))
+        self.saved = {k: sys.modules.get(k) for k in mods}
+        sys.modules.update(mods)
+        arms._client = None
+        self.addCleanup(self.restore)
+
+    def restore(self):
+        import sys
+        from diagnostics import arms
+        for k, v in self.saved.items():
+            if v is None:
+                sys.modules.pop(k, None)
+            else:
+                sys.modules[k] = v
+        arms._client = None
+
+    def source(self):
+        s = Settings()
+        src = FakeSource(s.rules, s.schema, END + ":00+11:00", n_sites=20)
+        queries = self.queries = []
+
+        class Graph:
+            def rows(self, cypher, params):
+                queries.append(params)
+                return []
+
+        src.graph = Graph()
+        return s, src
+
+    def test_arms_from_the_operational_sheet(self):
+        s, src = self.source()
+        svc = DiagnosticsService(src, s, SQLiteStore(":memory:"))
+        r = svc.diagnose(svc.screen(END)["run_id"], "4300")
+        by = {a["link"]: a["arm"] for a in r["link_speed"]["approaches"]}
+        self.assertEqual((by["SWANN4300Q9"], by["FLINE4300Q9"], by["SWANS4300Q9"]), (1, None, 3))
+        self.assertEqual(self.queries[0], {"ids": ["4300", "S4300"], "region": "AU-VIC-Melbourne"})
+        table = r["report"]["sections"][2]["tables"][-1]
+        self.assertEqual(table["columns"][:2], ["Approach", "Arm"])
+        period = timewin.period_ending(END, s.rules)
+        report = adapter.link_speed_report(r["link_speed"], "4300", adapter.period_model(period))
+        self.assertEqual({l.link_id: l.arm for l in report.links}["SWANS4300Q9"], 3)
+
+    def test_site_without_a_sheet(self):
+        s, src = self.source()
+        svc = DiagnosticsService(src, s, SQLiteStore(":memory:"))
+        r = svc.diagnose(svc.screen(END)["run_id"], "4303")
+        self.assertTrue(all(a["arm"] is None for a in r["link_speed"]["approaches"]))
+        self.assertIn("arm numbers unavailable: the site has no operational sheet", r["link_speed"]["notes"])
+
+    def test_local_runs_have_no_arm(self):
+        self.restore()
+        s = Settings()
+        svc = DiagnosticsService(FakeSource(s.rules, s.schema, END + ":00+11:00", n_sites=20), s, SQLiteStore(":memory:"))
+        r = svc.diagnose(svc.screen(END)["run_id"], "4300")
+        self.assertTrue(all(a["arm"] is None for a in r["link_speed"]["approaches"]))
+        self.assertNotIn("Arm", r["report"]["sections"][2]["tables"][-1]["columns"])

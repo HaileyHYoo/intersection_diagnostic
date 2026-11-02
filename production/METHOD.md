@@ -168,6 +168,7 @@ Every category is returned to the host, and the UI decides what to draw. A click
 | **Source** | InfluxDB `aimes` / `speed`, field `Speed` (km/h), `DetectorGroupId` = `link_id`, `Provider = TomTom`, Region tag. This is the chatbot's link-speed feed (`road_closure_analysis/closure_did.py`). It is independent of Junction Analytics. |
 | **Value** | Harmonic mean of the positive samples in the same 30-minute period, [start, end), as the chatbot reads link speed (`binned_query`, `how="pace"`). A 0 km/h sample is not used. |
 | **Reference speed** | Shown only when an existing historical reference speed is configured (`schema.influx.sources.link_speed_reference`). None was found in the InfluxDB inventory or the chatbot (`speed_prediction` is a forecast, not a reference), so it reads "unavailable". No speed baseline is calculated, as the methodology says. |
+| **Arm** | The link's intersection arm from the production backend's SCATS operational sheet (`arms.py`), reusing its own modules (`OperationalSheetClient`, `operational_sheet.build_sheet`, `LINK_CYPHER`) as its TomTom layer does: a link's lowest-position active detectors name the arm through the sheet's DetectorNo → ArmNo. A split or unmatched link has no arm. Only in the production backend; locally the arm is empty. |
 | **Amber** | Shown with the saved Q1/Q3 evidence. Q4/Q5 are not run. |
 | **Red** | A table in report section 3, beside the TomTom delay and queue. It is not part of D002, its LLM input or its agreement. It is kept in the diagnosis record (18.2). |
 | **Missing** | A link without samples shows "unavailable"; a feed that cannot be read gives a note with the reason. Nothing else changes. |
@@ -229,7 +230,7 @@ The production team's service contract (`intersections_diagnostics_schemas.py`, 
 - **unknown queue**: `ScatsComparison.has_largest_queue = None`;
 - Q4 evidence is a list of `EvidenceItem` (statement written by code, values copied);
 - template IDs come from `rules.contract.template_ids`, or from the input's `TemplateRef`;
-- **link speed**: `LinkSpeed.arm` is None (arm numbers are not in the TomTom link mapping we use); `LINK_SPEED_UNAVAILABLE_MESSAGE` heads the notes when no link has a speed; the reference-speed status is the last note;
+- **link speed**: `LinkSpeed.arm` comes from the production operational sheet (§9.1); `LINK_SPEED_UNAVAILABLE_MESSAGE` heads the notes when no link has a speed; the reference-speed status is the last note;
 - **baseline snapshot**: one `BaselineSnapshot` per weekday and slot (§10.1), metrics `q1_volume`, `q3a_cycle_length_s`, `q3b_cycle_stability`, `q3c_phase_service`.
 
 `python main.py contract-check` passes every site of a stored run through the contract's models and validators (decision matrix, 2-of-3 rule, Grey reason) and prints any site that does not fit.
@@ -255,8 +256,8 @@ The following optional contract fields have been proposed and are not in the Nov
     2. a config/rules hash in the cache key or the `baseline_version` (a rule change inside a week reuses the old run and snapshot);
     3. the optional audit fields in §11, or where audit records should be kept instead;
     4. the S3 bucket and prefix (`DIAGNOSTICS_ARCHIVE`), with put/get/list rights;
-    5. one `BaselineSnapshot` per weekday and slot (as written now) or one per week: a whole week is about 48 × 7 slots × ~16,000 values, too large for one object;
-    6. `LinkSpeed.arm`: the arm-number mapping, if the UI needs it.
+    5. one `BaselineSnapshot` per weekday and slot (as written now) or one per week: a whole week is about 48 × 7 slots × ~16,000 values, too large for one object.
+- **TomTom mapping.** Q5 uses the same approach ↔ link mapping file as the production TomTom layer (identical file, checked by SHA-256 on 2 Nov 2026). A site that is not in it (e.g. 177) has no TomTom confirmation in production either.
 - **Q3C history (live data).** At site 994 every reference week before 23 Oct 2026 has `HasGreen = 0` on every approach while the cycle runs normally, so Q3C has one usable week. `inspect --history` now shows the GreenShare stored with `HasGreen = 0`, to tell whether HasGreen was not filled before that date (a data-pipeline question for Zay) or whether the records are empty.
 - **Link speed.** Whether an existing historical reference speed exists (bucket, measurement, field); `link_speed_reference` is ready for it.
 - **For the methodology owner:** the Q3 case of one abnormal, one normal and one not-assessable measure (§6).
