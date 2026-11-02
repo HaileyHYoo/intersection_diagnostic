@@ -163,11 +163,11 @@ class DiagnosticsService:
 
     def map_view(self, run: dict, cached: bool) -> dict:
         p = run["payload"]
-        keep = ("site", "name", "lat", "lon", "category", "label", "reasons", "selectable", "total_volume_veh_h")
+        keep = ("site", "name", "lat", "lon", "category", "label", "reasons", "selectable", "total_volume_veh_h", "notes")
         return {"run_id": run["run_id"], "cached": cached, "region": p["region"], "period": p["period"],
                 "baseline": p["baseline"], "rules_version": p["rules_version"], "schema_version": p["schema_version"],
                 "counts": p["counts"], "notes": p["notes"], "alignment": p["alignment"], "errors": p.get("errors", {}),
-                "categories": screening.CATEGORIES, "sites": [{k: s[k] for k in keep} for s in p["sites"]]}
+                "categories": screening.CATEGORIES, "sites": [{k: s.get(k, []) if k == "notes" else s[k] for k in keep} for s in p["sites"]]}
 
     # ------------------------------------------------------------------ Level 2
     def _site(self, run_id: str, site: str) -> tuple[dict, dict]:

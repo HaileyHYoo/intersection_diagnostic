@@ -144,7 +144,7 @@ def site_model(site: dict, rules: dict) -> S.SiteScreeningResult:
     q1 = q3 = None
     grey = site["category"] == "grey"
     reason_field = has_field(S.SiteScreeningResult, "insufficient_data_reason")
-    notes = [] if grey and reason_field else list(site.get("reasons", []))
+    notes = ([] if grey and reason_field else list(site.get("reasons", []))) + list(site.get("notes", []))
     if site["q1"]:
         q1 = S.Q1TrafficAbnormality(status=STATUS[site["q1"]["status"]], approaches=[
             S.Q1Approach(approach_id=a["link"], approach_name=approach_label(a), volume=comparison(a),
@@ -249,7 +249,8 @@ def site_from_model(m: S.SiteScreeningResult) -> dict:
     lon, lat = m.coordinates if m.coordinates else (None, None)
     return {"site": m.site_no, "name": m.name or None, "lat": lat, "lon": lon, "category": CATEGORY_BACK[m.category],
             "label": "Red - Needs Attention" if m.category == S.SiteCategory.RED else m.category.value,
-            "reasons": ([m.insufficient_data_reason] if getattr(m, "insufficient_data_reason", None) else []) + m.notes,
+            "reasons": [m.insufficient_data_reason] if getattr(m, "insufficient_data_reason", None) else m.notes,
+            "notes": m.notes if getattr(m, "insufficient_data_reason", None) else [],
             "q1": q1,
             "q3": {"status": STATUS_BACK[m.q3.status], "abnormal_count": statuses.count(ABNORMAL),
                    "assessable_count": sum(s != INSUFFICIENT for s in statuses), "components": components}}

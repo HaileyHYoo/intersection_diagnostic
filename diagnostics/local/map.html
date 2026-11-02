@@ -114,7 +114,8 @@ function drawMarkers() {
     const big = s.category === "red" || s.category.startsWith("amber");
     const m = L.circleMarker([s.lat, s.lon], { radius: big ? 11 : 8, color: "#ffffff", weight: big ? 1.5 : 1,
       opacity: .85, fillColor: HEX[s.category], fillOpacity: .9 }).addTo(map);
-    m.bindTooltip(`<b>SCATS ${esc(s.site)}</b> ${esc(s.name || "")}<br>${esc(s.label)}`);
+    m.bindTooltip(`<b>SCATS ${esc(s.site)}</b> ${esc(s.name || "")}<br>${esc(s.label)}`
+      + ((s.notes || []).length ? `<br><i>${esc(s.notes[0])}</i>` : ""));
     m.on("click", () => openSite(s));
     markers.push(m);
   }
@@ -192,6 +193,7 @@ function renderSpeed(ls) {
 function renderEvidence(site, linkSpeed) {
   let html = header(site, site.label, site.category);
   if (site.reasons && site.reasons.length) html += `<ul>${site.reasons.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>`;
+  for (const n of site.notes || []) html += `<div class="note">&#9888; ${esc(n)}</div>`;
   const q2 = site.q2;
   html += `<h3>Q2 Detector gate - ${esc(q2.status)}</h3>${q2.reason ? `<div class="note">${esc(q2.reason)}</div>` : ""}
     <table><tr><th>Detector</th><th>Count (60 min)</th><th>Status</th></tr>

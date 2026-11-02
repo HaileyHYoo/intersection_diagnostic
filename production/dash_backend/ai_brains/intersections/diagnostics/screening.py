@@ -242,12 +242,28 @@ def screen(source, settings, baseline: dict, period: Period, network: list[dict]
             continue
         results.append({"site": site, "name": site_name(s.get("streets")) or s.get("name"), "lat": s.get("lat"),
                         "lon": s.get("lon"), "category": category, "label": CATEGORIES[category], "reasons": reasons,
+                        "notes": caution_notes(q1, q3, category),
                         "selectable": rules["click"].get(category, []), "q2": q2, "q1": q1, "q3": q3,
                         "total_volume_veh_h": total_volume(q1)})
     counts = defaultdict(int)
     for r in results:
         counts[r["category"]] += 1
     return {"sites": results, "counts": dict(counts), "errors": errors, "alignment": m.aligner.stats}
+
+
+MEASURE_NAMES = {"cycle_length": "cycle length (Q3A)", "cycle_stability": "Cycle Stability (Q3B)",
+                 "phase_service": "phase service (Q3C)"}
+
+
+def caution_notes(q1: dict | None, q3: dict | None, category: str) -> list[str]:
+    """Display caveats that never change the category (decision, 3 Nov 2026): a Q3 NORMAL that the measure
+    that could not be assessed could have turned ABNORMAL (methodology rule kept as written)."""
+    if not q3 or not q3.get("missing_measure_could_change") or category in ("grey", "detector_health"):
+        return []
+    missing = [MEASURE_NAMES[k] for k, c in q3["components"].items() if c["status"] == INSUFFICIENT]
+    would = "Red" if q1 and q1["status"] == ABNORMAL else "Amber (signal operation)"
+    return [f"Signal operation is normal with {' and '.join(missing)} not assessable: had it been abnormal, signal "
+            f"operation would be abnormal and the site {would}."]
 
 
 def total_volume(q1: dict | None) -> float | None:

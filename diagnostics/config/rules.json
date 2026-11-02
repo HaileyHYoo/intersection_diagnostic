@@ -58,9 +58,10 @@
     "adequate_quarters": 2,
     "queue_min_minutes": 15,
     "delay_metric": "control_delay",
+    "ranked_delays": ["control_delay", "approach_delay"],
     "delay_mean": "plain",
     "negative_delay": "zero",
-    "delay_note": "Decision (1 Nov 2026): Q5 ranks approaches by TomTom control delay (IntersectionTurnKpi ControlDelaySec); approach delay (ApproachDelaySec) is still reported. Per approach and movement it is the plain mean of the stored 15-minute turn records, and a negative delay counts as 0, as in the chatbot's tomtom/los.py and delay_policy.py. Options: delay_metric \"approach_delay\"; delay_mean \"sample_weighted\"; negative_delay \"keep\".",
+    "delay_note": "Decision (3 Nov 2026, with the methodology owner): Q5 ranks the approaches by both TomTom control delay (IntersectionTurnKpi ControlDelaySec) and approach delay (ApproachDelaySec) (ranked_delays); a SCATS-identified approach agrees when it has the greatest of either delay or the longest queue. delay_metric is the delay written to the contract's single largest-delay field. Per approach and movement it is the plain mean of the stored 15-minute turn records, and a negative delay counts as 0, as in the chatbot's tomtom/los.py and delay_policy.py. Options: delay_metric \"approach_delay\"; delay_mean \"sample_weighted\"; negative_delay \"keep\".",
     "note": "Methodology section 13: Q5 reports approach queue length and the largest queue from the TomTom Junction Analytics queue history (API archive). Needs TOMTOM_API_KEY; without it, or if the call fails, the queue is reported as unavailable and the rest of Q5 still runs."
   },
   "link_speed": {

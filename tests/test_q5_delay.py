@@ -88,8 +88,25 @@ class ControlDelayTests(unittest.TestCase):
         _, by = self.measure()
         self.assertEqual(by["LB"]["control_delay_s"], 16.0)                 # (70*1 + 10*9) / 10
 
+    def test_both_delays_are_ranked(self):
+        m, _ = self.measure()                         # LA: greatest approach delay; LB: greatest control delay
+        comp = d002.compare(m, d002.scats_approaches(site()))
+        self.assertEqual({k: v["link"] for k, v in comp["greatest_delays"].items()},
+                         {"control_delay": "LB", "approach_delay": "LA"})
+        lb = comp["per_approach"][0]
+        self.assertEqual(lb["largest_by_delay"], {"control_delay": True, "approach_delay": False})
+        self.assertEqual(lb["agreement"], d002.AGREE)
+        self.assertTrue(d002._per_approach_sentence(lb).endswith(
+            "has the greatest control delay but not the greatest approach delay (queue not known)."))
+        self.assertEqual(comp["greatest_delay"]["link"], "LB")          # the contract's single field: delay_metric
+        text = d002.written({"available": True, "comparison": comp, "scats_approaches": d002.scats_approaches(site()),
+                             "queue": "unavailable", "coverage_note": ""})["road_user_impact"]
+        self.assertIn("The greatest TomTom control delay (40.0 s) among the adequately observed approaches is on B Street [E].", text)
+        self.assertIn("The greatest TomTom approach delay (50.0 s) among the adequately observed approaches is on A Street [N].", text)
+
     def test_approach_delay_option(self):
         self.rules["tomtom"]["delay_metric"] = "approach_delay"
+        self.rules["tomtom"]["ranked_delays"] = ["approach_delay"]
         m, _ = self.measure()
         comp = d002.compare(m, d002.scats_approaches(site()))
         self.assertEqual(comp["greatest_delay"]["link"], "LA")

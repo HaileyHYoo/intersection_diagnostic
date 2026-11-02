@@ -53,7 +53,7 @@ class ScreenServiceTests(unittest.TestCase):
     def test_map_view_is_compact(self):
         view = service().screen(END)
         self.assertEqual(set(view["sites"][0]), {"site", "name", "lat", "lon", "category", "label", "reasons", "selectable",
-                                                 "total_volume_veh_h"})
+                                                 "total_volume_veh_h", "notes"})
         self.assertEqual(view["errors"], {})
         self.assertEqual(view["period"]["slot"], "08:00")
         self.assertEqual(len(view["baseline"]["reference_periods"]), 8)
@@ -88,15 +88,15 @@ class DiagnoseTests(unittest.TestCase):
     def test_queue_is_part_of_the_tomtom_section(self):
         section = self.section(self.report("4300"), 3)
         self.assertIn("and the longest mean queue (", section["text"])
-        self.assertIn("are both on Swanston Street [N]", section["text"])
+        self.assertIn("are all on Swanston Street [N]", section["text"])
         self.assertIn("Mean queue (m)", section["tables"][0]["columns"])
 
     def test_tomtom_answer_names_each_scats_approach(self):
         agree = self.section(self.report("4300"), 3)["text"]
         self.assertIn("Swanston Street [N], identified by the SCATS screening (Q1 high; Q3C abnormal_low), "
-                      "has the greatest delay and the longest queue.", agree)
+                      "has the greatest control delay, the greatest approach delay and the longest queue.", agree)
         mismatch = self.section(self.report("4303"), 3)["text"]
-        self.assertIn("has neither the greatest delay nor the longest queue.", mismatch)
+        self.assertIn("has neither the greatest control delay, the greatest approach delay nor the longest queue.", mismatch)
         self.assertIn("do not confirm", mismatch)
 
     def test_per_approach_sentences(self):

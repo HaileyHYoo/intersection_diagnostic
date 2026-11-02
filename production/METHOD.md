@@ -42,7 +42,7 @@ Classifications are made by deterministic code. The LLM never decides a category
   - The two daylight-saving change days
   - The year-end period, 24 Dec – 1 Jan
 
-  The tables are in `vic_calendar.py` and cover 2024–2027. An excluded week is **not** replaced by an earlier week (`history.extend_beyond_weeks: false`).
+  The tables are in `vic_calendar.py` and cover 2024–2027. An excluded week is **not** replaced by an earlier week (`history.extend_beyond_weeks: false`). The same holds for a reference week whose data are missing: it is not replaced, so a period with fewer than 5 valid weeks is not assessable (**decision with the methodology owner, 3 Nov 2026**: keep as written).
 - **Analysis day on an excluded day.** It is still screened, and the run carries a note.
 - **Minimum history.** At least **5** valid observations. Otherwise the measure is INSUFFICIENT DATA for that entity.
 - **Normal range and usual value.** The normal range is the **10th–90th percentile** (linear interpolation). The usual (reference) value is the **median** of the observations, as in the production contract (`reference_value`; `"mean"` is also supported).
@@ -94,7 +94,7 @@ Q1 and Q3 run only after a PASS.
 - **Approach without green.** `HasGreen = 0`, or no GreenShare/HasGreen record, in either quarter-hour. **Any evaluated approach without green makes the whole site Grey (decision,** `q3c.grey_site_if_any_approach_without_green`**, strictest setting).**
 - **Q3C component result.** ABNORMAL if any approach is abnormal. INSUFFICIENT if any evaluated approach lacks a value or history.
 - **Q3 overall.** ABNORMAL if at least 2 of the 3 measures are ABNORMAL. Otherwise NORMAL if at least 2 measures can be assessed. Otherwise INSUFFICIENT DATA.
-- **One abnormal, one normal, one not assessable.** The document's rule gives NORMAL, although the missing measure, if it were abnormal, would have made Q3 ABNORMAL. The code follows the document and marks such a site with `q3.missing_measure_could_change = true`; `python main.py summary` counts them. The switch `q3.undetermined_if_missing_could_change` (default `false` = document rule) would make these sites INSUFFICIENT DATA (Grey) instead. **To discuss with the methodology owner.**
+- **One abnormal, one normal, one not assessable.** The document's rule gives NORMAL, although the missing measure, if it were abnormal, would have made Q3 ABNORMAL. The code follows the document and marks such a site with `q3.missing_measure_could_change = true`; `python main.py summary` counts them. **Decision with the methodology owner (3 Nov 2026): keep the rule as written and show it.** The category stays as the document gives it; the site's evidence, the map tooltip and the contract's `notes` say which measure could not be assessed and what the category would have been had it been abnormal (`screening.caution_notes`). The switch `q3.undetermined_if_missing_could_change` (default `false`) would make these sites Grey instead; it is not used.
 - **Fallbacks.** Only the calculated KPIs are used. The `IntersectionPerfKpi` / `IntersectionPerfApproach` KPIs exist for part of the network only (the chatbot falls back to `subsystem_status` for cycle length and saturation). The subsystem `ActiveCycleLength` fallback for Q3A is kept in code but switched off (`fallbacks.enabled: false`). It would not change the result for a site without KPIs: Q3B and Q3C have no fallback, so only one measure could be assessed and Q3 would still be INSUFFICIENT DATA (Grey).
 
 DemandShare, SignedGap, DemandPressure, GreenGapBusiest, RiskBusiest and the other KPIs are **not** used for screening.
@@ -139,8 +139,9 @@ Every category is returned to the host, and the UI decides what to draw. A click
   - It is **on by default**, as the methodology requires (`tomtom.api_enabled`), and needs `TOMTOM_API_KEY`.
   - Without a key, when the call fails, or for a site without a TomTom junction, the queue is reported as unavailable with the reason, never estimated. "Has the largest queue" is then unknown (None), not "no". The rest of Q5 and Q4 still run.
 - **Metrics per approach.**
-  - **Delay used for the largest-delay approach: control delay (decision, 1 Nov 2026,** `tomtom.delay_metric`**).** The methodology lists approach delay and control delay among the Q5 measures (§13). Control delay is `ControlDelaySec` of `IntersectionTurnKpi`: per approach and per movement, the plain mean of the stored 15-minute turn records. This is the same calculation as the chatbot's `tomtom/los.py`, which the methodology asks Q5 to reuse (`tomtom.delay_mean: "plain"`; `"sample_weighted"` weights by `SampleCount`).
-  - Approach delay (mean `ApproachDelaySec`) is still reported beside it. `delay_metric: "approach_delay"` ranks by it instead.
+  - **Both delays are ranked (decision with the methodology owner, 3 Nov 2026,** `tomtom.ranked_delays`**).** The greatest control delay and the greatest approach delay are found separately among the adequately observed approaches, and both are reported. A SCATS-identified approach agrees when it has the greatest of either delay or the longest queue. The contract has one largest-delay field (`largest_delay_approach_id`, `ScatsComparison.has_largest_delay`): it carries control delay (`tomtom.delay_metric`) and "has the greatest of either delay"; both rankings are in the answer text and the audit record.
+  - Control delay is `ControlDelaySec` of `IntersectionTurnKpi`: per approach and per movement, the plain mean of the stored 15-minute turn records. This is the same calculation as the chatbot's `tomtom/los.py`, which the methodology asks Q5 to reuse (`tomtom.delay_mean: "plain"`; `"sample_weighted"` weights by `SampleCount`).
+  - Approach delay: mean `ApproachDelaySec` per approach. Each delay is adequately observed when it has records in both quarter-hours.
   - A negative delay (faster than free flow) counts as 0, as in the chatbot's `delay_policy.py` (`tomtom.negative_delay`).
   - Multi-stop rate: weighted by `SampleCount`
   - Contract: `TomTomApproachMetrics.delay_s` is the ranked delay (control delay); `control_delay_s` is also filled.
@@ -153,8 +154,8 @@ Every category is returned to the host, and the UI decides what to draw. A click
 
   | Result | When |
   |---|---|
-  | agreement | The approach has the greatest delay or the longest queue |
-  | disagreement | The approach is observed, but neither is on it |
+  | agreement | The approach has the greatest control delay, the greatest approach delay or the longest queue |
+  | disagreement | The approach is observed, but none of them is on it |
   | insufficient coverage | The approach is not adequately observed |
 
   Overall, the site agrees if any flagged approach agrees, and disagrees if any is observed without agreeing. Partial coverage and unmapped approaches are stated.
@@ -261,7 +262,6 @@ The following optional contract fields have been proposed and are not in the Nov
 - **TomTom mapping.** Q5 uses the same approach ↔ link mapping file as the production TomTom layer (identical file, checked by SHA-256 on 2 Nov 2026). A site that is not in it (e.g. 177) has no TomTom confirmation in production either.
 - **Q3C history (live data).** At site 994 every reference week before 23 Oct 2026 has `HasGreen = 0` on every approach while the cycle runs normally, so Q3C has one usable week. `inspect --history` now shows the GreenShare stored with `HasGreen = 0`, to tell whether HasGreen was not filled before that date (a data-pipeline question for Zay) or whether the records are empty.
 - **Link speed.** Whether an existing historical reference speed exists (bucket, measurement, field); `link_speed_reference` is ready for it.
-- **For the methodology owner:** Q5 ranks the largest delay by **control delay** (decision, 1 Nov 2026), while §13 step 3 says "approach delay, largest delay"; both are reported, and `tomtom.delay_metric` switches back.
-- **For the methodology owner:** the Q3 case of one abnormal, one normal and one not-assessable measure (§6).
+- **Decided with the methodology owner (3 Nov 2026):** Q5 ranks both control and approach delay (§9); reference weeks with missing data are not replaced (§3); the Q3 one-abnormal/one-normal/one-not-assessable case keeps the document's rule and is shown as a note (§6).
 - **Template IDs.** D002's registry ID (`ID_Q5_TOMTOM_CONFIRMATION`) is a placeholder until confirmed.
 - **Outside this repository:** the chatbot's `tomtom/engine.py::scats_volume_hours()` groups 15-minute records by their stamp's clock hour. With end labelling, this shifts every hour by 15 minutes (00:45–01:45 instead of 01:00–02:00). It should be fixed in the Chatbot repository.

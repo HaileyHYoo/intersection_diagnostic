@@ -179,6 +179,15 @@ class RuleTests(unittest.TestCase):
                                        {"cycle_length": env, "cycle_stability": env}, {}, q3c, strict)
         self.assertEqual(withheld["status"], INSUFFICIENT)
 
+    def test_could_change_is_shown_as_a_note(self):
+        q3 = self.q3(ABNORMAL, NORMAL, INSUFFICIENT)
+        notes = screening.caution_notes({"status": ABNORMAL}, q3, "amber_traffic")
+        self.assertEqual(len(notes), 1)
+        self.assertIn("not assessable: had it been abnormal, signal operation would be abnormal and the site Red", notes[0])
+        self.assertIn("Amber (signal operation)", screening.caution_notes({"status": NORMAL}, q3, "normal")[0])
+        self.assertEqual(screening.caution_notes({"status": ABNORMAL}, self.q3(NORMAL, NORMAL, INSUFFICIENT), "normal"), [])
+        self.assertEqual(screening.caution_notes(None, q3, "grey"), [])
+
     def test_q3_two_of_three(self):
         self.assertEqual(self.q3(ABNORMAL, ABNORMAL, NORMAL)["status"], ABNORMAL)
         self.assertEqual(self.q3(ABNORMAL, NORMAL, NORMAL)["status"], NORMAL)

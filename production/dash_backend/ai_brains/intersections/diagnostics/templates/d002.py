@@ -140,6 +140,7 @@ def measure(source, site: dict, period: Period, rules: dict) -> dict:
                     "multi_stop_rate": None if mrate is None else round(mrate, 3),
                     "quarters_observed": quarters,
                     "adequate": quarters >= tt["adequate_quarters"],
+                    "quarters_by": {m: len(a["quarters"][m]) for m in DELAY_FIELDS},
                     "queue_mean_m": r1(q["mean_m"]) if q else None, "queue_max_m": r1(q["max_m"]) if q else None,
                     "queue_minutes": q["minutes"] if q else 0,
                     "queue_adequate": bool(q) and q["minutes"] >= min_minutes,
@@ -148,22 +149,37 @@ def measure(source, site: dict, period: Period, rules: dict) -> dict:
     site_rows = source.tomtom_site_kpi(site["site"], period.start, period.end)
     site_delay = [max(float(r["value"]), 0.0) for r in site_rows if r["field"] == "control_delay"]
     return {"approaches": out, "mapping_size": len(approaches), "queue_status": queue_status, "delay_metric": metric,
+            "ranked_delays": tt.get("ranked_delays", [metric]), "adequate_quarters": tt["adequate_quarters"],
             "site_control_delay_s": r1(mean(site_delay)) if site_delay else None}
 
 
+DELAY_NAMES = {"control_delay": "control delay", "approach_delay": "approach delay"}
+
+
+def _delay(a: dict, metric: str):
+    return a["control_delay_s"] if metric == "control_delay" else a["approach_delay_s"]
+
+
 def compare(measured: dict, flagged: dict[str, dict]) -> dict:
+    """Rank the adequately observed approaches by each delay in ranked_delays (decision: control and approach
+    delay) and by queue; a SCATS-identified approach agrees when it has the greatest of any of them."""
     rows = measured["approaches"]
-    delay_rank = [a for a in rows if a["adequate"] and a["delay_s"] is not None and a["link"]]
+    primary = measured.get("delay_metric", "control_delay")
+    metrics = measured.get("ranked_delays") or [primary]
+    need = measured.get("adequate_quarters", 2)
+    seen = lambda a, m: bool(a and a["link"] and _delay(a, m) is not None
+                             and a.get("quarters_by", {}).get(m, a["quarters_observed"]) >= need)
+    tops = {m: max((a for a in rows if seen(a, m)), key=lambda a, m=m: _delay(a, m), default=None) for m in metrics}
     queue_rank = sorted((a for a in rows if a["queue_adequate"] and a["link"]), key=lambda a: -a["queue_mean_m"])
-    top_delay = max(delay_rank, key=lambda a: a["delay_s"], default=None)
     top_queue = queue_rank[0] if queue_rank else None
     queue_known = measured["queue_status"] == "available"
     by_link = {a["link"]: a for a in rows if a["link"]}
     per_approach = []
     for link, f in flagged.items():
         a = by_link.get(link)
-        observed = bool(a and a["adequate"] and a["delay_s"] is not None)
-        largest_delay = bool(top_delay and top_delay["link"] == link) if observed else None
+        largest_by = {m: (bool(tops[m] and tops[m]["link"] == link) if seen(a, m) else None) for m in metrics}
+        observed = any(v is not None for v in largest_by.values())
+        largest_delay = any(largest_by.values()) if observed else None
         largest_queue = (bool(top_queue and top_queue["link"] == link) if a and a["queue_adequate"] else None) if queue_known else None
         if largest_delay or largest_queue:
             verdict = AGREE
@@ -172,33 +188,47 @@ def compare(measured: dict, flagged: dict[str, dict]) -> dict:
         else:
             verdict = NO_COVERAGE
         per_approach.append({"link": link, "approach": f["approach"], "scats_findings": f["findings"], "observed": observed,
-                             "has_largest_delay": largest_delay, "has_largest_queue": largest_queue, "agreement": verdict})
+                             "has_largest_delay": largest_delay, "largest_by_delay": largest_by,
+                             "has_largest_queue": largest_queue, "agreement": verdict})
     verdicts = {p["agreement"] for p in per_approach}
     overall = AGREE if AGREE in verdicts else DISAGREE if DISAGREE in verdicts else NO_COVERAGE
+    top = lambda m: {"approach": tops[m]["approach"], "link": tops[m]["link"], "metric": m,
+                     "delay_s": _delay(tops[m], m)} if tops.get(m) else None
     return {"agreement": overall, "per_approach": per_approach,
-            "greatest_delay": {"approach": top_delay["approach"], "link": top_delay["link"],
-                               "metric": measured.get("delay_metric", "control_delay"),
-                               "delay_s": top_delay["delay_s"]} if top_delay else None,
+            "greatest_delay": top(primary) if primary in tops else None,
+            "greatest_delays": {m: top(m) for m in metrics},
             "longest_queue": {"approach": top_queue["approach"], "link": top_queue["link"],
                               "queue_mean_m": top_queue["queue_mean_m"]} if top_queue else None,
             "uncovered_scats_approaches": [p["approach"] for p in per_approach if not p["observed"]]}
 
 
 def _per_approach_sentence(p: dict) -> str:
-    """One SCATS-identified approach against the TomTom ranking (methodology 13: report any mismatch)."""
-    who = f"{p['approach']}, identified by the SCATS screening ({'; '.join(p['scats_findings'])}),"
+    """One SCATS-identified approach against the TomTom rankings (methodology 13: report any mismatch)."""
     if p["agreement"] == NO_COVERAGE:
         return f"{p['approach']}, identified by the SCATS screening, has no adequate TomTom coverage in this period."
-    delay, queue = p["has_largest_delay"], p["has_largest_queue"]
-    if delay and queue:
-        return f"{who} has the greatest delay and the longest queue."
-    if delay:
-        return f"{who} has the greatest delay" + (" but not the longest queue." if queue is False else ".")
-    if queue:
-        return f"{who} has the longest queue but not the greatest delay."
-    if queue is None:
-        return f"{who} does not have the greatest delay (queue not known)."
-    return f"{who} has neither the greatest delay nor the longest queue."
+    who = f"{p['approach']}, identified by the SCATS screening ({'; '.join(p['scats_findings'])}),"
+    by = p.get("largest_by_delay") or {"delay": p["has_largest_delay"]}
+    names = {m: "the greatest " + DELAY_NAMES.get(m, "delay") for m in by}
+    has = [names[m] for m, v in by.items() if v]
+    lacks = [names[m] for m, v in by.items() if v is False]
+    if p["has_largest_queue"]:
+        has.append("the longest queue")
+    elif p["has_largest_queue"] is False:
+        lacks.append("the longest queue")
+    unknown = [] if p["has_largest_queue"] is not None else ["queue not known"]
+    unknown += [DELAY_NAMES.get(m, "delay") + " not adequately observed" for m, v in by.items() if v is None]
+    tail = f" ({'; '.join(unknown)})" if unknown else ""
+    if has:
+        return f"{who} has {_and(has)}" + (f" but not {_or(lacks)}" if lacks else "") + tail + "."
+    return f"{who} has neither {_or(lacks, 'nor')}{tail}." if len(lacks) > 1 else f"{who} does not have {_or(lacks)}{tail}."
+
+
+def _and(items: list[str]) -> str:
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
+
+
+def _or(items: list[str], word: str = "or") -> str:
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + f" {word} " + items[-1]
 
 
 def written(ev: dict) -> dict:
@@ -206,17 +236,19 @@ def written(ev: dict) -> dict:
         return {"road_user_impact": UNAVAILABLE, "agreement": NO_COVERAGE, "coverage": ev["coverage_note"]}
     comp = ev["comparison"]
     lines = []
-    top, longest = comp["greatest_delay"], comp["longest_queue"]
-    name = "control delay" if top and top["metric"] == "control_delay" else "approach delay"
-    if top and longest and top["link"] == longest["link"]:
-        lines.append(f"The greatest TomTom {name} ({top['delay_s']:.1f} s) and the longest mean queue "
-                     f"({longest['queue_mean_m']:.1f} m) among the adequately observed approaches are both on {top['approach']}.")
-    else:
-        if top:
-            lines.append(f"The greatest TomTom {name} among the adequately observed approaches is on {top['approach']} "
-                         f"({top['delay_s']:.1f} s).")
-        if longest:
-            lines.append(f"The longest mean queue is on {longest['approach']} ({longest['queue_mean_m']:.1f} m).")
+    tops = {m: t for m, t in (comp.get("greatest_delays") or {"x": comp["greatest_delay"]}).items() if t}
+    longest = comp["longest_queue"]
+    found = [(f"the greatest TomTom {DELAY_NAMES.get(t['metric'], 'delay')} ({t['delay_s']:.1f} s)", t)
+             for t in tops.values()]
+    if longest:
+        found.append((f"the longest mean queue ({longest['queue_mean_m']:.1f} m)", longest))
+    by_approach = {}
+    for text, t in found:
+        by_approach.setdefault(t["approach"], []).append(text)
+    for approach, texts in by_approach.items():
+        verb = "are all on" if len(texts) > 2 else "are both on" if len(texts) == 2 else "is on"
+        sentence = f"{_and(texts)} among the adequately observed approaches {verb} {approach}."
+        lines.append(sentence[0].upper() + sentence[1:])
     lines += [_per_approach_sentence(p) for p in comp["per_approach"]]
     agreeing = [p["approach"] for p in comp["per_approach"] if p["agreement"] == AGREE]
     if comp["agreement"] == AGREE:
