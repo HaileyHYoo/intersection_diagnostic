@@ -134,10 +134,10 @@ class DiagnosticsService:
         return run_id
 
     # ------------------------------------------------------------------ historical records (18.3, 18.4)
-    def _snapshot(self, baseline: dict, period: Period, approaches: list[dict]) -> str | None:
+    def _snapshot(self, baseline: dict, period: Period, approaches: list[dict], version: str | None = None) -> str | None:
         if self.archive is None:
             return None
-        version = history.snapshot_version(period, baseline["version"])
+        version = version or history.snapshot_version(period, baseline["version"])
         try:
             return history.write_baseline_snapshot(self.archive, self.settings.region, baseline, period, version, approaches,
                                                    self.settings.rules["history"]["weeks"])
@@ -219,12 +219,15 @@ class DiagnosticsService:
         return {**record, "cached": False}
 
     # ------------------------------------------------------------------ weekly job
-    def refresh_baselines(self, days: list, slots: list[str] | None = None, progress=None) -> int:
+    def refresh_baselines(self, days: list, slots: list[str] | None = None, progress=None,
+                          snapshot_version: str | None = None) -> int:
+        """The weekly job. snapshot_version names the BaselineSnapshot files; on the production-contract path pass
+        the host's baseline_version (e.g. "2026-W45") so ScreeningLog.baseline_version matches a snapshot."""
         on_built = None
         if self.archive is not None:
             sites = [s["site"] for s in self.source.sites()]
             approaches = self.source.approaches(sites)
-            on_built = lambda period, baseline: self._snapshot(baseline, period, approaches)
+            on_built = lambda period, baseline: self._snapshot(baseline, period, approaches, snapshot_version)
         return self.baselines.precompute(days, slots, progress, on_built)
 
 

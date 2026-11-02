@@ -81,3 +81,14 @@ def run_link_speed(evidence, period, settings: Settings | None = None):
     from .contract import core
     settings = settings or Settings()
     return core.run_link_speed(evidence, period, LiveSource(settings), settings)
+
+
+def weekly_baseline_job(baseline_version: str, start=None, days: int = 7, settings: Settings | None = None) -> int:
+    """The weekly refresh (methodology 18.4): 8-week baselines for every slot of the coming week, written as
+    BaselineSnapshot files named baseline_version (the same value the host puts in ScreeningInput)."""
+    from datetime import date, timedelta
+    settings = settings or Settings()
+    start = start or date.today()
+    svc = DiagnosticsService(LiveSource(settings), settings, SQLiteStore(settings.db_path),
+                             archive=history.open_archive(settings.archive_location))
+    return svc.refresh_baselines([start + timedelta(days=i) for i in range(days)], snapshot_version=baseline_version)

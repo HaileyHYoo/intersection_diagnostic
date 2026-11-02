@@ -6,45 +6,37 @@
 
 ## 1. What it does
 
-The host can use the package in either of two ways:
+Intersections Diagnostics V1 (methodology "speed added", Nov 2026). Level 1 screens every signalised site for the latest completed 30 minutes (Q2 → Q1 + Q3, Normal / Amber / Red / Grey / Detector Health). A click on an Amber site shows its evidence and TomTom link speed; a click on a Red site also runs Q4 (D001) and Q5 (D002) for the four-section report. The classification is deterministic; the LLM only rewords answers written by code, under a guard.
 
-- the service below, which keeps its own run store (SQLite);
-- the production contract (`contract/`, section 4b), where the Dash callbacks keep the shared run store.
+**Use it through your contract** (`contract/intersections_diagnostics_schemas.py`, your Nov 2026 file, copied unchanged). Every result validates against your models; on 2 Nov 2026 all 2,501 live sites passed (`ScreeningResult`, Grey reasons, decision matrix, 2-of-3 rule).
 
-| Call | When | Returns |
+| Your callback | Call (`diagnostics.host`) | Contract models |
 |---|---|---|
-| `screen()` | The map layer is activated, or the layer is refreshed while active | One category per intersection for the latest completed 30 minutes |
-| `screen(period_end)` | A chosen past period | The same, compared with the 8 weeks before that day |
-| `diagnose(run_id, site)` | Click on an intersection | **Red:** the four-section report from templates D001 + D002. **Any other category:** the saved evidence |
-| `site_evidence(run_id, site)` | Any time | The saved Q2/Q1/Q3 evidence for one site |
-| `refresh_baselines(days)` | Weekly job | Precomputed 8-week baselines, and the weekly baseline snapshot in the archive |
-| `archive_run(run_id)` | After an archive outage | Writes a run's screening JSON log if it is missing |
+| Layer activation / refresh, after writing the RUNNING `ScreeningRun` | `run_screening(screening_input)` | `ScreeningInput` → `ScreeningResult` (+ `BaselineSnapshot` of the slot in S3) |
+| After writing the COMPLETED `ScreeningRun` | `log_screening(screening_run)` | `ScreeningLog` in S3 (18.3), once per run |
+| Click on an Amber or Red site | `run_site_report(site_report_request, screening_run, bot)` | `SiteReportRequest` + `ScreeningRun` → `SiteReport` (Amber: evidence + `LinkSpeedReport`; Red: + `DiagnosisResult`, and the `SiteReport` kept in S3, 18.2) |
+| Weekly refresh (e.g. Sunday night) | `weekly_baseline_job("2026-W45")` | 8-week baselines for the coming week, `BaselineSnapshot` files named with your `baseline_version` (18.4) |
 
-`screen()`:
-- returns the saved run when one exists for the same region, period, baseline version and rules version, so users share it;
-- waits for a run already in progress rather than starting a second one;
-- does not run on a timer. Screening runs only when the host asks (V1). `schedule.run_scheduled` / `schedule.backfill` exist for a later version that screens every period;
-- writes one screening JSON log per completed run and keeps the weekly baseline snapshot (methodology 18.3/18.4) in `DIAGNOSTICS_ARCHIVE`.
+`run_diagnosis(DiagnosisInput)` and `run_link_speed(evidence, period)` are also available on their own. A local service with its own SQLite run store (`service_for_bot(bot)`, section 4) exists too; it is what the local map viewer uses.
 
 ## 2. Files
 
-Copy `production/dash_backend/ai_brains/intersections/diagnostics/` into the backend's `dash_backend/ai_brains/intersections/`.
+Copy `production/dash_backend/ai_brains/intersections/diagnostics/` into the backend's `dash_backend/ai_brains/intersections/` (without `__pycache__` folders).
 
 | Path | Purpose |
 |---|---|
-| `host.py` | `service_for_bot(bot)`: one service per process, using the chatbot's LLM client |
-| `service.py` | `screen`, `diagnose`, `site_evidence`, `refresh_baselines` |
+| `host.py` | Entry points: `run_screening`, `log_screening`, `run_site_report`, `weekly_baseline_job`, `run_diagnosis`, `run_link_speed`; `service_for_bot(bot)` for the local-store service |
+| `contract/` | Your contract (unchanged), `adapter.py` (our records ↔ your models) and `core.py` (the contract-path logic) |
 | `screening.py`, `measures.py`, `baseline.py`, `stats.py`, `series.py`, `timewin.py`, `vic_calendar.py`, `ids.py` | Level 1 (deterministic) |
 | `templates/` | D001 (Q4) and D002 (Q5), `catalog.json` with both definitions |
-| `report.py`, `llm.py` | Report assembly and the LLM guard |
-| `sources/` | InfluxDB and Neo4j readers built from the schema |
-| `store.py` | SQLite store (runs, baselines, diagnoses) |
-| `archive.py` | Screening JSON logs and weekly baseline snapshots (S3 or a folder), and reading them back |
-| `schedule.py` | Later extension: scheduled screening and back-calculation |
-| `config/schema.json`, `config/rules.json` | Data schema (temporary) and rules |
-| `contract/` | The production team's `intersections_diagnostics_schemas.py` (copied unchanged), `adapter.py` (conversion) and `core.py` (`run_screening`, `run_diagnosis`) |
-| `sources/tomtom_queue.py` | TomTom Junction Analytics queue archive (Q5 queue length; `tomtom.api_enabled`, on) |
-| `data/` | TomTom approach ↔ link mapping (from the chatbot) and the site ↔ subsystem map (fallback only) |
+| `report.py`, `llm.py` | Report assembly and the LLM guard (the chatbot's LLM client) |
+| `link_speed.py`, `arms.py` | Supplementary TomTom link speed; arm numbers from your operational-sheet modules |
+| `sources/` | InfluxDB and Neo4j readers built from the schema; `tomtom_queue.py` for the Junction Analytics queue archive |
+| `archive.py` | S3 (or folder) records: logs, Red site reports, baseline snapshots; reading them back |
+| `store.py` | SQLite: cached reference values and baselines, audit records (config snapshots, data provenance) |
+| `service.py`, `schedule.py` | Local-store service; scheduled screening for a later version (not used in V1) |
+| `config/schema.json`, `config/rules.json` | Data schema and every threshold/switch |
+| `data/` | TomTom approach ↔ link mapping (identical to your TomTom layer's file) and the site ↔ subsystem map (fallback, off) |
 
 ## 3. Dependencies and environment
 
@@ -60,7 +52,7 @@ Copy `production/dash_backend/ai_brains/intersections/diagnostics/` into the bac
 | `DIAGNOSTICS_RULES_FILE` | bundled `config/rules.json` | Only if the rules are managed outside the package |
 | `TOMTOM_API_KEY` | — | **Needed for the Q5 queue length** (methodology section 13). The chatbot's TomTom layer already uses it. Without it, Q5 reports the queue as unavailable. |
 
-## 4. Host code
+## 4. Local-store service (alternative)
 
 ```python
 from dash_backend.ai_brains.intersections.diagnostics.host import service_for_bot
@@ -100,6 +92,9 @@ log_screening(screening_run)                       # ScreeningLog in S3 (18.3), 
 # click on an Amber or Red site
 report = run_site_report(site_report_request, screening_run, bot)   # SiteReportRequest + ScreeningRun -> SiteReport
 # Amber: evidence + link_speed; Red: also diagnosis (Q4/Q5), and the SiteReport is kept in S3 (18.2)
+
+# weekly refresh, with the baseline_version your ScreeningInput will use that week
+weekly_baseline_job("2026-W45")                    # BaselineSnapshot files baselines/{region}/2026-W45/... (18.4)
 ```
 
 `run_diagnosis(DiagnosisInput)` and `run_link_speed(evidence, period)` remain available on their own.
@@ -110,17 +105,26 @@ report = run_site_report(site_report_request, screening_run, bot)   # SiteReport
   - `screening-logs/{region}/{YYYY}/{MM}/{DD}/{HHMM}_{run_id}.json`: `ScreeningLog`
   - `site-reports/{region}/{YYYY}/{MM}/{DD}/{HHMM}_{run_id}_{site}.json`: `SiteReport` of a Red site
   - `baselines/{region}/{baseline_version}/{weekday}/{HHMM}.json.gz`: `BaselineSnapshot` of one weekday and slot
-- **Check before going live:** `python main.py contract-check` validates every site of a stored live run against the contract.
+- **Check before going live:** section 5 in the backend, or `python main.py contract-check` in the development repository (validates every site of a stored live run against the contract).
 
-## 5. Verification
+## 5. Verification (in the backend)
 
 ```python
-from dash_backend.ai_brains.intersections.diagnostics.templates import catalog
-assert set(catalog()) == {"D001", "D002"}
-from dash_backend.ai_brains.intersections.diagnostics.host import service_for_bot
-view = service_for_bot().screen()
-print(view["counts"], view["period"]["local"])
+from datetime import datetime
+from dash_backend.ai_brains.intersections.diagnostics import host
+from dash_backend.ai_brains.intersections.diagnostics.contract import adapter
+from dash_backend.ai_brains.intersections.diagnostics.settings import Settings
+from dash_backend.ai_brains.intersections.diagnostics.timewin import latest_period
+S = adapter.S
+period = latest_period(Settings().rules)
+result = host.run_screening(S.ScreeningInput(run_id="check", region="AU-VIC-Melbourne", period=adapter.period_model(period),
+                                             baseline_version="2026-W45", sites=[]))
+print(len(result.sites), "sites,", len(result.errors), "errors")    # expect ~2,500 sites and no errors
 ```
+
+`adapter.use_contract(<your schemas module>)` once at start-up makes the package use your classes instead of its bundled copy.
+
+**Data notes from the live checks (2 Nov 2026).** Q3C (phase service) has little valid history before about 20 Oct (`HasGreen = 0` placeholders), so it is mostly not assessable until late November. Several 16:00–17:00 periods in September–October have no `scats-aggregation` outputs, which makes many sites Grey in those slots (asked of the data team). Both are data, not code.
 
 ## 6. To agree with the production team
 
@@ -130,6 +134,7 @@ The Nov 2026 contract covers the no-green Grey flag, `has_largest_queue: bool | 
 - **Audit fields.** The optional fields above, or where audit records should live.
 - **S3.** The bucket and prefix for `DIAGNOSTICS_ARCHIVE`.
 - **Baseline snapshot size.** One `BaselineSnapshot` per weekday and slot (as written now) rather than one per week.
+- **Template registry.** D002's ID `ID_Q5_TOMTOM_CONFIRMATION` (rules.json `contract.template_ids`) is a placeholder; please confirm or replace it.
 - **Link speed.** An existing historical reference speed (`schema.influx.sources.link_speed_reference` is ready for it). `LinkSpeed.arm` reuses the backend's operational-sheet modules (`db.operational_sheet_client`, `operational_sheet`, `operational_sheet_store`), as the TomTom layer does; no new configuration.
 
 - **Schema.** Replace `config/schema.json` with the final schema (see SCHEMA.md) and change its `version`.

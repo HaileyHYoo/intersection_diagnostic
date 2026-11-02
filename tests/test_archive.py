@@ -109,6 +109,12 @@ class ArchiveTests(unittest.TestCase):
         keys = self.archive.keys("baselines/")
         self.assertEqual([k.rsplit("/", 1)[1] for k in keys], ["0730.json.gz", "0800.json.gz"])
 
+    def test_weekly_job_uses_the_hosts_baseline_version(self):
+        day = timewin.period_ending(END, self.settings.rules).day
+        self.svc.refresh_baselines([day], slots=["08:00"], snapshot_version="2026-W44")
+        snap = archive.read_json(self.archive, "baselines/AU-VIC-Melbourne/2026-W44/Tuesday/0800.json.gz")
+        self.assertEqual(S.BaselineSnapshot.model_validate(snap).version, "2026-W44")
+
     def test_archive_failure_does_not_lose_the_run(self):
         svc = DiagnosticsService(self.source, self.settings, SQLiteStore(":memory:"), archive=BrokenArchive())
         with self.assertLogs("diagnostics.service", "WARNING"):
