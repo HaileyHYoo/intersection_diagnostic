@@ -50,7 +50,9 @@ python main.py inspect --site 4397 --end 2026-10-27T08:30 --hours 2
 ```powershell
 python main.py map                                    # http://127.0.0.1:8765, 최근 30분
 python main.py screen --end 2026-05-12T08:30          # 과거 구간(그 날짜 이전 8주가 기준)
-python main.py summary                                # 최근 실행에서 분류별 원인 집계(Detector Health, Grey, Amber)
+python main.py summary                                # 최근 실행에서 분류별 원인 집계(Detector Health, Grey, Amber) + REVIEW(교수님 점검 항목)
+python main.py kpi-check --site 707 --end 2026-10-30T15:30 --references 3   # PerfKpi/PerfApproach 저장 필드 전부(15분별)
+python main.py export-run --run <run_id>              # 스크리닝 로그와 baseline snapshot을 압축 없는 JSON으로(out/export_<run_id>/)
 python main.py inspect --site 994 --end 2026-10-30T15:00 --history   # 기준 주별·접근로별 히스토리(값이 왜 빠졌는지)
 python main.py diagnose --run <run_id> --site 4397    # Red 교차로 리포트
 python main.py export-html --run <run_id> --out out/map.html

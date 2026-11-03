@@ -105,7 +105,7 @@ def table(speed: dict) -> dict:
     """The report table (section 3, supplementary)."""
     fmt = lambda x: "-" if x is None else f"{x:.1f}"
     with_arm = any(a.get("arm") is not None for a in speed["approaches"])
-    return {"title": "Supplementary: TomTom incoming-link speed (same 30 min; not used for the classification)",
+    return {"title": "TomTom incoming-link speed (same 30 min)",
             "columns": ["Approach"] + (["Arm"] if with_arm else []) + ["Speed (km/h)", "Samples", "Reference (km/h)"],
             "rows": [[a["approach"]] + (["-" if a.get("arm") is None else str(a["arm"])] if with_arm else [])
                      + [fmt(a["speed_kmh"]) if a["speed_kmh"] is not None else "unavailable",

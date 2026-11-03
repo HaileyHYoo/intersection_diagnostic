@@ -18,12 +18,15 @@ approach has no green in the period (HasGreen = 0 or no GreenShare in either qua
 """
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 
 from . import stats
 from .measures import Measures
 from .stats import ABNORMAL, INSUFFICIENT, NORMAL
 from .timewin import Period
+
+log = logging.getLogger(__name__)
 
 PASS, FAIL = "PASS", "FAIL"
 CATEGORIES = {
@@ -118,9 +121,9 @@ def q1_traffic(links: list[dict], current: dict[str, float], base: dict[str, dic
 
 # ---------------------------------------------------------------------- Q3
 def q3c_phase_service(site_links: list[dict], current: dict[str, dict], base: dict[str, dict], bounds: dict,
-                      rules: dict) -> dict:
+                      rules: dict, names: dict | None = None) -> dict:
     rule = rules["q3c"]
-    streets = {a["link"]: a.get("street") for a in site_links}
+    streets = {**(names or {}), **{a["link"]: a.get("street") for a in site_links if a.get("street")}}
     evaluated = [link for link, env in base.items() if env["n"] >= rule["approach_history_min_presence"]]
     rows, without_green = [], []
     for link in sorted(evaluated):
@@ -229,6 +232,7 @@ def screen(source, settings, baseline: dict, period: Period, network: list[dict]
     kpi, origin = m.site_kpi([period])
     kpi, origin = kpi[period.key], origin[period.key]
     green = m.approach_green([period])[period.key]
+    names = street_names(source, links, green, baseline)
 
     results, errors = [], {}
     for s in sites:
@@ -239,7 +243,8 @@ def screen(source, settings, baseline: dict, period: Period, network: list[dict]
             q1 = q3 = None
             shadow = None
             q1_all = q1_traffic(links.get(site, []), volume, baseline["volume"], bounds, rules)
-            q3c = q3c_phase_service(links.get(site, []), green.get(site, {}), baseline["green"].get(site, {}), bounds, rules)
+            q3c = q3c_phase_service(links.get(site, []), green.get(site, {}), baseline["green"].get(site, {}), bounds, rules,
+                                    names)
             q3_all = q3_signal(kpi.get(site, {}), baseline["kpi"].get(site, {}), origin.get(site, {}), q3c, rules)
             if q2["status"] == PASS:
                 q1, q3 = q1_all, q3_all
@@ -261,6 +266,30 @@ def screen(source, settings, baseline: dict, period: Period, network: list[dict]
     for r in results:
         counts[r["category"]] += 1
     return {"sites": results, "counts": dict(counts), "errors": errors, "alignment": m.aligner.stats}
+
+
+def street_names(source, links: dict, green: dict, baseline: dict) -> dict[str, str]:
+    """Street names for links the screening reports without one: an EGRESS link with no Neo4j street name, or a
+    Q3C LinkId that is not one of the site's EGRESS links. From any Neo4j Road, then the validated TomTom road-link
+    mapping (source.link_names); a link without a reliable name keeps its ID in the label. EGRESS links without a
+    name are filled in place."""
+    lookup = getattr(source, "link_names", None)
+    if lookup is None:
+        return {}
+    known = {a["link"] for site_links in links.values() for a in site_links if a.get("street")}
+    wanted = {a["link"] for site_links in links.values() for a in site_links if not a.get("street")}
+    for site, per_link in list(green.items()) + list(baseline.get("green", {}).items()):
+        wanted |= {link for link in per_link if link not in known}
+    try:
+        names = lookup(sorted(wanted)) if wanted else {}
+    except Exception as exc:  # noqa: BLE001 - names are for reading only; the IDs stay
+        log.warning("Street names for %d links not read: %s", len(wanted), exc)
+        return {}
+    for site_links in links.values():
+        for a in site_links:
+            if not a.get("street") and names.get(a["link"]):
+                a["street"] = names[a["link"]]
+    return names
 
 
 MEASURE_NAMES = {"cycle_length": "cycle length (Q3A)", "cycle_stability": "Cycle Stability (Q3B)",

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from . import link_speed as speed
 from .templates.d001 import approach_label, decimals
+from .templates.d002 import DEFAULT_NOTE
 
 
 def _range(row: dict, digits: int = 1) -> str:
@@ -72,7 +73,7 @@ def tomtom_tables(d002: dict) -> list[dict]:
 def speed_part(link_speed: dict | None) -> tuple[list[str], list[dict]]:
     if link_speed is None:
         return [], []
-    bullets = [f"Supplementary link speed: {note}" for note in link_speed["notes"]]
+    bullets = list(link_speed["notes"])
     bullets.append("Reference speed: " + link_speed["reference"])
     return bullets, [speed.table(link_speed)] if link_speed["approaches"] else []
 
@@ -85,21 +86,43 @@ def assemble(site: dict, period: dict, d001: dict, d002: dict | None, link_speed
          "producer": "D001"},
     ]
     speed_bullets, speed_tables = speed_part(link_speed)
+    # Junction Analytics (delay, queue) and the supplementary link speed are separate TomTom sources: the second
+    # never stands in for the first, and an unavailable confirmation keeps the methodology's fixed message.
+    supplement = {"title": "Supplementary: TomTom incoming-link speed (a separate TomTom source; not Junction "
+                           "Analytics, not used for the classification or the agreement)",
+                  "bullets": speed_bullets, "tables": speed_tables} if link_speed is not None else None
     if d002 is None:
-        sections.append({"title": "3. TomTom Road-User Impact", "text": "TomTom confirmation was not run.",
-                         "bullets": speed_bullets, "tables": speed_tables, "producer": "D002"})
+        section = {"title": "3. TomTom Road-User Impact", "text": "TomTom confirmation was not run.",
+                   "bullets": ["Junction Analytics delay and queue: not run."], "tables": []}
+    elif not d002["evidence"]["available"]:
+        section = {"title": "3. TomTom Road-User Impact", "text": d002["answer"]["road_user_impact"],
+                   "bullets": ["Junction Analytics delay and queue: unavailable"
+                               + (f" ({d002['answer']['coverage']})" if d002["answer"].get("coverage") else "") + "."],
+                   "tables": []}
     else:
         a2 = d002["answer"]
-        sections.append({"title": "3. TomTom Road-User Impact", "text": a2["road_user_impact"],
-                         "bullets": [f"Agreement with SCATS findings: {a2['agreement']}", f"Coverage: {a2['coverage']}"]
-                         + speed_bullets,
-                         "tables": tomtom_tables(d002) + speed_tables, "producer": "D002"})
-    sections.append({"title": "4. Suggested Engineering Checks", "bullets": a1["suggested_checks"], "producer": "D001"})
+        section = {"title": "3. TomTom Road-User Impact", "text": a2["road_user_impact"],
+                   # the verdict and the coverage statement are in the text; only extra coverage notes are listed
+                   "bullets": [] if d002["evidence"]["coverage_note"] == DEFAULT_NOTE else
+                              ["Coverage notes: " + d002["evidence"]["coverage_note"]],
+                   "tables": tomtom_tables(d002)}
+    sections.append({**section, "producer": "D002", **({"supplement": supplement} if supplement else {})})
+    sections.append({"title": "4. Suggested Engineering Checks", "bullets": a1["suggested_checks"], "ordered": True,
+                     "producer": "D001"})                 # in order of priority
     report = {"site": site["site"], "intersection": site.get("name"), "classification": site["label"],
               "period": period, "sections": sections,
               "generated_by": {"D001": d001["generated_by"], "D002": d002["generated_by"] if d002 else None}}
     report["markdown"] = markdown(report)
     return report
+
+
+def _tables(tables: list[dict]) -> list[str]:
+    lines = []
+    for t in tables:
+        lines += [f"**{t['title']}**", "", "| " + " | ".join(t["columns"]) + " |", "|" + "---|" * len(t["columns"])]
+        lines += ["| " + " | ".join(r) + " |" for r in t["rows"]]
+        lines.append("")
+    return lines
 
 
 def markdown(report: dict) -> str:
@@ -109,15 +132,14 @@ def markdown(report: dict) -> str:
         lines.append(f"## {s['title']}")
         if s.get("text"):
             lines += [s["text"], ""]
-        for b in s.get("bullets", []):
-            lines.append(f"- {b}")
+        for k, b in enumerate(s.get("bullets", []), 1):
+            lines.append(f"{k}. {b}" if s.get("ordered") else f"- {b}")
         if s.get("bullets"):
             lines.append("")
-        for t in s.get("tables", []):
-            lines += [f"**{t['title']}**", "", "| " + " | ".join(t["columns"]) + " |",
-                      "|" + "---|" * len(t["columns"])]
-            lines += ["| " + " | ".join(r) + " |" for r in t["rows"]]
-            lines.append("")
+        lines += _tables(s.get("tables", []))
+        if s.get("supplement"):
+            sup = s["supplement"]
+            lines += [f"### {sup['title']}", ""] + [f"- {b}" for b in sup["bullets"]] + [""] + _tables(sup["tables"])
     lines.append("_Classification by deterministic screening; wording by "
                  + ", ".join(f"{k}: {v}" for k, v in report["generated_by"].items() if v) + "._")
     return "\n".join(lines)

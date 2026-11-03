@@ -32,8 +32,8 @@ class LinkSpeedTests(unittest.TestCase):
     def test_red_report_has_the_speed_beside_delay_and_queue(self):
         r = self.svc.diagnose(self.run_id, "4300")
         section = r["report"]["sections"][2]
-        speed = section["tables"][-1]
-        self.assertTrue(speed["title"].startswith("Supplementary: TomTom incoming-link speed"))
+        speed = section["supplement"]["tables"][-1]
+        self.assertTrue(section["supplement"]["title"].startswith("Supplementary: TomTom incoming-link speed"))
         self.assertEqual(speed["rows"][0][:2], ["Swanston Street [N]", "18.1"])
         self.assertIn("Supplementary: TomTom incoming-link speed", r["report"]["markdown"])
         self.assertEqual(r["link_speed"]["approaches"][0]["link"], "SWANN4300Q9")   # kept in the diagnosis record
@@ -66,7 +66,7 @@ class LinkSpeedTests(unittest.TestCase):
         view = broken.screen(END)
         self.assertEqual(view["counts"], self.svc.screen(END)["counts"])           # classification untouched
         r = broken.diagnose(view["run_id"], "4300")
-        self.assertEqual(r["report"]["sections"][2]["bullets"][0], "Agreement with SCATS findings: agreement")
+        self.assertIn("Overall: agreement", r["report"]["sections"][2]["text"])
         self.assertIn("could not be read", r["link_speed"]["notes"][0])
         self.assertFalse(r["link_speed"]["available"])
 
@@ -193,7 +193,7 @@ class ArmTests(unittest.TestCase):
         by = {a["link"]: a["arm"] for a in r["link_speed"]["approaches"]}
         self.assertEqual((by["SWANN4300Q9"], by["FLINE4300Q9"], by["SWANS4300Q9"]), (1, None, 3))
         self.assertEqual(self.queries[0], {"ids": ["4300", "S4300"], "region": "AU-VIC-Melbourne"})
-        table = r["report"]["sections"][2]["tables"][-1]
+        table = r["report"]["sections"][2]["supplement"]["tables"][-1]
         self.assertEqual(table["columns"][:2], ["Approach", "Arm"])
         period = timewin.period_ending(END, s.rules)
         report = adapter.link_speed_report(r["link_speed"], "4300", adapter.period_model(period))
@@ -212,4 +212,4 @@ class ArmTests(unittest.TestCase):
         svc = DiagnosticsService(FakeSource(s.rules, s.schema, END + ":00+11:00", n_sites=20), s, SQLiteStore(":memory:"))
         r = svc.diagnose(svc.screen(END)["run_id"], "4300")
         self.assertTrue(all(a["arm"] is None for a in r["link_speed"]["approaches"]))
-        self.assertNotIn("Arm", r["report"]["sections"][2]["tables"][-1]["columns"])
+        self.assertNotIn("Arm", r["report"]["sections"][2]["supplement"]["tables"][-1]["columns"])

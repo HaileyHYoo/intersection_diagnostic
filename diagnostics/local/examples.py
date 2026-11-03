@@ -148,12 +148,15 @@ def to_html(text: str, title: str = "Intersections Diagnostics V1 - example outp
         s = re.sub(r"`(.+?)`", r"<code>\1</code>", s)
         return re.sub(r"(?<![\w*])_(.+?)_(?!\w)", r"<i>\1</i>", s)
 
-    out, rows, items = [], [], []
+    out, rows, items, numbered = [], [], [], []
 
     def flush():
         if items:
             out.append("<ul>" + "".join(f"<li>{inline(i)}</li>" for i in items) + "</ul>")
             items.clear()
+        if numbered:
+            out.append("<ol>" + "".join(f"<li>{inline(i)}</li>" for i in numbered) + "</ol>")
+            numbered.clear()
         if rows:
             head, body = rows[0], [r for r in rows[2:]]
             out.append("<table><tr>" + "".join(f"<th>{inline(c)}</th>" for c in head) + "</tr>"
@@ -167,9 +170,14 @@ def to_html(text: str, title: str = "Intersections Diagnostics V1 - example outp
             rows.append([c.strip() for c in line.strip().strip("|").split("|")])
             continue
         if line.startswith("- "):
-            if rows:
+            if rows or numbered:
                 flush()
             items.append(line[2:])
+            continue
+        if re.match(r"\d+\. ", line):
+            if rows or items:
+                flush()
+            numbered.append(line.split(". ", 1)[1])
             continue
         flush()
         if not line.strip():

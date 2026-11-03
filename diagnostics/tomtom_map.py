@@ -47,3 +47,14 @@ def load(path: str) -> dict[str, dict]:
 
 
 EMPTY = {"uuid": None, "approaches": {}, "exits": {}}
+
+
+@lru_cache(maxsize=4)
+def link_streets(path: str) -> dict[str, str]:
+    """{link: street name} from every approach and exit of the validated road-link mapping (all sites)."""
+    out = {}
+    for record in load(path).values():
+        for arm in list(record["approaches"].values()) + list(record["exits"].values()):
+            if arm["link"] and arm.get("street") and arm["link"] not in out:
+                out[arm["link"]] = arm["street"]
+    return out

@@ -121,10 +121,21 @@ Every category is returned to the host, and the UI decides what to draw. A click
 ## 8. D001 (Q4): SCATS diagnostic interpretation
 
 - **Inputs.** The saved Q1/Q3 results of the run only. No data is retrieved.
-- **Code-written answer.** Code writes a complete answer: diagnosis, supporting evidence and suggested checks.
-  - Findings on the same approach are connected.
-  - Findings on different approaches are reported separately.
-  - The answer states that association is not causation.
+- **Code-written answer (revised after the methodology owner's review, 3 Nov 2026).** Code writes a complete answer; each part has one job, so the parts do not repeat each other:
+  - **Diagnosis** — the main problem and the approaches concerned, without figures: *what the data show* (which approaches' traffic differs, and which signal measures differ and in which direction), then *possible explanations, labelled as not demonstrated by the data*. It states that SCATS adapts cycle length and phase service to demand and coordination, so a value outside its range does not by itself show a signal problem. The possible explanations come only from combinations of the Q1/Q3 findings:
+
+    | Finding | Possible explanation written |
+    |---|---|
+    | Longer (shorter) cycle with higher (lower) volume on an approach | may be SCATS lengthening (shortening) the cycle as demand rose (fell) |
+    | Cycle change without a matching volume change | a plan or coordination change is a possible explanation |
+    | More (less) green to an approach whose volume is higher (lower) | may be SCATS following its demand |
+    | Less green to an approach whose volume is higher (or the reverse) | the opposite of a demand response, the finding most worth verifying |
+    | Phase-service change on an approach without a volume change | may follow demand on competing phases or the coordination plan |
+    | Poorer stability | the cycle varied more than usual, which can happen while SCATS adapts |
+    | Volume change without a phase-service finding on that approach | its cause is not shown by the SCATS data |
+  - Findings on the same approach are connected (an association, not proof of cause); findings on different approaches are reported separately.
+  - **Supporting Evidence** — the measurements behind the findings (current, usual, range, difference). A measure that is simply normal is left to the tables.
+  - **Suggested Engineering Checks** — numbered in order of priority, verifying signal behaviour, phase service and coordination: (1) phase service against demand on an approach with both findings, the opposite-direction case first; (2) whether a cycle change was adaptive or a plan / coordination change (plan, subsystem cycle, linking and offsets); (3) phase service on approaches without a traffic finding; (4) cycle-by-cycle stability; (5) incidents, events or diversions for a volume change without a signal finding.
 - **LLM wording.** The LLM may re-word that answer. The re-worded answer is used only when all three hold:
   - It is the requested JSON.
   - Every number in it appears in the evidence.
@@ -151,7 +162,7 @@ Every category is returned to the host, and the UI decides what to draw. A click
   - An approach's delay is *adequately observed* when it has records in both quarter-hours, and its queue when at least `tomtom.queue_min_minutes` (15) minutes have a value. Only adequately observed approaches are ranked.
 - **Matching.** TomTom approaches are matched to EGRESS links with the chatbot's verified mapping file (`data/tomtom_neo4j_links_AU-VIC-Melbourne_final.json`), which also gives the junction UUID for the queue archive.
   - **Stub links (decision, 3 Nov 2026).** For about 11 % of approaches the mapping gives the link upstream of a short stub (`stub_hops` > 0), not the site's EGRESS link itself. Such a TomTom approach is the site's approach on the same street when exactly one approach of the site on that street has no other TomTom approach; otherwise it stays unmatched. Each such match is stated in the coverage note with the mapping's link (seen live at sites 719 and 5266).
-- **Answer text (code-written).** Where the greatest delay and the longest queue are; then one sentence per SCATS-identified approach (Q1 and Q3C findings) saying whether it has the greatest delay, the longest queue, neither, or no adequate coverage; then the conclusion. A mismatch is always stated, as methodology §13 requires.
+- **Answer text (code-written).** Where the greatest delay and the longest queue are; then one sentence per SCATS-identified approach (Q1 and Q3C findings) saying whether it has the greatest delay, the longest queue, neither, or no adequate coverage; then the overall verdict with the approaches that match and those that differ; then the coverage statement — whether delay and queue are available for the full 30 minutes, or per SCATS-identified approach how many of the two 15-minute periods have delay and how many of the 30 minutes have queue. A mismatch is always stated, as methodology §13 requires. TomTom shows a road-user impact, never its cause.
 - **Agreement per SCATS-identified approach (decided by code).**
 
   | Result | When |
@@ -160,7 +171,17 @@ Every category is returned to the host, and the UI decides what to draw. A click
   | disagreement | The approach is observed, but none of them is on it |
   | insufficient coverage | The approach is not adequately observed |
 
-  Overall, the site agrees if any flagged approach agrees, and disagrees if any is observed without agreeing. Partial coverage and unmapped approaches are stated.
+- **Site verdict (methodology owner's review, 3 Nov 2026).** Four values, in the answer text:
+
+  | Site verdict | When |
+  |---|---|
+  | agreement | Every SCATS-identified approach agrees |
+  | partial agreement | At least one agrees and at least one disagrees or is not covered |
+  | disagreement | None agrees and at least one is observed |
+  | insufficient coverage | No SCATS-identified approach is adequately observed |
+
+  The contract's per-approach `ScatsAgreement` keeps its three values; "partial agreement" exists only at site level (the contract has no site-level field, so it is in `Q5Output.narrative`). Partial coverage and unmapped approaches are stated.
+- **Section 3 layout.** The Junction Analytics part (delay, queue, the verdict) comes first. When it is unavailable, the methodology's fixed message is shown and the link speed does not replace it. The supplementary link speed follows under its own heading, as a separate TomTom source.
 - **No data.** The answer is "TomTom confirmation unavailable for this intersection or analysis period." D001 still runs.
 
 ### 9.1 Supplementary TomTom link speed (methodology update, 2 Nov 2026)
@@ -246,6 +267,10 @@ The following optional contract fields have been proposed and are not in the Nov
 - `ScreeningResult.config_version`, `ScreeningResult.audit_ref`, `DiagnosisResult.config_version`, `DiagnosisResult.audit_ref`.
 
 
+## 11a. Names of approaches
+
+An approach is shown as "Street [bound]". The street comes from the site's Neo4j EGRESS road (`street_name`, else `name`); for a link without one — an EGRESS road without a name, or a Q3C `LinkId` that is not one of the site's EGRESS links — from any Neo4j `Road` with that `link_id` (`graph.link_names`), then from the validated TomTom road-link mapping file. Without a bound the link ID is added ("Main Road (link X)"), so two links of one street stay distinct. Without a reliable name the label is "Link X [bound] (no street name)". Nothing is guessed from geometry.
+
 ## 12. Open items
 
 - **Confirm on live data** with `python main.py inspect` (see SCHEMA.md):
@@ -262,6 +287,11 @@ The following optional contract fields have been proposed and are not in the Nov
     4. the S3 bucket and prefix (`DIAGNOSTICS_ARCHIVE`), with put/get/list rights;
     5. one `BaselineSnapshot` per weekday and slot (as written now) or one per week: a whole week is about 48 × 7 slots × ~16,000 values, too large for one object.
 - **TomTom mapping.** Q5 uses the same approach ↔ link mapping file as the production TomTom layer (identical file, checked by SHA-256 on 2 Nov 2026). A site that is not in it (e.g. 177) has no TomTom confirmation in production either.
+- **Methodology owner's review (3 Nov 2026), checks to run on live data** (`python main.py summary`, section REVIEW; `python main.py kpi-check`):
+  - Grey: primary causes; approaches without green split into "HasGreen = 0 recorded" (with the recorded GreenShare) and "no record" (missing data); sites Grey only because of a no-green approach although Q3A and Q3B are assessable, with the category each alternative would give — (a) the no-green approach is not assessable instead of greying the site, (b) a recorded HasGreen = 0 is a measured 0 % green share. Neither alternative is applied; `q3c.grey_site_if_any_approach_without_green` stays `true` until decided.
+  - Detector Health: the failure pattern (one detector at 0, 1–4 or 5–9 vehicles; several) and the category the site would have if the gate had passed (`if_detectors_passed`, analysis only, never shown as the category).
+  - Q3C: current green shares of 100 %, changes of 30 percentage points or more from usual, zero-width ranges; `kpi-check` prints every stored PerfApproach / PerfKpi field per quarter-hour, with the sum of GreenShare over the approaches.
+  - Cycle: Cycle Stability of 0 (e.g. SCATS 707: compare with CycleCvPct in `kpi-check`) and values within 2 % of the bound they were compared with.
 - **Q3C history (live data).** At site 994 every reference week before 23 Oct 2026 has `HasGreen = 0` on every approach while the cycle runs normally, so Q3C has one usable week. `inspect --history` now shows the GreenShare stored with `HasGreen = 0`, to tell whether HasGreen was not filled before that date (a data-pipeline question for Zay) or whether the records are empty.
 - **Link speed.** Whether an existing historical reference speed exists (bucket, measurement, field); `link_speed_reference` is ready for it.
 - **Decided with the methodology owner (3 Nov 2026):** Q5 ranks both control and approach delay (§9); reference weeks with missing data are not replaced (§3); the Q3 one-abnormal/one-normal/one-not-assessable case keeps the document's rule and is shown as a note (§6).

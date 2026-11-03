@@ -165,6 +165,22 @@ class LiveSource:
                            tag_in=(feed["site_tag"], [ids.site_tag(site, feed["site_format"])]))
         return self._logical(feed, rows, {"approach": (feed["approach_tag"], str), "exit": (feed["exit_tag"], str)})
 
+    def link_names(self, links: list[str]) -> dict[str, str]:
+        """{link: street} for any Neo4j Road (not only a site's EGRESS links), then the TomTom road-link mapping."""
+        links = sorted({str(x) for x in links if x})
+        out = {}
+        if links and "link_names" in self.schema["graph"]:
+            try:
+                rows = self._graph_rows("link_names", {"links": links})
+            except DataUnavailable:                  # Neo4j not reachable: the mapping's names still apply
+                rows = []
+            for r in rows:
+                link = ids.link(r.get("link_id"), self.strip)
+                if link in links and r.get("street") and link not in out:
+                    out[link] = r["street"]
+        mapped = tomtom_map.link_streets(str(package_file(self.schema["tomtom_mapping"]["file"])))
+        return {**{k: mapped[k] for k in links if k in mapped}, **out}
+
     def tomtom_mapping(self, site: str) -> dict:
         """{uuid, approaches, exits} for a site; empty when the site has no TomTom mapping."""
         return tomtom_map.load(str(package_file(self.schema["tomtom_mapping"]["file"]))).get(ids.site(site), tomtom_map.EMPTY)

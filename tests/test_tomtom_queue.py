@@ -81,7 +81,7 @@ class QueueInDiagnosisTests(unittest.TestCase):
         d = self.diagnose(False, "4300")
         self.assertTrue(d["evidence"]["queue"].startswith("unavailable"))
         self.assertIsNone(d["evidence"]["comparison"]["per_approach"][0]["has_largest_queue"])
-        self.assertIn("Queue length: unavailable", d["answer"]["road_user_impact"])
+        self.assertIn("Junction Analytics queue: unavailable", d["answer"]["road_user_impact"])
 
     def test_queue_on(self):
         d = self.diagnose(True, "4300")

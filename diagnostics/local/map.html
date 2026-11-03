@@ -164,8 +164,13 @@ function renderReport(res, site) {
   for (const s of rep.sections) {
     html += `<h3>${esc(s.title)}</h3>`;
     if (s.text) html += `<p>${esc(s.text)}</p>`;
-    if (s.bullets && s.bullets.length) html += `<ul>${s.bullets.map((b) => `<li>${esc(b)}</li>`).join("")}</ul>`;
+    if (s.bullets && s.bullets.length) { const tag = s.ordered ? "ol" : "ul"; html += `<${tag}>${s.bullets.map((b) => `<li>${esc(b)}</li>`).join("")}</${tag}>`; }
     for (const t of s.tables || []) html += table(t);
+    if (s.supplement) {
+      html += `<h4>${esc(s.supplement.title)}</h4>`;
+      if (s.supplement.bullets.length) html += `<ul>${s.supplement.bullets.map((b) => `<li>${esc(b)}</li>`).join("")}</ul>`;
+      for (const t of s.supplement.tables || []) html += table(t);
+    }
   }
   const by = Object.entries(rep.generated_by).filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`).join(", ");
   const rej = Object.values(res.templates || {}).filter((t) => t.rejected).map((t) => `${t.template_id}: ${t.rejected}`);

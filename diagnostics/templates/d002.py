@@ -13,7 +13,10 @@ An approach is adequately observed when it has records in both quarter-hours (to
 queue when at least tomtom.queue_min_minutes minutes have a value. Only adequately observed approaches are
 ranked. TomTom approaches are matched to the screening approaches through the ApproachId -> EGRESS link
 mapping. A SCATS-identified approach agrees when it has the greatest delay or the longest queue, disagrees
-when it is observed without either, and has insufficient coverage when it is not observed.
+when it is observed without either, and has insufficient coverage when it is not observed. The site verdict
+(methodology owner's review, 3 Nov 2026): agreement when every SCATS-identified approach agrees, partial
+agreement when some do and others disagree or are not covered, disagreement when none agrees and at least one
+is observed, insufficient coverage when none is observed. TomTom shows road-user impact, never its cause.
 """
 from __future__ import annotations
 
@@ -32,6 +35,8 @@ from .d001 import approach_label, r1
 TEMPLATE = "D002"
 UNAVAILABLE = "TomTom confirmation unavailable for this intersection or analysis period."
 AGREE, DISAGREE, NO_COVERAGE = "agreement", "disagreement", "insufficient coverage"
+DEFAULT_NOTE = "all mapped approaches observed in both quarter-hours"
+PARTIAL = "partial agreement"           # site level only: some SCATS-identified approaches agree, others do not
 
 
 DELAY_FIELDS = {"approach_delay", "control_delay"}
@@ -219,8 +224,7 @@ def compare(measured: dict, flagged: dict[str, dict]) -> dict:
         per_approach.append({"link": link, "approach": f["approach"], "scats_findings": f["findings"], "observed": observed,
                              "has_largest_delay": largest_delay, "largest_by_delay": largest_by,
                              "has_largest_queue": largest_queue, "agreement": verdict})
-    verdicts = {p["agreement"] for p in per_approach}
-    overall = AGREE if AGREE in verdicts else DISAGREE if DISAGREE in verdicts else NO_COVERAGE
+    overall = site_verdict([p["agreement"] for p in per_approach])
     top = lambda m: {"approach": tops[m]["approach"], "link": tops[m]["link"], "metric": m,
                      "delay_s": _delay(tops[m], m)} if tops.get(m) else None
     return {"agreement": overall, "per_approach": per_approach,
@@ -229,6 +233,41 @@ def compare(measured: dict, flagged: dict[str, dict]) -> dict:
             "longest_queue": {"approach": top_queue["approach"], "link": top_queue["link"],
                               "queue_mean_m": top_queue["queue_mean_m"]} if top_queue else None,
             "uncovered_scats_approaches": [p["approach"] for p in per_approach if not p["observed"]]}
+
+
+def site_verdict(verdicts: list[str]) -> str:
+    if verdicts and all(v == AGREE for v in verdicts):
+        return AGREE
+    if AGREE in verdicts:
+        return PARTIAL
+    return DISAGREE if DISAGREE in verdicts else NO_COVERAGE
+
+
+def coverage(rows: list[dict], flagged: dict[str, dict], queue_status: str, period_minutes: int = 30,
+             quarters: int = 2) -> dict:
+    """How much of the 30 minutes TomTom delay and queue cover on each SCATS-identified approach."""
+    by_link = {a["link"]: a for a in rows if a["link"]}
+    parts, full = [], True
+    queue = queue_status == "available"
+    for link, f in flagged.items():
+        a = by_link.get(link)
+        delay_q = a["quarters_observed"] if a else 0
+        queue_m = a["queue_minutes"] if a else 0
+        part = f"{f['approach']}: delay in {delay_q} of {quarters} 15-minute periods"
+        if queue:
+            part += f", queue in {queue_m} of {period_minutes} minutes"
+            full = full and queue_m >= period_minutes
+        full = full and delay_q >= quarters
+        parts.append(part)
+    if not flagged:
+        statement = "No SCATS-identified approach to compare."
+    elif full and queue:
+        statement = "Delay and queue are available for the full 30 minutes on every SCATS-identified approach."
+    else:
+        statement = "Coverage of the SCATS-identified approaches: " + "; ".join(parts) + "."
+        if not queue:
+            statement += " Junction Analytics queue: " + queue_status + "."
+    return {"per_approach": parts, "full_period": bool(flagged) and full and queue, "statement": statement}
 
 
 def _per_approach_sentence(p: dict) -> str:
@@ -279,18 +318,30 @@ def written(ev: dict) -> dict:
         sentence = f"{_and(texts)} among the adequately observed approaches {verb} {approach}."
         lines.append(sentence[0].upper() + sentence[1:])
     lines += [_per_approach_sentence(p) for p in comp["per_approach"]]
-    agreeing = [p["approach"] for p in comp["per_approach"] if p["agreement"] == AGREE]
-    if comp["agreement"] == AGREE:
-        lines.append(f"This supports a road-user impact on {_and(agreeing)} without establishing its cause.")
-    elif comp["agreement"] == DISAGREE:
-        lines.append("The TomTom data do not confirm a road-user impact on the SCATS-identified approaches.")
+    group = lambda v: [p["approach"] for p in comp["per_approach"] if p["agreement"] == v]
+    agreeing, differing, uncovered = group(AGREE), group(DISAGREE), group(NO_COVERAGE)
+    verdict = comp["agreement"]
+    if verdict == AGREE:
+        lines.append(f"Overall: agreement - TomTom matches the SCATS findings on {_and(agreeing)}. This supports a "
+                     "road-user impact there without establishing its cause.")
+    elif verdict == PARTIAL:
+        rest = ([f"differs on {_and(differing)}"] if differing else []) + \
+               ([f"does not cover {_and(uncovered)}"] if uncovered else [])
+        lines.append(f"Overall: partial agreement - TomTom matches the SCATS findings on {_and(agreeing)} but "
+                     f"{' and '.join(rest)}. This supports a road-user impact on {_and(agreeing)} only, without "
+                     "establishing its cause.")
+    elif verdict == DISAGREE:
+        lines.append(f"Overall: disagreement - the TomTom data do not confirm a road-user impact on {_and(differing)}"
+                     + (f" ({_and(uncovered)} not covered)" if uncovered else "") + ".")
     else:
-        lines.append("The SCATS-identified approaches are not adequately covered by TomTom for this period, "
-                     "so the comparison is incomplete.")
+        lines.append("Overall: insufficient coverage - the SCATS-identified approaches are not adequately covered by "
+                     "TomTom for this period, so no comparison is possible.")
     lines.append(CAVEAT)
-    if ev["queue"] != "available":
-        lines.append("Queue length: " + ev["queue"] + ".")
-    return {"road_user_impact": " ".join(lines), "agreement": comp["agreement"], "coverage": ev["coverage_note"]}
+    statement = (ev.get("coverage") or {}).get("statement", "")
+    if statement:
+        lines.append(statement)
+    return {"road_user_impact": " ".join(lines), "agreement": verdict,
+            "coverage": "; ".join(x for x in (statement, ev["coverage_note"]) if x)}
 
 
 SYSTEM = """You explain the TomTom road-user evidence for one intersection flagged Red by SCATS screening.
@@ -298,8 +349,11 @@ Use only the evidence JSON. State whether the greatest delay and the longest que
 and report any mismatch. Highest among observed approaches is not historically abnormal delay. Missing approaches
 are partial coverage, never zero. Do not say that signal settings caused congestion, queues or delay. Every number
 must appear in the evidence or the draft. Keep one statement for every SCATS-identified approach (agreement, mismatch
-or no coverage), naming it exactly as in the evidence. State the findings only: no interpretation such as "despite",
-"as expected" or reasons. Write plain English, not codes such as abnormal_high or Q3C.
+or no coverage), naming it exactly as in the evidence, and keep the draft's overall verdict (agreement, partial
+agreement, disagreement or insufficient coverage) with the approaches that match and those that differ. Keep the
+draft's coverage statement (how much of the 30 minutes delay and queue cover). TomTom shows road-user impact, never
+proof of cause. State the findings only: no interpretation such as "despite", "as expected" or reasons. Write plain
+English, not codes such as abnormal_high or Q3C.
 Return JSON with keys: road_user_impact (string), agreement (copy the evidence value), coverage (string)."""
 
 
@@ -344,7 +398,8 @@ def run(source, site: dict, period: Period, rules: dict, llm=None) -> dict:
     ev = {"site": site["site"], "period": period.label(), "available": available, "approaches": rows,
           "site_control_delay_s": measured["site_control_delay_s"], "scats_approaches": flagged, "comparison": comparison,
           "queue": measured["queue_status"], "missing_approach_links": missing,
-          "coverage_note": "; ".join(notes) or "all mapped approaches observed in both quarter-hours"}
+          "coverage": coverage(rows, flagged, measured["queue_status"]),
+          "coverage_note": "; ".join(notes) or DEFAULT_NOTE}
     draft = written(ev)
     if not available:
         return {"template_id": TEMPLATE, "template_version": spec["version"], "question": spec["question"], "evidence": ev,

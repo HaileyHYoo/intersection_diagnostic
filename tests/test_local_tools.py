@@ -87,8 +87,8 @@ class ExamplesTests(unittest.TestCase):
                         "## Grey - Insufficient Data", "## Detector Health Issue", "## Normal"):
             self.assertIn(heading, text)
         self.assertIn("Synthetic demo network", text)
-        self.assertIn("Agreement with SCATS findings: agreement", text)          # one Red that agrees
-        self.assertIn("Agreement with SCATS findings: disagreement", text)       # and one that does not
+        self.assertIn("Overall: agreement", text)          # one Red that agrees
+        self.assertIn("Overall: disagreement", text)       # and one that does not
         self.assertIn("Supplementary: TomTom incoming-link speed", text)
         self.assertIn("#### 1. Diagnosis", text)
         self.assertIn("Report wording: code only (no LLM configured)", text)
