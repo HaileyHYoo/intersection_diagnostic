@@ -12,6 +12,8 @@
     python main.py contract-check [--run ID]         validate a stored run against the production contract
     python main.py examples [--run ID | --end ...]   example outputs per category (Markdown + HTML) for review
     python main.py queue-probe --site 719 --end 2026-11-02T15:30   which TomTom queue-archive request works
+    python main.py export-run --run ID               the run's screening log and baseline snapshot as plain JSON files
+    python main.py kpi-check --site 707 --end 2026-10-30T15:30 [--references 3]   every stored PerfKpi/PerfApproach field
     python main.py site-history --site 4397 --from 2026-10-01 --to 2026-10-31   categories over screened periods
     python main.py watch                             (later extension) screen every new period as it completes
     python main.py backfill --from ... --to ...      (later extension) screen past periods one by one
@@ -319,6 +321,47 @@ def cmd_archive(args):
     print(f"{svc.archive}: {key}" if key else "Not written (see the warning above, or no archive configured).")
 
 
+def cmd_export_run(args):
+    from diagnostics.archive import read_json
+    svc = make_service(args)
+    if svc.archive is None:
+        print("No archive configured (DIAGNOSTICS_ARCHIVE=off).")
+        return 1
+    run_id = args.run or next((r["run_id"] for r in svc.store.list_runs(50) if r["status"] == "complete"), None)
+    find = lambda: [k for k in svc.archive.keys("screening-logs/") if k.endswith(f"_{run_id}.json")]
+    keys = find() or ([svc.archive_run(run_id)] if svc.store.get_run(run_id) else [])
+    keys = [k for k in keys if k]
+    if not keys:
+        print(f"No screening log for run {run_id} in {svc.archive}.")
+        return 1
+    log = read_json(svc.archive, keys[0])
+    out = Path(args.out_dir) / f"export_{run_id}"
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "screening_log.json").write_text(json.dumps(log, indent=2, default=str), encoding="utf-8")
+    print(f"Screening log  {keys[0]} -> {out / 'screening_log.json'}")
+    snap_key = (log.get("metadata") or {}).get("baseline_snapshot") or log.get("baseline_snapshot")
+    snap = read_json(svc.archive, snap_key) if snap_key else None
+    if snap is None:
+        print(f"Baseline snapshot {snap_key or '(not referenced by the log)'} not found in {svc.archive}.")
+        return 1
+    (out / "baseline_snapshot.json").write_text(json.dumps(snap, indent=2, default=str), encoding="utf-8")
+    print(f"Baseline snapshot {snap_key} -> {out / 'baseline_snapshot.json'}")
+    return 0
+
+
+def cmd_kpi_check(args):
+    from diagnostics.local import inspect_data
+    from diagnostics.settings import Settings
+    from diagnostics.sources.live import LiveSource
+    settings = Settings()
+    k = inspect_data.kpi_check(LiveSource(settings), settings, args.site, args.end, args.references)
+    print(inspect_data.kpi_check_text(k))
+    path = Path(args.out_dir) / f"kpi_check_{k['site']}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(k, indent=2, default=str), encoding="utf-8")
+    print("Saved:", path)
+
+
 def cmd_site_history(args):
     from diagnostics.archive import site_history
     svc = make_service(args, fake=args.fake)
@@ -437,6 +480,18 @@ def main(argv=None) -> int:
     p = sub.add_parser("archive", help="write a run's screening JSON log if it is missing")
     p.add_argument("--run", required=True)
     p.set_defaults(func=cmd_archive)
+
+    p = sub.add_parser("export-run", help="a run's screening log and baseline snapshot as plain JSON files")
+    p.add_argument("--run")
+    p.add_argument("--out-dir", default=str(ROOT / "out"))
+    p.set_defaults(func=cmd_export_run)
+
+    p = sub.add_parser("kpi-check", help="every stored IntersectionPerfKpi / IntersectionPerfApproach field for a site")
+    p.add_argument("--site", required=True)
+    p.add_argument("--end")
+    p.add_argument("--references", type=int, default=0, help="also show this many reference periods")
+    p.add_argument("--out-dir", default=str(ROOT / "out"))
+    p.set_defaults(func=cmd_kpi_check)
 
     p = sub.add_parser("site-history", help="a site's categories over the screened periods in the archive")
     p.add_argument("--site", required=True)

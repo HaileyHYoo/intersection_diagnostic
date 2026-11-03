@@ -306,3 +306,76 @@ def history_text(h: dict) -> str:
     lines.append(f"  usable history per link: {h['usable_history_per_link']}")
     lines.append(f"  usable history KPI: {h['usable_history_kpi']}")
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------- kpi-check
+def kpi_check(source, settings: Settings, site: str, end=None, references: int = 0) -> dict:
+    """Every stored field of IntersectionPerfKpi and IntersectionPerfApproach per quarter-hour, for the analysis
+    period (and the first `references` reference periods), next to the site's Neo4j EGRESS approaches: to check
+    GreenShare (100% values, large changes), the LinkId/Bound to approach mapping, and CycleCvPct against
+    CycleStability (e.g. a stability of 0)."""
+    from ..timewin import reference_periods, zone
+    rules, schema = settings.rules, settings.schema
+    feeds = schema["influx"]["sources"]
+    site = ids.site(site)
+    period = period_ending(end, rules) if end else latest_period(rules)
+    periods = [period] + reference_periods(period, rules)[0][:references]
+    read = getattr(source, "raw_all", source.raw)
+    approaches = source.approaches([site])
+    out = {"site": site, "period": period.label(),
+           "neo4j_egress": [{"link": a["link"], "street": a.get("street")} for a in approaches], "periods": []}
+    kpi_feed, app_feed = feeds["site_kpi"], feeds["approach_perf"]
+    for p in periods:
+        entry = {"period": p.label(), "role": "analysis" if p is period else "reference", "kpi": {}, "approaches": {}}
+        for key, feed, target in (("site_kpi", kpi_feed, "kpi"), ("approach_perf", app_feed, "approaches")):
+            try:
+                rows = read(key, p.start, p.end, [site])
+            except Exception as exc:  # noqa: BLE001
+                entry[target] = f"{type(exc).__name__}: {exc}"
+                continue
+            for r in rows:
+                t = to_utc(r["time"])
+                if not to_utc(p.start) < t <= to_utc(p.end):            # end-labelled: (start, end] is the period
+                    continue
+                stamp = t.astimezone(zone(rules)).strftime("%H:%M:%S").removesuffix(":00")
+                if target == "kpi":
+                    entry["kpi"].setdefault(stamp, {})[r["field"]] = r["value"]
+                else:
+                    name = f"{ids.link(r.get(feed['link_tag']))} [{r.get(feed['bound_tag'])}]"
+                    entry["approaches"].setdefault(name, {}).setdefault(stamp, {})[r["field"]] = r["value"]
+        if isinstance(entry["approaches"], dict):
+            feed_field = app_feed["fields"]["green_share"]
+            totals = defaultdict(float)
+            for per_stamp in entry["approaches"].values():
+                for stamp, fields in per_stamp.items():
+                    if isinstance(fields.get(feed_field), (int, float)):
+                        totals[stamp] += fields[feed_field]
+            entry[f"sum_of_{feed_field}_over_approaches"] = {k: round(v, 1) for k, v in sorted(totals.items())}
+        out["periods"].append(entry)
+    return out
+
+
+def kpi_check_text(k: dict) -> str:
+    lines = [f"KPI check for site {k['site']}, {k['period']}",
+             "  Neo4j EGRESS approaches: " + ", ".join(f"{a['link']} ({a['street']})" for a in k["neo4j_egress"])]
+    for e in k["periods"]:
+        lines.append(f"  {e['role'][:3]} {e['period']}")
+        if isinstance(e["kpi"], str) or not e["kpi"]:
+            lines.append(f"      IntersectionPerfKpi: {e['kpi'] or 'no records'}")
+        else:
+            for stamp, fields in sorted(e["kpi"].items()):
+                lines.append(f"      IntersectionPerfKpi {stamp}: " + ", ".join(f"{f}={_short(v)}" for f, v in sorted(fields.items())))
+        if isinstance(e["approaches"], str) or not e["approaches"]:
+            lines.append(f"      IntersectionPerfApproach: {e['approaches'] or 'no records'}")
+            continue
+        for name, per_stamp in sorted(e["approaches"].items()):
+            for stamp, fields in sorted(per_stamp.items()):
+                lines.append(f"      {name} {stamp}: " + ", ".join(f"{f}={_short(v)}" for f, v in sorted(fields.items())))
+        for key, v in e.items():
+            if key.startswith("sum_of_"):
+                lines.append(f"      {key}: {v}")
+    return "\n".join(lines)
+
+
+def _short(v):
+    return f"{v:.3f}".rstrip("0").rstrip(".") if isinstance(v, float) else v

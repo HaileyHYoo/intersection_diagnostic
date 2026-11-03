@@ -98,12 +98,14 @@ def q1_traffic(links: list[dict], current: dict[str, float], base: dict[str, dic
         rows.append({"link": a["link"], "street": a.get("street"), "bound": bounds.get(a["link"]), **result})
     missing = [r for r in rows if r["status"] == INSUFFICIENT]
     flagged = [r for r in rows if r["status"] == ABNORMAL]
+    # Methodology 4: "If any approach satisfies the abnormality criterion, Q1 = ABNORMAL; otherwise Q1 = NORMAL,
+    # provided there is enough data" - an observed abnormal approach decides, a missing one only blocks NORMAL.
     if not rows:
         status, reason = INSUFFICIENT, "no approach has volume data in the reference weeks"
-    elif missing and rule.get("grey_if_any_approach_missing", True):
-        status, reason = INSUFFICIENT, f"{len(missing)} evaluated approach(es) without a complete 30-minute volume or enough history"
     elif flagged:
         status, reason = ABNORMAL, None
+    elif missing and rule.get("grey_if_any_approach_missing", True):
+        status, reason = INSUFFICIENT, f"{len(missing)} evaluated approach(es) without a complete 30-minute volume or enough history"
     elif len(missing) == len(rows):
         status, reason = INSUFFICIENT, "no evaluated approach could be assessed"
     else:
@@ -128,19 +130,22 @@ def q3c_phase_service(site_links: list[dict], current: dict[str, dict], base: di
             reason = "HasGreen = 0 in the period" if now and now["complete"] else "no GreenShare/HasGreen record for both quarters"
             rows.append({"link": link, "street": streets.get(link), "bound": bounds.get(link), "status": INSUFFICIENT,
                          "current": None, "reason": reason, **{k: base[link].get(k) for k in ("usual", "p_low", "p_high")},
-                         "n_history": base[link]["n"], "direction": None, "pct_difference": None, "no_green": True})
+                         "n_history": base[link]["n"], "direction": None, "pct_difference": None, "no_green": True,
+                         "recorded_green_share": now.get("raw_share") if now else None})
             continue
         result = stats.range_only(now["green_share"], base[link])
         rows.append({"link": link, "street": streets.get(link), "bound": bounds.get(link), **result, "no_green": False})
     grey_site = bool(without_green) and rule.get("grey_site_if_any_approach_without_green", True)
     flagged = [r for r in rows if r["status"] == ABNORMAL]
     insufficient = [r for r in rows if r["status"] == INSUFFICIENT]
+    # Methodology 8: "an abnormal phase-service finding means at least one evaluated approach is abnormal" - an
+    # observed abnormal approach decides even when another approach cannot be assessed (seen live: SCATS 976).
     if not rows:
         status, reason = INSUFFICIENT, "no approach has phase-service history"
-    elif insufficient:
-        status, reason = INSUFFICIENT, f"{len(insufficient)} approach(es) without a current value or enough history"
     elif flagged:
         status, reason = ABNORMAL, None
+    elif insufficient:
+        status, reason = INSUFFICIENT, f"{len(insufficient)} approach(es) without a current value or enough history"
     else:
         status, reason = NORMAL, None
     return {"status": status, "reason": reason, "approaches": rows, "flagged": [r["link"] for r in flagged],
@@ -232,10 +237,16 @@ def screen(source, settings, baseline: dict, period: Period, network: list[dict]
             bounds = {link: v.get("bound") for link, v in green.get(site, {}).items()}
             q2 = q2_gate(detectors.get(site, []), totals.get(site, {}), rules)
             q1 = q3 = None
+            shadow = None
+            q1_all = q1_traffic(links.get(site, []), volume, baseline["volume"], bounds, rules)
+            q3c = q3c_phase_service(links.get(site, []), green.get(site, {}), baseline["green"].get(site, {}), bounds, rules)
+            q3_all = q3_signal(kpi.get(site, {}), baseline["kpi"].get(site, {}), origin.get(site, {}), q3c, rules)
             if q2["status"] == PASS:
-                q1 = q1_traffic(links.get(site, []), volume, baseline["volume"], bounds, rules)
-                q3c = q3c_phase_service(links.get(site, []), green.get(site, {}), baseline["green"].get(site, {}), bounds, rules)
-                q3 = q3_signal(kpi.get(site, {}), baseline["kpi"].get(site, {}), origin.get(site, {}), q3c, rules)
+                q1, q3 = q1_all, q3_all
+            elif q2["status"] == FAIL:
+                # Analysis only (never shown as the category): what Q1/Q3 would give if the detector gate had
+                # passed, to see whether the gate excludes otherwise assessable sites.
+                shadow = classify({**q2, "status": PASS}, q1_all, q3_all)[0]
             category, reasons = classify(q2, q1, q3)
         except Exception as exc:  # noqa: BLE001 - one bad site must not stop the network screening
             errors[site] = f"{type(exc).__name__}: {exc}"
@@ -244,7 +255,8 @@ def screen(source, settings, baseline: dict, period: Period, network: list[dict]
                         "lon": s.get("lon"), "category": category, "label": CATEGORIES[category], "reasons": reasons,
                         "notes": caution_notes(q1, q3, category),
                         "selectable": rules["click"].get(category, []), "q2": q2, "q1": q1, "q3": q3,
-                        "total_volume_veh_h": total_volume(q1)})
+                        "total_volume_veh_h": total_volume(q1),
+                        **({"if_detectors_passed": shadow} if shadow else {})})
     counts = defaultdict(int)
     for r in results:
         counts[r["category"]] += 1

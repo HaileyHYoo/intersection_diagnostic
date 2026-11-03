@@ -195,6 +195,23 @@ class RuleTests(unittest.TestCase):
         self.assertEqual(self.q3(ABNORMAL, INSUFFICIENT, NORMAL)["status"], NORMAL)
         self.assertEqual(self.q3(ABNORMAL, INSUFFICIENT, INSUFFICIENT)["status"], INSUFFICIENT)
 
+    def test_observed_abnormal_approach_decides_q1_and_q3c(self):
+        """SCATS 976 (30 Oct 15:00): one approach abnormal, another with too little history -> ABNORMAL, not Grey."""
+        full = stats.envelope([100.0, 102, 98, 101, 99, 100, 103, 97], self.rules)
+        short = stats.envelope([100.0], self.rules)                      # present in history, too few weeks
+        links = [{"link": "A", "street": "A St"}, {"link": "B", "street": "B St"}]
+        q1 = screening.q1_traffic(links, {"A": 160.0, "B": 100.0}, {"A": full, "B": short}, {}, self.rules)
+        self.assertEqual((q1["status"], q1["flagged"], q1["missing"]), (ABNORMAL, ["A"], ["B"]))
+        q1 = screening.q1_traffic(links, {"A": 100.0, "B": 100.0}, {"A": full, "B": short}, {}, self.rules)
+        self.assertEqual(q1["status"], INSUFFICIENT)                    # nothing abnormal: the missing one blocks NORMAL
+        now = lambda share: {"green": True, "complete": True, "green_share": share}
+        q3c = screening.q3c_phase_service(links, {"A": now(20.0), "B": now(30.0)}, {"A": full, "B": short}, {},
+                                          self.rules)
+        self.assertEqual((q3c["status"], q3c["flagged"], q3c["grey_site"]), (ABNORMAL, ["A"], False))
+        q3 = screening.q3_signal({"cycle_length": 140.0, "cycle_stability": 100.0},
+                                 {"cycle_length": full, "cycle_stability": full}, {}, q3c, self.rules)
+        self.assertEqual(q3["status"], ABNORMAL)                        # cycle length + phase service: Red with Q1
+
     def test_classification_matrix(self):
         q2 = {"status": screening.PASS}
         q3c = {"grey_site": False, "without_green": []}

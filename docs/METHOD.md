@@ -78,9 +78,10 @@ Q1 and Q3 run only after a PASS.
 - **Approaches.** The site's Neo4j `EGRESS` links.
 - **Evaluated approaches (decision).** EGRESS links that had volume in the reference weeks (`q1.approach_history_min_presence`: 1). Links that never had data are listed as not evaluated.
 - **Abnormal approach.** The current value is outside the 10th–90th range **and** differs from the usual value by at least 10%.
-- **Result.**
-  - **Any evaluated approach without a complete current value, or with fewer than 5 historical values, makes Q1 INSUFFICIENT and the site Grey (decision,** `q1.grey_if_any_approach_missing`**).**
-  - Otherwise Q1 is ABNORMAL if any approach is abnormal, and NORMAL if none is.
+- **Result (methodology 4: "If any approach satisfies the abnormality criterion, Q1 = ABNORMAL; otherwise Q1 = NORMAL, provided there is enough data").**
+  - Q1 is ABNORMAL if any evaluated approach is abnormal, **even when another approach cannot be assessed** — an observed abnormality decides; a missing approach can only withhold NORMAL. (Corrected 3 Nov 2026 after the methodology owner's review; before, a missing approach made Q1 INSUFFICIENT first.)
+  - Otherwise, **any evaluated approach without a complete current value, or with fewer than 5 historical values, makes Q1 INSUFFICIENT and the site Grey (decision,** `q1.grey_if_any_approach_missing`**).**
+  - Otherwise Q1 is NORMAL.
 
 ## 6. Q3: Signal-operation abnormality
 
@@ -92,7 +93,7 @@ Q1 and Q3 run only after a PASS.
 
 - **Q3C evaluated approaches.** The site's links that had green in the reference weeks.
 - **Approach without green.** `HasGreen = 0`, or no GreenShare/HasGreen record, in either quarter-hour. **Any evaluated approach without green makes the whole site Grey (decision,** `q3c.grey_site_if_any_approach_without_green`**, strictest setting).**
-- **Q3C component result.** ABNORMAL if any approach is abnormal. INSUFFICIENT if any evaluated approach lacks a value or history.
+- **Q3C component result (methodology 8: "an abnormal phase-service finding means at least one evaluated approach is abnormal").** ABNORMAL if any approach is abnormal, **even when another approach lacks a value or history**; otherwise INSUFFICIENT if any evaluated approach lacks a value or history; otherwise NORMAL. (Corrected 3 Nov 2026: SCATS 976 on 30 Oct 15:00 had one approach outside its range and another with too little history, and was shown Amber instead of Red.) A no-green approach still makes the site Grey through the site-level rule above.
 - **Q3 overall.** ABNORMAL if at least 2 of the 3 measures are ABNORMAL. Otherwise NORMAL if at least 2 measures can be assessed. Otherwise INSUFFICIENT DATA.
 - **One abnormal, one normal, one not assessable.** The document's rule gives NORMAL, although the missing measure, if it were abnormal, would have made Q3 ABNORMAL. The code follows the document and marks such a site with `q3.missing_measure_could_change = true`; `python main.py summary` counts them. **Decision with the methodology owner (3 Nov 2026): keep the rule as written and show it.** The category stays as the document gives it; the site's evidence, the map tooltip and the contract's `notes` say which measure could not be assessed and what the category would have been had it been abnormal (`screening.caution_notes`). The switch `q3.undetermined_if_missing_could_change` (default `false`) would make these sites Grey instead; it is not used.
 - **Fallbacks.** Only the calculated KPIs are used. The `IntersectionPerfKpi` / `IntersectionPerfApproach` KPIs exist for part of the network only (the chatbot falls back to `subsystem_status` for cycle length and saturation). The subsystem `ActiveCycleLength` fallback for Q3A is kept in code but switched off (`fallbacks.enabled: false`). It would not change the result for a site without KPIs: Q3B and Q3C have no fallback, so only one measure could be assessed and Q3 would still be INSUFFICIENT DATA (Grey).

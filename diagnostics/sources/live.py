@@ -99,6 +99,11 @@ class LiveSource:
         tag_in = self._sites_filter(feed, sites) if "site_tag" in feed else None
         return self._query(key, start, end, fields=fields, field_regex=regex, tag_in=tag_in)
 
+    def raw_all(self, key: str, start: datetime, end: datetime, sites=None) -> list[dict]:
+        """Every stored field and tag of a feed's measurement (with the feed's own filters), for kpi-check."""
+        feed = self._feed(key)
+        return self._query(key, start, end, tag_in=self._sites_filter(feed, sites) if "site_tag" in feed else None)
+
     def detector_counts(self, start: datetime, end: datetime, sites=None) -> list[dict]:
         feed = self._feed("detector_counts")
         pattern = re.compile(re.escape(feed["detector_field"]).replace(r"\{n\}", r"(\d+)") + "$")
