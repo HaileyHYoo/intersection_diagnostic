@@ -163,7 +163,11 @@ def findings(ev: dict) -> tuple[str, str]:
     for k, d in service.items():
         own = traffic.get(k)
         if own == d:
-            maybe.append(f"{MORE_LESS[d][2]} to {k} with {MORE_LESS[own][0]} volume may be SCATS following its demand")
+            # Both readings: SCATS counts the vehicles served at the stop line, so the counted volume also
+            # follows the green given (SCATS 774: 16.8% green against a usual 84.1%, volume 16.7% below usual).
+            maybe.append(f"{MORE_LESS[d][2]} to {k} with {MORE_LESS[own][0]} volume may be SCATS following its demand, "
+                         f"or the counted volume may be {MORE_LESS[own][0]} because of the green given (detectors count "
+                         "the vehicles served)")
         elif own:
             maybe.append(f"{MORE_LESS[d][2]} to {k} while its volume is {MORE_LESS[own][0]} is the opposite of a "
                          "demand response, so it is the finding most worth verifying")

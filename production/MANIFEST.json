@@ -35,7 +35,7 @@
     "store.py": "249f2b4d4627b44075121102c4464f50d116b536fccdfd8faa62bdbf3b2ba648",
     "templates/__init__.py": "878f67d235883ef44246e5b6a41d03985d6641496bbea59100618f81929a2670",
     "templates/catalog.json": "ae55405c8a8801b2205cc6033903e1bc3d6b8afcfc7e1ca5791fe4eaea52dafe",
-    "templates/d001.py": "709a9102990da2b84adca37fde2ad91e61ce0d32d034a76026ca9dc89673acae",
+    "templates/d001.py": "96ac2cd103aa80499e2e9dc8b71756f5dd49a261616eacd550a7627d52cf6658",
     "templates/d002.py": "f004fb6537652f4a20436e265f66768dbc2fe65df6ad122872f05c7916e0e185",
     "timewin.py": "47ee6dc6b20f1e95a090fa9a85c99a81a867627bd289e0fee9c917ab62a41a7b",
     "tomtom_map.py": "25d7f1ba29d9e117b5948dc37a882594038c78b8ba2b6a95099b288ac952d8f8",

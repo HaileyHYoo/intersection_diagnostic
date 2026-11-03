@@ -128,7 +128,7 @@ Every category is returned to the host, and the UI decides what to draw. A click
     |---|---|
     | Longer (shorter) cycle with higher (lower) volume on an approach | may be SCATS lengthening (shortening) the cycle as demand rose (fell) |
     | Cycle change without a matching volume change | a plan or coordination change is a possible explanation |
-    | More (less) green to an approach whose volume is higher (lower) | may be SCATS following its demand |
+    | More (less) green to an approach whose volume is higher (lower) | may be SCATS following its demand, or the counted volume may follow the green given (detectors count the vehicles served) |
     | Less green to an approach whose volume is higher (or the reverse) | the opposite of a demand response, the finding most worth verifying |
     | Phase-service change on an approach without a volume change | may follow demand on competing phases or the coordination plan |
     | Poorer stability | the cycle varied more than usual, which can happen while SCATS adapts |
