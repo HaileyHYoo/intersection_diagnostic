@@ -113,7 +113,12 @@ def _value(token: str) -> float | None:
         return None
 
 
-def check(answer: dict | None, keys: list[str], allowed: set[str], required: dict[str, list[str]] | None = None) -> list[str]:
+LINK_ID = re.compile(r"\blink ([A-Za-z0-9_-]+)")
+WORD = re.compile(r"[A-Za-z0-9_-]+")
+
+
+def check(answer: dict | None, keys: list[str], allowed: set[str], required: dict[str, list[str]] | None = None,
+          reference: str | None = None) -> list[str]:
     """Problems with an LLM answer; empty when it can be used.
 
     Numbers are compared by value (0.00, 0.0 and 00 are the same number). `required` lists, per answer key, the
@@ -127,6 +132,11 @@ def check(answer: dict | None, keys: list[str], allowed: set[str], required: dic
                        and _value(n) not in values})
     if invented:
         problems.append("numbers not in the evidence: " + ", ".join(invented[:8]))
+    if reference is not None:                           # every link ID written must be one of the evidence's
+        known = set(LINK_ID.findall(reference)) | set(WORD.findall(reference))
+        made_up = sorted({x for x in LINK_ID.findall(text) if x not in known})
+        if made_up:
+            problems.append("link IDs not in the evidence: " + ", ".join(made_up[:5]))
     claims = sorted({m.group(0).lower() for m in FORBIDDEN.finditer(text)})
     if claims:
         problems.append("forbidden wording: " + ", ".join(claims))
@@ -148,7 +158,8 @@ def word(llm, system: str, user: str, keys: list[str], evidence: dict, fallback:
     except Exception as exc:  # noqa: BLE001 - the report is still produced from code
         return {"answer": fallback, "generated_by": "code", "rejected": f"LLM call failed ({type(exc).__name__})"}
     answer = parse_json(raw)
-    problems = check(answer, keys, allowed_numbers(evidence, fallback), required)
+    reference = json.dumps([evidence, fallback], ensure_ascii=False, default=str)
+    problems = check(answer, keys, allowed_numbers(evidence, fallback), required, reference)
     if not problems and validate is not None:
         problems = validate(answer)                     # template-specific factual checks
     if problems:

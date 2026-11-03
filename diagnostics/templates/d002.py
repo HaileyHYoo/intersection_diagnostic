@@ -430,7 +430,7 @@ def run(source, site: dict, period: Period, rules: dict, llm=None) -> dict:
     user = json.dumps({"question": spec["question"], "evidence": ev, "draft_answer": draft}, ensure_ascii=False)
     named = [p["approach"] for p in comparison["per_approach"]]
     worded = llm_mod.word(llm, SYSTEM, user, ["road_user_impact", "agreement", "coverage"], ev, draft,
-                          required={"road_user_impact": named})
+                          required={"road_user_impact": named + [f"Overall: {draft['agreement']}"]})
     worded["answer"]["agreement"] = draft["agreement"]          # the verdict is code's, never re-worded
     text = worded["answer"]["road_user_impact"]
     if "historically abnormal" not in text:                      # methodology 13: always distinguish the two

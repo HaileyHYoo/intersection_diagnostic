@@ -207,3 +207,16 @@ class SharedLinkTests(unittest.TestCase):
         self.assertIn("several TomTom approaches are mapped to one link in the mapping file (for review): "
                       "LB: TomTom approaches B, B2", result["evidence"]["coverage_note"])
         self.assertEqual(result["evidence"]["comparison"]["per_approach"][0]["agreement"], d002.AGREE)
+
+
+class LLMGuardReviewTests(unittest.TestCase):
+    def test_made_up_link_id_is_rejected(self):
+        from diagnostics import llm
+        ev = {"approach": "William Street [N] (link WILLH6X4J54X)", "other": "WILLH6X4J642"}
+        ok = {"road_user_impact": "William Street [N] (link WILLH6X4J54X) and link WILLH6X4J642."}
+        bad = {"road_user_impact": "William Street [N] (link WILLH6X4J54XJ642) is missing."}
+        ref = __import__("json").dumps(ev)
+        allowed = llm.allowed_numbers(ev, {})
+        self.assertEqual(llm.check(ok, ["road_user_impact"], allowed, None, ref), [])
+        self.assertIn("link IDs not in the evidence: WILLH6X4J54XJ642",
+                      llm.check(bad, ["road_user_impact"], allowed, None, ref))
