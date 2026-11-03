@@ -39,6 +39,7 @@ Each question joins a **network list** (what to check, from Neo4j) with **measur
 | Sites | `sites` | `(:Intersection)-[:IN]-(:Region {tag})`, signalised, with `scats_site_no` → site, lat, lon, street names of its roads (map label) |
 | Q2 detectors | `detectors` | `(:Detector)-[:BELONG_TO]->(:Intersection)` → `detector_number`, `active`. Only `active = true` detectors are checked. |
 | Q1 / Q3C approaches | `approaches` | `(:Intersection)-[:EGRESS]-(:Road)` → `link_id` and `street_name`. One approach per link. |
+| Names of other links | `link_names` | `(:Road)` with `link_id IN $links` → `coalesce(street_name, name)`; then the TomTom road-link mapping file. Only for display (METHOD §11a). |
 
 ## Q2 — Detector health gate
 

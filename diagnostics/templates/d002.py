@@ -411,6 +411,10 @@ def run(source, site: dict, period: Period, rules: dict, llm=None) -> dict:
     worded["answer"]["agreement"] = draft["agreement"]          # the verdict is code's, never re-worded
     text = worded["answer"]["road_user_impact"]
     if "historically abnormal" not in text:                      # methodology 13: always distinguish the two
-        worded["answer"]["road_user_impact"] = text.rstrip() + " " + CAVEAT
+        text = text.rstrip() + " " + CAVEAT
+    statement = ev["coverage"]["statement"]
+    if statement and statement not in text:                     # the 30-minute coverage is always stated
+        text = text.rstrip() + " " + statement
+    worded["answer"]["road_user_impact"] = text
     return {"template_id": TEMPLATE, "template_version": spec["version"], "question": spec["question"], "evidence": ev,
             **worded}

@@ -11,6 +11,7 @@ import re
 from .. import llm as llm_mod
 from ..stats import ABNORMAL, NORMAL
 from . import definition
+from ..names import approach_label  # noqa: F401 - re-exported for report.py, d002, link_speed
 
 TEMPLATE = "D001"
 
@@ -28,17 +29,6 @@ def decimals(row: dict) -> int:
                                       for b in (row.get("p_low"), row.get("p_high"))):
             return d
     return 3
-
-
-def approach_label(row: dict) -> str:
-    """"Street [bound]"; without a bound the link ID is kept so two links of one street stay distinct; without a
-    reliable street name (Neo4j or the validated road-link mapping) the link ID is the name."""
-    street, bound = row.get("street"), row.get("bound")
-    if street and bound:
-        return f"{street} [{bound}]"
-    if street:
-        return f"{street} (link {row['link']})"
-    return f"Link {row['link']} [{bound}] (no street name)" if bound else f"Link {row['link']} (no street name)"
 
 
 def evidence(site: dict, period: dict) -> dict:
@@ -94,19 +84,28 @@ def position(c: dict) -> str | None:
 
 
 def contradictions(answer: dict, ev: dict) -> list[str]:
-    """A sentence that calls a measure 'within' its range when it is outside it (seen live from the LLM)."""
-    words = {"cycle_length_s": ("cycle length",), "cycle_stability": ("stability",)}
+    """A statement that calls a measure 'within' its range when it is outside it (seen live from the LLM).
+    Each "within" is read against the measure named last before it, so "stability is below its range and cycle
+    length is within it" is not taken as a claim about stability."""
+    names = {"cycle_length_s": "cycle length", "cycle_stability": "stability"}
     texts = [answer.get("diagnosis") or ""] + list(answer.get("supporting_evidence") or [])
-    sentences = [s for t in texts for s in re.split(r"(?<=[.;])\s+", str(t))]
+    sentences = [s.lower() for t in texts for s in re.split(r"(?<=[.;])\s+", str(t))]
     problems = []
-    for key, names in words.items():
+    for key, name in names.items():
         m = ev["signal"][key]
         if m.get("position") in (None, "within its normal range"):
             continue
         for s in sentences:
-            low = s.lower()
-            if any(n in low for n in names) and "within" in low and "not within" not in low:
-                problems.append(f"says {names[0]} is within its normal range; it is {m['position']}")
+            claimed = False
+            for hit in re.finditer(r"\bwithin\b", s):
+                if s[max(0, hit.start() - 4):hit.start()].strip() == "not":
+                    continue
+                before = s[:hit.start()]
+                last = max(names.values(), key=lambda n: before.rfind(n))
+                if before.rfind(last) >= 0 and last == name:
+                    claimed = True
+            if claimed:
+                problems.append(f"says {name} is within its normal range; it is {m['position']}")
                 break
     return problems
 

@@ -157,3 +157,25 @@ class SummaryReviewTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LiveFindingTests(unittest.TestCase):
+    """Seen in run 651303f563f6 (Fri 30 Oct 2026 15:00)."""
+
+    def test_two_links_with_the_same_name_get_their_ids(self):
+        from diagnostics.names import approach_label, label_site
+        q1 = [{"link": "W1", "street": "William Street", "bound": "N"}, {"link": "W2", "street": "William Street", "bound": "N"},
+              {"link": "F1", "street": "Flinders Street", "bound": "W"}]
+        q3c = [{"link": "W1", "street": "William Street", "bound": "N"}]
+        label_site(q1, [], q3c)
+        self.assertEqual([approach_label(r) for r in q1], ["William Street [N] (link W1)", "William Street [N] (link W2)",
+                                                           "Flinders Street [W]"])
+        self.assertEqual(approach_label(q3c[0]), "William Street [N] (link W1)")
+
+    def test_within_is_read_against_the_measure_it_follows(self):
+        ev = {"signal": {"cycle_length_s": {"position": "within its normal range"},
+                         "cycle_stability": {"position": "below its normal range"}}}
+        say = lambda t: d001.contradictions({"diagnosis": t, "supporting_evidence": []}, ev)
+        self.assertEqual(say("Cycle stability is below its normal range; cycle length is within its normal range."), [])
+        self.assertEqual(say("Cycle stability is below its normal range, while cycle length is within it."), [])
+        self.assertTrue(say("Cycle stability is within its normal range."))

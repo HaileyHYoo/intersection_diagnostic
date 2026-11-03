@@ -283,8 +283,15 @@ def review(sites: list[dict]) -> dict:
         kind[key] += 1
         ex.setdefault(key, []).append(s["site"])
         shadow[s.get("if_detectors_passed", "not recorded (screen again)")] += 1
+    # the same sites against lower thresholds (the failed detectors' own counts; analysis only)
+    lower = {}
+    for t in (5, 1):
+        passing = [s for s in dh if all(d["count_60min"] >= t for d in s["q2"]["detectors"] if d["status"] == "FAIL")]
+        lower[f"would_pass_with_threshold_{t}"] = len(passing)
+        lower[f"their_category_if_passed_threshold_{t}"] = dict(Counter(
+            s.get("if_detectors_passed", "not recorded") for s in passing).most_common())
     out["detector_health"] = {
-        "sites": len(dh), "failure_pattern": dict(kind.most_common()),
+        "sites": len(dh), "failure_pattern": dict(kind.most_common()), **lower,
         "category_if_the_detector_gate_had_passed": dict(shadow.most_common()),
         "same, single detector 1-9 vehicles and every other detector passing": dict(shadow_single.most_common()),
         "examples": {k: v[:5] for k, v in ex.items()}}

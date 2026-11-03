@@ -23,6 +23,7 @@ from collections import defaultdict
 
 from . import stats
 from .measures import Measures
+from .names import label_site
 from .stats import ABNORMAL, INSUFFICIENT, NORMAL
 from .timewin import Period
 
@@ -246,6 +247,7 @@ def screen(source, settings, baseline: dict, period: Period, network: list[dict]
             q3c = q3c_phase_service(links.get(site, []), green.get(site, {}), baseline["green"].get(site, {}), bounds, rules,
                                     names)
             q3_all = q3_signal(kpi.get(site, {}), baseline["kpi"].get(site, {}), origin.get(site, {}), q3c, rules)
+            label_site(q1_all["approaches"], q1_all["not_evaluated"], q3c["approaches"])
             if q2["status"] == PASS:
                 q1, q3 = q1_all, q3_all
             elif q2["status"] == FAIL:
