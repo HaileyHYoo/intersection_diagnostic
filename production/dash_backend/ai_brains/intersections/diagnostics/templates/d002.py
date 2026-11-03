@@ -175,6 +175,18 @@ def measure(source, site: dict, period: Period, rules: dict) -> dict:
                     "queue_minutes": q["minutes"] if q else 0,
                     "queue_adequate": bool(q) and q["minutes"] >= min_minutes,
                     "movements": movements})
+    # The mapping file can tie two TomTom approaches to one link (seen at SCATS 4566); each is named by its
+    # TomTom approach ID as well, so the two rows can be told apart. Nothing is merged or re-assigned.
+    per_link = defaultdict(list)
+    for r in out:
+        if r["link"]:
+            per_link[r["link"]].append(r)
+    for link, same in per_link.items():
+        if len(same) > 1:
+            for r in same:
+                tag = f"TomTom approach {r['tomtom_approach']}"
+                r["approach"] = (r["approach"][:-1] + f", {tag})") if r["approach"].endswith(")") else f"{r['approach']} ({tag})"
+                r["shares_link"] = True
     out.sort(key=lambda r: -(r["delay_s"] if r["delay_s"] is not None else -1))
     site_rows = source.tomtom_site_kpi(site["site"], period.start, period.end)
     site_delay = [max(float(r["value"]), 0.0) for r in site_rows if r["field"] == "control_delay"]
@@ -207,7 +219,9 @@ def compare(measured: dict, flagged: dict[str, dict]) -> dict:
     queue_rank = sorted((a for a in rows if a["queue_adequate"] and a["link"]), key=lambda a: -a["queue_mean_m"])
     top_queue = queue_rank[0] if queue_rank else None
     queue_known = measured["queue_status"] == "available"
-    by_link = {a["link"]: a for a in rows if a["link"]}
+    by_link = {}
+    for a in sorted((a for a in rows if a["link"]), key=lambda a: not a.get("adequate", True)):
+        by_link.setdefault(a["link"], a)                 # one row per link: an adequately observed one first
     per_approach = []
     for link, f in flagged.items():
         a = by_link.get(link)
@@ -246,7 +260,9 @@ def site_verdict(verdicts: list[str]) -> str:
 def coverage(rows: list[dict], flagged: dict[str, dict], queue_status: str, period_minutes: int = 30,
              quarters: int = 2) -> dict:
     """How much of the 30 minutes TomTom delay and queue cover on each SCATS-identified approach."""
-    by_link = {a["link"]: a for a in rows if a["link"]}
+    by_link = {}
+    for a in sorted((a for a in rows if a["link"]), key=lambda a: not a.get("adequate", True)):
+        by_link.setdefault(a["link"], a)                 # one row per link: an adequately observed one first
     parts, full = [], True
     queue = queue_status == "available"
     for link, f in flagged.items():
@@ -353,7 +369,8 @@ or no coverage), naming it exactly as in the evidence, and keep the draft's over
 agreement, disagreement or insufficient coverage) with the approaches that match and those that differ. Keep the
 draft's coverage statement (how much of the 30 minutes delay and queue cover). TomTom shows road-user impact, never
 proof of cause. State the findings only: no interpretation such as "despite", "as expected" or reasons. Write plain
-English, not codes such as abnormal_high or Q3C.
+English, not codes such as abnormal_high or Q3C. Name approaches as in the evidence ("approach" or
+"missing_approaches"), never by a bare link ID.
 Return JSON with keys: road_user_impact (string), agreement (copy the evidence value), coverage (string)."""
 
 
@@ -393,11 +410,17 @@ def run(source, site: dict, period: Period, rules: dict, llm=None) -> dict:
     comparison = compare(measured, flagged) if available else None
     observed_links = {a["link"] for a in rows if a["adequate"] and a["link"]}
     missing = [a["link"] for a in site["q1"]["approaches"] if a["link"] not in observed_links]
+    missing_names = [approach_label(a) for a in site["q1"]["approaches"] if a["link"] not in observed_links]
+    shared = sorted({f"{a['link']}: TomTom approaches " + ", ".join(sorted(r["tomtom_approach"] for r in rows
+                                                                          if r["link"] == a["link"]))
+                     for a in rows if a.get("shares_link")})
+    if shared:
+        notes.append("several TomTom approaches are mapped to one link in the mapping file (for review): " + "; ".join(shared))
     if comparison and comparison["uncovered_scats_approaches"]:
         notes.append("SCATS-identified approaches without adequate TomTom data: " + ", ".join(comparison["uncovered_scats_approaches"]))
     ev = {"site": site["site"], "period": period.label(), "available": available, "approaches": rows,
           "site_control_delay_s": measured["site_control_delay_s"], "scats_approaches": flagged, "comparison": comparison,
-          "queue": measured["queue_status"], "missing_approach_links": missing,
+          "queue": measured["queue_status"], "missing_approach_links": missing, "missing_approaches": missing_names,
           "coverage": coverage(rows, flagged, measured["queue_status"]),
           "coverage_note": "; ".join(notes) or DEFAULT_NOTE}
     draft = written(ev)

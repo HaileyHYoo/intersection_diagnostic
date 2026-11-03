@@ -179,3 +179,31 @@ class LiveFindingTests(unittest.TestCase):
         self.assertEqual(say("Cycle stability is below its normal range; cycle length is within its normal range."), [])
         self.assertEqual(say("Cycle stability is below its normal range, while cycle length is within it."), [])
         self.assertTrue(say("Cycle stability is within its normal range."))
+
+
+class SharedLinkTests(unittest.TestCase):
+    def test_two_tomtom_approaches_on_one_link_are_told_apart(self):
+        import copy
+        from diagnostics import timewin
+        from diagnostics.settings import Settings
+        from tests.test_q5_delay import END, StubTomTom, site
+        rules = copy.deepcopy(Settings().rules)
+        period = timewin.period_ending(END, rules)
+
+        class Source(StubTomTom):
+            def tomtom_mapping(self, s):
+                m = super().tomtom_mapping(s)
+                m["approaches"]["B2"] = {"link": "LB", "street": "B Street", "direction": "WEST"}
+                return m
+
+            def tomtom_turn_kpi(self, s, start, end):
+                return super().tomtom_turn_kpi(s, start, end) + [
+                    {"approach": "B2", "exit": "X1", "field": f, "time": t, "value": v}
+                    for t in self.ends for f, v in (("approach_delay", 5), ("control_delay", 5), ("sample_count", 2))]
+
+        result = d002.run(Source(period), site(), period, rules)
+        names = sorted(a["approach"] for a in result["evidence"]["approaches"] if a["link"] == "LB")
+        self.assertEqual(names, ["B Street [E] (TomTom approach B)", "B Street [E] (TomTom approach B2)"])
+        self.assertIn("several TomTom approaches are mapped to one link in the mapping file (for review): "
+                      "LB: TomTom approaches B, B2", result["evidence"]["coverage_note"])
+        self.assertEqual(result["evidence"]["comparison"]["per_approach"][0]["agreement"], d002.AGREE)
