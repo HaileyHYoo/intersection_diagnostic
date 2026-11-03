@@ -140,6 +140,8 @@ Every category is returned to the host, and the UI decides what to draw. A click
   - It is the requested JSON.
   - Every number in it appears in the evidence.
   - It makes no forbidden claim (fault, "caused by", timing changes).
+  - Every link ID it writes is one in the evidence (an LLM once merged two IDs into "WILLH6X4J54XJ642", SCATS 4566).
+  - For D002, it keeps the code's verdict as "Overall: <verdict>" and every SCATS-identified approach.
 
   Otherwise the code-written answer is used and the rejection is recorded.
 
