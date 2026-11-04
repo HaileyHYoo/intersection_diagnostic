@@ -24,23 +24,23 @@ from ..stats import ABNORMAL, INSUFFICIENT, NORMAL
 
 # data checks (True = a problem), then results; the order is the column order of the CSV
 DATA = {
-    "no_active_detector": "No active detector in Neo4j",
-    "detector_records_missing": "A detector with 5-minute records missing (count below 10)",
-    "all_detector_records_missing": "No detector record at all in the 60 minutes",
-    "detector_below_threshold": "A detector below 10 vehicles in 60 min with all records (Q2 FAIL)",
-    "no_egress_link": "No EGRESS approach link in Neo4j",
-    "link_without_volume_history": "An EGRESS link with no volume in any reference week (not evaluated)",
-    "link_without_current_volume": "An evaluated link without a complete 30-min volume now",
-    "link_short_volume_history": "An evaluated link with fewer than 5 historical volumes",
-    "no_current_cycle_length": "No current AvgCycle (IntersectionPerfKpi)",
-    "no_current_cycle_stability": "No current CycleStability (IntersectionPerfKpi)",
-    "short_kpi_history": "Cycle length or stability with fewer than 5 historical values",
-    "no_perf_approach_now": "No IntersectionPerfApproach record now",
-    "no_phase_service_history": "No approach with phase-service history",
-    "approach_hasgreen_0": "An approach with HasGreen = 0 recorded now",
-    "approach_no_green_record": "An evaluated approach without a GreenShare/HasGreen record now",
-    "approach_short_green_history": "An approach with fewer than 5 historical green shares",
-    "no_tomtom_mapping": "No TomTom approach mapping (Q5 unavailable)",
+    "no_active_detector": "No active detector (Neo4j BELONG_TO, active = true)",
+    "detector_records_missing": "An active detector below 10 vehicles in 60 min with 5-min records missing (Q2 INSUFFICIENT)",
+    "all_detector_records_missing": "Active detectors, but no valid 5-min record at any of them in the 60 min",
+    "detector_below_threshold": "An active detector below 10 vehicles in 60 min with all 12 records (Q2 FAIL)",
+    "no_egress_link": "No EGRESS road with a link_id in Neo4j",
+    "link_without_volume_history": "An EGRESS link with no 30-min volume in any reference week (left out of Q1)",
+    "link_without_current_volume": "An evaluated link without volume in both quarter-hours now",
+    "link_short_volume_history": "An evaluated link with a volume now but fewer than 5 reference weeks with volume",
+    "no_current_cycle_length": "No AvgCycle in both quarter-hours now (IntersectionPerfKpi)",
+    "no_current_cycle_stability": "No CycleStability in both quarter-hours now (IntersectionPerfKpi)",
+    "short_kpi_history": "Cycle length or stability present now but fewer than 5 reference weeks with a value",
+    "no_perf_approach_now": "No IntersectionPerfApproach record for any link now",
+    "no_phase_service_history": "No link with a valid green share (HasGreen = 1) in any reference week",
+    "approach_hasgreen_0": "An evaluated approach recorded with HasGreen = 0 now (a recorded zero)",
+    "approach_no_green_record": "An evaluated approach without a GreenShare/HasGreen record now (missing data)",
+    "approach_short_green_history": "An evaluated approach with green now but fewer than 5 reference weeks with green",
+    "no_tomtom_mapping": "No approach in the validated TomTom mapping file (Q5 unavailable)",
 }
 RESULTS = ["q2", "q1", "q3a_cycle_length", "q3b_cycle_stability", "q3c_phase_service", "q3",
            "category_without_q2_gate", "category"]
@@ -93,7 +93,7 @@ def summarise(rows: list[dict], period: str) -> dict:
                if sum(r[a] and r[b] for r in rows)}
     combo = Counter(" + ".join(k for k in DATA if r[k]) or "(no data problem)" for r in rows)
     clean = sum(not any(r[k] for k in DATA if k != "no_tomtom_mapping") for r in rows)
-    return {"period": period, "sites": n,
+    return {"period": period, "sites": n, "definitions": "docs/STATS_DEFINITIONS.md",
             "data_checks": {k: {"sites": v, "share": round(v / n, 3) if n else None, "meaning": DATA[k]}
                             for k, v in data.items()},
             "sites_without_any_screening_data_problem": clean,
@@ -125,7 +125,8 @@ def run(svc, period_end: str | None) -> tuple[dict, list[dict]]:
 
 def text(summary: dict) -> str:
     n = summary["sites"]
-    lines = [f"Independent checks, {summary['period']}: {n} sites (each check counted on its own, no gates)", "",
+    lines = [f"Independent checks, {summary['period']}: {n} sites (each check counted on its own, no gates;",
+             "definitions: docs/STATS_DEFINITIONS.md)", "",
              "  Data checks (sites with the problem):"]
     for k, v in summary["data_checks"].items():
         lines.append(f"    {v['sites']:>5}  {v['share'] * 100:5.1f}%  {v['meaning']}")
