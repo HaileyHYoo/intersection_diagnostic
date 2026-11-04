@@ -126,7 +126,7 @@
         "note": "The chatbot's link-speed feed (road_closure_analysis/closure_did.py SPEED: DetectorGroupId = Road.link_id confirmed). A period's speed is the harmonic mean of the positive samples in [start, end), as the chatbot's binned_query(how='pace'). TrafficCondition is a string field and is not read."
       },
       "link_speed_reference": {
-        "purpose": "Existing historical reference speed per link, displayed beside the current speed when available. None is configured: no existing reference-speed series was found in the InfluxDB inventory or the chatbot (speed_prediction is a forecast, not a reference). Set enabled and the names once the production team confirms one; no new speed baseline is calculated (methodology).",
+        "purpose": "Optional dedicated historical reference-speed series. Off: the reference speed is read from the link_speed feed itself for the reference weeks (rules link_speed.reference_from_history). Enable and name a series here only if the production team provides one.",
         "enabled": false,
         "bucket": "",
         "measurement": "",

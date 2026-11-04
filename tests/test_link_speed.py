@@ -52,7 +52,20 @@ class LinkSpeedTests(unittest.TestCase):
         west = next(a for a in r["link_speed"]["approaches"] if a["link"].endswith("W4303Q9"))
         self.assertEqual((west["speed_kmh"], west["status"]), (None, "unavailable"))
         self.assertIn("no TomTom speed for", r["link_speed"]["notes"][0])
-        self.assertEqual(r["link_speed"]["reference"], "unavailable - no existing historical reference speed is configured")
+        self.assertTrue(r["link_speed"]["reference"].startswith("median TomTom speed of the same 30 minutes"))
+        self.assertIsNone(west["reference_kmh"])                       # no samples in the reference weeks either
+
+    def test_reference_speed_from_the_reference_weeks(self):
+        r = self.svc.diagnose(self.run_id, "4300")
+        north = next(a for a in r["link_speed"]["approaches"] if a["link"] == "SWANN4300Q9")
+        self.assertEqual((north["speed_kmh"], north["reference_kmh"], north["reference_weeks"]), (18.1, 36.2, 8))
+        self.assertEqual(r["report"]["sections"][2]["supplement"]["tables"][-1]["columns"][-1], "Reference weeks")
+        off = copy.deepcopy(self.svc.settings.rules)
+        off["link_speed"]["reference_from_history"] = False
+        site = next(x for x in self.svc.store.get_run(self.run_id)["payload"]["sites"] if x["site"] == "4300")
+        speed = link_speed.link_speed(self.svc.source, site, timewin.period_ending(END, off), self.svc.settings.schema,
+                                      rules=off)
+        self.assertEqual(speed["reference"], "unavailable - no existing historical reference speed is configured")
 
     def test_harmonic_mean_ignores_zero_samples(self):
         self.assertAlmostEqual(link_speed.harmonic([30.0, 60.0, 0.0]), 40.0)
@@ -102,7 +115,8 @@ class LinkSpeedTests(unittest.TestCase):
         self.assertTrue(amber.link_speed.available)
         self.assertEqual(amber.link_speed.period, result.period)
         self.assertEqual(amber.link_speed.links[0].street_name, "William Street")
-        self.assertIn("Reference speed: unavailable", amber.link_speed.notes[-1])
+        self.assertIn("Reference speed: median TomTom speed", amber.link_speed.notes[-1])
+        self.assertIsNotNone(amber.link_speed.links[0].reference_speed_kmh)
         with tempfile.TemporaryDirectory() as d:
             arch = archive.LocalArchive(d)
             red = core.run_site_report(request("4300"), run, source, s, archive=arch)

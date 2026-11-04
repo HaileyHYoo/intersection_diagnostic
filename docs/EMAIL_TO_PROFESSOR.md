@@ -16,6 +16,7 @@ Thank you for the detailed review. I have worked through every point, and the at
 
 - The diagnosis now separates "What the data show" from "Possible explanations (not demonstrated by these data)". It states that SCATS adapts cycle length and phase service to demand and coordination, and orders the checks by priority.
 - Q5 gives agreement / partial agreement / disagreement / insufficient coverage. It names the matching and differing approaches and states the 30-minute coverage. Junction Analytics and the supplementary link speed are kept apart (see 774).
+- The supplementary link speed now shows a reference speed beside the current one. It is the median TomTom speed of the same 30 minutes in the screening's reference weeks, read from the same `aimes/speed` feed when the site is selected. Nothing is stored and no network-wide speed baseline is built. Please tell me if you would rather keep it unavailable.
 - Names come from the validated road-link mappings. The rows outside their range are in bold in the tables, so the text no longer repeats them. No number or link ID can be invented: an LLM answer that adds one is rejected, and the code wording is used instead.
 
 **Log and snapshot.** As requested, the complete JSON screening log and the baseline snapshot are attached, for the run you reviewed and for the re-run. I recomputed every result from the log and found no differences. All 11,759 baseline values quoted in the log match the snapshot.

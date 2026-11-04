@@ -67,7 +67,8 @@
   "link_speed": {
     "enabled": true,
     "categories": ["amber_traffic", "amber_signal", "red"],
-    "note": "Methodology (speed addition): on an Amber or Red click, show the TomTom speed of the site's incoming (EGRESS) links for the same 30-minute period, and an existing historical reference speed where one is available. Supplementary only: it never changes Q1, Q2, Q3, the Q5 agreement or the category. Missing speed is shown as unavailable. No network-wide speed screening and no speed baseline."
+    "reference_from_history": true,
+    "note": "Methodology (speed addition): on an Amber or Red click, show the TomTom speed of the site's incoming (EGRESS) links for the same 30-minute period, and the historical reference speed: the same feed's speed in the same 30 minutes of the reference weeks (median, read on the click, not stored). Supplementary only: it never changes Q1, Q2, Q3, the Q5 agreement or the category. Missing speed is shown as unavailable. No network-wide speed screening and no speed baseline."
   },
   "contract": {
     "template_ids": {

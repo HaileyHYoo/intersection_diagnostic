@@ -4,8 +4,11 @@ For the site's incoming (EGRESS) links and the same 30-minute period as Q1/Q3:
 
     current speed     harmonic mean of the positive TomTom speed samples in [start, end) (schema link_speed),
                       as the chatbot's link-speed reading (binned_query how="pace")
-    reference speed   an existing historical reference speed, only when one is configured
-                      (schema link_speed_reference); no speed baseline is calculated here
+    reference speed   the same feed's speed in the same 30 minutes of the reference weeks (the screening's own
+                      reference periods: same weekday and slot, holidays left out), read on the click: the median
+                      of the weeks' harmonic means, with the number of weeks (rules link_speed.reference_from_history).
+                      Nothing is stored and no network-wide speed baseline exists. A separately configured reference
+                      series (schema link_speed_reference) takes precedence when enabled.
     arm               the link's intersection arm from the production operational sheet (arms.py),
                       in the production backend only
 
@@ -19,7 +22,9 @@ from datetime import datetime
 
 from . import arms as arm_lookup
 from .templates.d001 import approach_label
-from .timewin import Period, to_utc
+from statistics import median
+
+from .timewin import Period, reference_periods, to_utc
 
 METRIC = "TomTom link speed (km/h), harmonic mean of the samples in the 30-minute period"
 
@@ -58,7 +63,24 @@ def _per_link(rows: list[dict], period: Period) -> dict[str, list[float]]:
     return out
 
 
-def link_speed(source, site: dict, period: Period, schema: dict, region: str | None = None) -> dict:
+def history_reference(source, links: list[str], period: Period, rules: dict) -> tuple[dict, dict, int]:
+    """({link: median km/h}, {link: weeks with samples}, reference weeks read) from the same feed."""
+    used, _ = reference_periods(period, rules)
+    per_week = {link: [] for link in links}
+    for ref in used:
+        rows = _per_link(source.link_speeds(links, ref.start, ref.end), ref)
+        for link in links:
+            value = harmonic(rows.get(link, []))
+            if value is not None:
+                per_week[link].append(value)
+    minimum = rules["history"]["min_observations"]                      # the screening's own minimum
+    centre = median if rules.get("reference_value") == "median" else (lambda v: sum(v) / len(v))   # as Q1/Q3
+    ref = {link: centre(v) for link, v in per_week.items() if len(v) >= minimum}
+    return ref, {link: len(v) for link, v in per_week.items()}, len(used)
+
+
+def link_speed(source, site: dict, period: Period, schema: dict, region: str | None = None,
+               rules: dict | None = None) -> dict:
     approaches = incoming_links(site)
     links = [a["link"] for a in approaches]
     out = {"metric": METRIC, "period": period.label(), "unit": "km/h", "affects_classification": False,
@@ -79,6 +101,17 @@ def link_speed(source, site: dict, period: Period, schema: dict, region: str | N
             out["reference"] = "available"
         except Exception as exc:  # noqa: BLE001
             out["reference"] = f"unavailable - {type(exc).__name__}: {str(exc)[:120]}"
+    elif rules and rules.get("link_speed", {}).get("reference_from_history"):
+        try:
+            hist, weeks, read = history_reference(source, links, period, rules)
+            reference = {link: [v] for link, v in hist.items()}
+            out["reference_weeks"] = weeks
+            word = "median" if rules.get("reference_value") == "median" else "mean"
+            out["reference"] = (f"{word} TomTom speed of the same 30 minutes in the {read} reference weeks (same "
+                                f"weekday, holidays left out), read from the same feed; shown when at least "
+                                f"{rules['history']['min_observations']} weeks have samples")
+        except Exception as exc:  # noqa: BLE001
+            out["reference"] = f"unavailable - {type(exc).__name__}: {str(exc)[:120]}"
     else:
         out["reference"] = "unavailable - no existing historical reference speed is configured"
     arms, arm_note = arm_lookup.link_arms(source, site["site"], region) if region else ({}, None)
@@ -93,6 +126,7 @@ def link_speed(source, site: dict, period: Period, schema: dict, region: str | N
                                   "speed_kmh": None if speed is None else round(speed, 1),
                                   "samples": sum(1 for v in values if v > 0),
                                   "reference_kmh": None if ref is None else round(ref, 1),
+                                  "reference_weeks": out.get("reference_weeks", {}).get(a["link"]),
                                   "status": "available" if speed is not None else "unavailable"})
     missing = [a["approach"] for a in out["approaches"] if a["speed_kmh"] is None]
     out["available"] = len(missing) < len(out["approaches"])
@@ -106,7 +140,10 @@ def table(speed: dict) -> dict:
     fmt = lambda x: "-" if x is None else f"{x:.1f}"
     with_arm = any(a.get("arm") is not None for a in speed["approaches"])
     return {"title": "TomTom incoming-link speed (same 30 min)",
-            "columns": ["Approach"] + (["Arm"] if with_arm else []) + ["Speed (km/h)", "Samples", "Reference (km/h)"],
+            "columns": ["Approach"] + (["Arm"] if with_arm else []) + ["Speed (km/h)", "Samples", "Reference (km/h)"]
+                       + (["Reference weeks"] if "reference_weeks" in speed else []),
             "rows": [[a["approach"]] + (["-" if a.get("arm") is None else str(a["arm"])] if with_arm else [])
                      + [fmt(a["speed_kmh"]) if a["speed_kmh"] is not None else "unavailable",
-                        str(a["samples"]), fmt(a["reference_kmh"])] for a in speed["approaches"]]}
+                        str(a["samples"]), fmt(a["reference_kmh"])]
+                     + ([str(a.get("reference_weeks") or 0)] if "reference_weeks" in speed else [])
+                     for a in speed["approaches"]]}

@@ -135,7 +135,7 @@ The Nov 2026 contract covers the no-green Grey flag, `has_largest_queue: bool | 
 - **S3.** The bucket and prefix for `DIAGNOSTICS_ARCHIVE`.
 - **Baseline snapshot size.** One `BaselineSnapshot` per weekday and slot (as written now) rather than one per week.
 - **Template registry.** D002's ID `ID_Q5_TOMTOM_CONFIRMATION` (rules.json `contract.template_ids`) is a placeholder; please confirm or replace it.
-- **Link speed.** An existing historical reference speed (`schema.influx.sources.link_speed_reference` is ready for it). `LinkSpeed.arm` reuses the backend's operational-sheet modules (`db.operational_sheet_client`, `operational_sheet`, `operational_sheet_store`), as the TomTom layer does; no new configuration.
+- **Link speed.** The reference speed (`LinkSpeed.reference_speed_kmh`) is read from the same `aimes/speed` feed for the reference weeks on each click: about 8 small queries for the site's links. A dedicated historical series can be configured instead (`schema.influx.sources.link_speed_reference`). `LinkSpeed.arm` reuses the backend's operational-sheet modules (`db.operational_sheet_client`, `operational_sheet`, `operational_sheet_store`), as the TomTom layer does; no new configuration.
 
 - **Schema.** Replace `config/schema.json` with the final schema (see SCHEMA.md) and change its `version`.
 - **Store.** Use SQLite on a persistent path, or a database. `store.SQLiteStore` is the interface to re-implement.
