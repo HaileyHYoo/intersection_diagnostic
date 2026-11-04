@@ -41,7 +41,7 @@ def evidence(site: dict, period: dict) -> dict:
                for a in q1["approaches"] if a["status"] == ABNORMAL]
     service = [{"approach": approach_label(a), "link": a["link"], "current_green_share_pct": r1(a["current"]),
                 "usual_green_share_pct": r1(a["usual"]), "normal_range": [r1(a["p_low"]), r1(a["p_high"])],
-                "difference_pp": r1(a["current"] - a["usual"]), "direction": a["direction"]}
+                "difference_pp": r1(r1(a["current"]) - r1(a["usual"])), "direction": a["direction"]}
                for a in comps["phase_service"]["approaches"] if a["status"] == ABNORMAL]
 
     def measure(c, normal_outside: str):

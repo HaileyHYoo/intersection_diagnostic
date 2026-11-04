@@ -18,8 +18,8 @@ ORDER = ["red", "amber_traffic", "amber_signal", "grey", "detector_health", "nor
 
 
 def _table(t: dict) -> list[str]:
-    return [f"**{t['title']}**", "", "| " + " | ".join(t["columns"]) + " |", "|" + "---|" * len(t["columns"])] + \
-           ["| " + " | ".join(str(c) for c in r) + " |" for r in t["rows"]] + [""]
+    from ..report import _tables                     # the same layout as the Red report (abnormal rows in bold)
+    return _tables([{**t, "rows": [[str(c) for c in r] for r in t["rows"]]}])
 
 
 def _speed(link_speed: dict | None) -> list[str]:

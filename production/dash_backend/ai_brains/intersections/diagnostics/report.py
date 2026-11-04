@@ -46,7 +46,7 @@ def evidence_tables(site: dict) -> list[dict]:
     service = {"title": "Phase service by approach (green share %)",
                "columns": ["Approach", "Current", "Usual", "Normal range", "Difference (pp)", "Status"],
                "rows": [[approach_label(a), *_values(a),
-                         "-" if a.get("current") is None or a.get("usual") is None else f"{a['current'] - a['usual']:+.1f}",
+                         "-" if a.get("current") is None or a.get("usual") is None else f"{round(a['current'], 1) - round(a['usual'], 1):+.1f}",
                          (a["direction"] or a["status"]).title()] for a in comps["phase_service"]["approaches"]]}
     return [traffic, signal, service]
 
