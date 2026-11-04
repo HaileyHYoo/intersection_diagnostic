@@ -163,9 +163,10 @@ function renderReport(res, site) {
   let html = header(site, rep.classification, "red");
   for (const s of rep.sections) {
     html += `<h3>${esc(s.title)}</h3>`;
-    if (s.text) html += `<p>${esc(s.text)}</p>`;
+    if (s.text) html += s.text.split("\n").map((line) => `<p>${esc(line).replace(/^([A-Z][^:]{2,60}:)/, "<b>$1</b>")}</p>`).join("");
     if (s.bullets && s.bullets.length) { const tag = s.ordered ? "ol" : "ul"; html += `<${tag}>${s.bullets.map((b) => `<li>${esc(b)}</li>`).join("")}</${tag}>`; }
-    for (const t of s.tables || []) html += table(t);
+    for (const t of s.tables || []) html += /^TomTom movements/.test(t.title)
+      ? `<details><summary>${esc(t.title)} (click to show)</summary>${table(t)}</details>` : table(t);
     if (s.supplement) {
       html += `<h4>${esc(s.supplement.title)}</h4>`;
       if (s.supplement.bullets.length) html += `<ul>${s.supplement.bullets.map((b) => `<li>${esc(b)}</li>`).join("")}</ul>`;

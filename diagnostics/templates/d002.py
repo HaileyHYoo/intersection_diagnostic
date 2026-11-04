@@ -24,6 +24,7 @@ import json
 from collections import defaultdict
 from statistics import mean
 
+from .. import layout
 from .. import llm as llm_mod
 from ..series import Aligner
 from ..stats import ABNORMAL
@@ -319,7 +320,7 @@ def written(ev: dict) -> dict:
     if not ev["available"]:
         return {"road_user_impact": UNAVAILABLE, "agreement": NO_COVERAGE, "coverage": ev["coverage_note"]}
     comp = ev["comparison"]
-    lines = []
+    lines, largest, by = [], [], []
     tops = {m: t for m, t in (comp.get("greatest_delays") or {"x": comp["greatest_delay"]}).items() if t}
     longest = comp["longest_queue"]
     found = [(f"the greatest TomTom {DELAY_NAMES.get(t['metric'], 'delay')} ({t['delay_s']:.1f} s)", t)
@@ -332,8 +333,8 @@ def written(ev: dict) -> dict:
     for approach, texts in by_approach.items():
         verb = "are all on" if len(texts) > 2 else "are both on" if len(texts) == 2 else "is on"
         sentence = f"{_and(texts)} among the adequately observed approaches {verb} {approach}."
-        lines.append(sentence[0].upper() + sentence[1:])
-    lines += [_per_approach_sentence(p) for p in comp["per_approach"]]
+        largest.append(sentence[0].upper() + sentence[1:])
+    by = [_per_approach_sentence(p) for p in comp["per_approach"]]
     group = lambda v: [p["approach"] for p in comp["per_approach"] if p["agreement"] == v]
     agreeing, differing, uncovered = group(AGREE), group(DISAGREE), group(NO_COVERAGE)
     verdict = comp["agreement"]
@@ -352,11 +353,11 @@ def written(ev: dict) -> dict:
     else:
         lines.append("Overall: insufficient coverage - the SCATS-identified approaches are not adequately covered by "
                      "TomTom for this period, so no comparison is possible.")
-    lines.append(CAVEAT)
     statement = (ev.get("coverage") or {}).get("statement", "")
-    if statement:
-        lines.append(statement)
-    return {"road_user_impact": " ".join(lines), "agreement": verdict,
+    text = "\n".join([f"Largest values: {' '.join(largest)}" if largest else "",
+                      f"By approach: {' '.join(by)}"] + lines
+                     + [f"Coverage: {statement} {CAVEAT}".replace("  ", " ")])
+    return {"road_user_impact": "\n".join(x for x in text.split("\n") if x), "agreement": verdict,
             "coverage": "; ".join(x for x in (statement, ev["coverage_note"]) if x)}
 
 
@@ -367,7 +368,8 @@ are partial coverage, never zero. Do not say that signal settings caused congest
 must appear in the evidence or the draft. Keep one statement for every SCATS-identified approach (agreement, mismatch
 or no coverage), naming it exactly as in the evidence, and keep the draft's overall verdict (agreement, partial
 agreement, disagreement or insufficient coverage) with the approaches that match and those that differ. Keep the
-draft's coverage statement (how much of the 30 minutes delay and queue cover). TomTom shows road-user impact, never
+draft's coverage statement (how much of the 30 minutes delay and queue cover). Keep the draft's lines and their
+labels exactly: "Largest values:", "By approach:", "Overall:", "Coverage:". TomTom shows road-user impact, never
 proof of cause. State the findings only: no interpretation such as "despite", "as expected" or reasons. Write plain
 English, not codes such as abnormal_high or Q3C. Name approaches as in the evidence ("approach" or
 "missing_approaches"), never by a bare link ID.
@@ -430,7 +432,7 @@ def run(source, site: dict, period: Period, rules: dict, llm=None) -> dict:
     user = json.dumps({"question": spec["question"], "evidence": ev, "draft_answer": draft}, ensure_ascii=False)
     named = [p["approach"] for p in comparison["per_approach"]]
     worded = llm_mod.word(llm, SYSTEM, user, ["road_user_impact", "agreement", "coverage"], ev, draft,
-                          required={"road_user_impact": named + [f"Overall: {draft['agreement']}"]})
+                          required={"road_user_impact": named + ["By approach:", f"Overall: {draft['agreement']}"]})
     worded["answer"]["agreement"] = draft["agreement"]          # the verdict is code's, never re-worded
     text = worded["answer"]["road_user_impact"]
     if "historically abnormal" not in text:                      # methodology 13: always distinguish the two
@@ -438,6 +440,6 @@ def run(source, site: dict, period: Period, rules: dict, llm=None) -> dict:
     statement = ev["coverage"]["statement"]
     if statement and statement not in text:                     # the 30-minute coverage is always stated
         text = text.rstrip() + " " + statement
-    worded["answer"]["road_user_impact"] = text
+    worded["answer"]["road_user_impact"] = layout.lines(text, layout.D002_LABELS)
     return {"template_id": TEMPLATE, "template_version": spec["version"], "question": spec["question"], "evidence": ev,
             **worded}

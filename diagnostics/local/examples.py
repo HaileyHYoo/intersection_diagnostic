@@ -86,7 +86,7 @@ def build(svc, run_id: str, red: int = 2, sites: list[str] | None = None, tries:
         lines += ["**Synthetic demo network - illustrative only, not measured data.**", ""]
     lines += [
              "| Category | Sites |", "|---|---|"]
-    lines += [f"| {CATEGORIES[c]} | {len(by_cat[c])} |" for c in ORDER] + [f"| **Total** | **{len(p['sites'])}** |", ""]
+    lines += [f"| {CATEGORIES[c]} | {len(by_cat[c])} |" for c in ORDER] + [f"| Total | {len(p['sites'])} |", ""]
     if p.get("notes"):
         lines += [f"- {n}" for n in p["notes"]] + [""]
 
@@ -190,12 +190,16 @@ def to_html(text: str, title: str = "Intersections Diagnostics V1 - example outp
         else:
             out.append(f"<p>{inline(line)}</p>")
     flush()
+    body = "\n".join(out)
+    # detail tables folded away (movements): the title and its table inside <details>
+    body = re.sub(r"<p><b>(TomTom movements[^<]*)</b></p>\n(<table>.*?</table>)",
+                  r"<details><summary><b>\1</b> (click to show)</summary>\2</details>", body, flags=re.S)
     style = ("body{font:14px/1.45 system-ui,sans-serif;max-width:1000px;margin:24px auto;padding:0 16px;color:#1d2433}"
              "h1{font-size:22px}h2{font-size:18px;margin-top:32px;border-bottom:1px solid #ccd}h3{font-size:16px}h4{font-size:15px}h5{font-size:14px;color:#556}"
              "table{border-collapse:collapse;margin:6px 0 14px}th,td{border:1px solid #ccd;padding:3px 8px;text-align:left}"
-             "th{background:#f1f3f8}code{background:#f1f3f8;padding:0 3px}hr{border:0;border-top:2px solid #ccd;margin:28px 0}")
+             "th{background:#f1f3f8}td b{color:#a3261a}summary{cursor:pointer;margin:6px 0}code{background:#f1f3f8;padding:0 3px}hr{border:0;border-top:2px solid #ccd;margin:28px 0}")
     return (f"<!doctype html><html lang=en><meta charset=utf-8><title>{title}</title><style>{style}</style><body>"
-            + "\n".join(out) + "</body></html>")
+            + body + "</body></html>")
 
 
 def save_html(text: str, run_id: str, out_dir) -> Path:

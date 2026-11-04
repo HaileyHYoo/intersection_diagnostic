@@ -11,6 +11,7 @@ import re
 from .. import llm as llm_mod
 from ..stats import ABNORMAL, NORMAL
 from . import definition
+from ..layout import D001_LABELS, lines
 from ..names import approach_label  # noqa: F401 - re-exported for report.py, d002, link_speed
 
 TEMPLATE = "D001"
@@ -181,7 +182,8 @@ def findings(ev: dict) -> tuple[str, str]:
     if only:
         maybe.append(f"the volume change on {_and(only)} has no phase-service finding on the same approach, so its "
                      "cause is not shown by the SCATS data")
-    explained = (ADAPTIVE + " Possible explanations, not demonstrated by these data: " + "; ".join(maybe) + ".") if maybe else ADAPTIVE
+    explained = (ADAPTIVE + " " + "; ".join(m[0].upper() + m[1:] for m in maybe[:1]) + "".join("; " + m for m in maybe[1:])
+                 + ".") if maybe else ADAPTIVE
     return " ".join(shown), explained
 
 
@@ -191,7 +193,7 @@ def written(ev: dict) -> dict:
     t, s = ev["traffic"], ev["signal"]
     cl, cs, ps = s["cycle_length_s"], s["cycle_stability"], s["phase_service"]
     shown, explained = findings(ev)
-    diagnosis = shown + " " + explained
+    diagnosis = f"{D001_LABELS[0]} {shown}\n{D001_LABELS[1]} {explained}"
 
     support = []
     for a in t["abnormal_approaches"]:
@@ -246,7 +248,8 @@ def written(ev: dict) -> dict:
 
 SYSTEM = """You write the SCATS diagnostic interpretation for one intersection flagged Red by deterministic screening.
 Use only the evidence JSON and the draft answer. Rules:
-- diagnosis: first what the data show (the main problem and the approaches concerned), then possible explanations,
+- diagnosis: two lines, starting exactly with "What the data show:" and "Possible explanations (not demonstrated by
+  these data):" as in the draft. First what the data show (the main problem and the approaches concerned), then possible explanations,
   clearly worded as possible ("may", "possible explanation"), never as findings. SCATS adapts cycle length and phase
   service to demand and coordination, so an abnormal value does not by itself show a signal problem: say so, and keep the draft's
   reading of each combination (e.g. a longer cycle with higher volume may be an adaptive response). Keep it short;
@@ -276,7 +279,8 @@ def run(site: dict, period: dict, llm=None) -> dict:
     user = json.dumps({"question": spec["question"], "evidence": ev, "draft_answer": draft}, ensure_ascii=False)
     named = [a["approach"] for a in ev["traffic"]["abnormal_approaches"] + ev["signal"]["phase_service"]["abnormal_approaches"]]
     worded = llm_mod.word(llm, SYSTEM, user, ["diagnosis", "supporting_evidence", "suggested_checks"], ev, draft,
-                          required={"diagnosis": named, "supporting_evidence": named},
+                          required={"diagnosis": named + D001_LABELS, "supporting_evidence": named},
                           validate=lambda answer: contradictions(answer, ev))
+    worded["answer"]["diagnosis"] = lines(worded["answer"]["diagnosis"], D001_LABELS)
     return {"template_id": TEMPLATE, "template_version": spec["version"], "question": spec["question"],
             "evidence": ev, **worded}

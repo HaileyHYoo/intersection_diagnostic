@@ -78,11 +78,47 @@ def speed_part(link_speed: dict | None) -> tuple[list[str], list[dict]]:
     return bullets, [speed.table(link_speed)] if link_speed["approaches"] else []
 
 
+ABNORMAL_CELLS = {"High", "Low", "Abnormal", "Poorer"}
+LABELS = ["What the data show:", "Possible explanations (not demonstrated by these data):",
+          "Largest values:", "By approach:", "Overall:", "Coverage:"]
+
+
+def evidence_summary(site: dict) -> tuple[str, list[str]]:
+    """Section 2 on screen: one line saying what is outside its range (marked in the tables, which hold every
+    measurement), plus the notes the tables cannot show. The full sentences stay in the D001 answer and in the
+    contract's supporting_evidence."""
+    q1, comps = site["q1"], site["q3"]["components"]
+    parts = []
+    vol = [a for a in q1["approaches"] if a["status"] == "ABNORMAL"]
+    if vol:
+        parts.append(f"the volume on {len(vol)} approach{'es' if len(vol) > 1 else ''}")
+    for key, name in (("cycle_length", "cycle length"), ("cycle_stability", "Cycle Stability")):
+        if comps[key]["status"] == "ABNORMAL":
+            parts.append(name)
+    ps = [a for a in comps["phase_service"]["approaches"] if a["status"] == "ABNORMAL"]
+    if ps:
+        parts.append(f"phase service on {len(ps)} approach{'es' if len(ps) > 1 else ''}")
+    head = ("Outside the normal range (marked in bold in the tables): " + ", ".join(parts) + "."
+            if parts else "No measure is outside its normal range.")
+    notes = []
+    for key, name in (("cycle_length", "Cycle length"), ("cycle_stability", "Cycle Stability")):
+        c = comps[key]
+        if c["status"] == "INSUFFICIENT DATA":
+            notes.append(f"{name}: not assessed ({c.get('reason') or 'insufficient data'}).")
+        elif c["status"] == "NORMAL" and c.get("current") is not None and c.get("p_low") is not None \
+                and not c["p_low"] <= c["current"] <= c["p_high"]:
+            why = ("less than 10% from usual, so not flagged" if key == "cycle_length"
+                   else "more stable than usual; only poorer stability is flagged")
+            notes.append(f"{name} is outside its range but normal: {why}.")
+    return head, notes
+
+
 def assemble(site: dict, period: dict, d001: dict, d002: dict | None, link_speed: dict | None = None) -> dict:
     a1 = d001["answer"]
+    head, notes = evidence_summary(site)
     sections = [
         {"title": "1. Diagnosis", "text": a1["diagnosis"], "producer": "D001"},
-        {"title": "2. Supporting Evidence", "bullets": a1["supporting_evidence"], "tables": evidence_tables(site),
+        {"title": "2. Supporting Evidence", "text": head, "bullets": notes, "tables": evidence_tables(site),
          "producer": "D001"},
     ]
     speed_bullets, speed_tables = speed_part(link_speed)
@@ -120,9 +156,23 @@ def _tables(tables: list[dict]) -> list[str]:
     lines = []
     for t in tables:
         lines += [f"**{t['title']}**", "", "| " + " | ".join(t["columns"]) + " |", "|" + "---|" * len(t["columns"])]
-        lines += ["| " + " | ".join(r) + " |" for r in t["rows"]]
+        for r in t["rows"]:
+            mark = any(c in ABNORMAL_CELLS for c in r)          # rows outside their range in bold
+            lines.append("| " + " | ".join(f"**{c}**" if mark and c not in ("-", "") else c for c in r) + " |")
         lines.append("")
     return lines
+
+
+def _text(text: str) -> list[str]:
+    """Each labelled line as its own paragraph, with the label in bold."""
+    out = []
+    for line in str(text).split("\n"):
+        for label in LABELS:
+            if line.startswith(label):
+                line = f"**{label}**{line[len(label):]}"
+                break
+        out += [line, ""]
+    return out
 
 
 def markdown(report: dict) -> str:
@@ -131,7 +181,7 @@ def markdown(report: dict) -> str:
     for s in report["sections"]:
         lines.append(f"## {s['title']}")
         if s.get("text"):
-            lines += [s["text"], ""]
+            lines += _text(s["text"])
         for k, b in enumerate(s.get("bullets", []), 1):
             lines.append(f"{k}. {b}" if s.get("ordered") else f"- {b}")
         if s.get("bullets"):

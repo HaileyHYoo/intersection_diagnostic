@@ -269,6 +269,12 @@ The following optional contract fields have been proposed and are not in the Nov
 - `ScreeningResult.config_version`, `ScreeningResult.audit_ref`, `DiagnosisResult.config_version`, `DiagnosisResult.audit_ref`.
 
 
+## 10a. Report layout (methodology owner's review, 3 Nov 2026)
+
+- **Labelled lines.** The diagnosis has two lines, "What the data show:" and "Possible explanations (not demonstrated by these data):"; the TomTom part has "Largest values:", "By approach:", "Overall:" and "Coverage:". An LLM re-wording must keep the labels (`layout.py`; checked as required wording) and the line breaks are restored if it runs them together.
+- **Supporting Evidence on screen** is one line saying what is outside its range, plus notes the tables cannot show (a measure outside its range but normal, a measure not assessed). The rows outside their range are in bold in the tables, which hold every measurement. The D001 sentences are kept in the answer, and the contract's `supporting_evidence` is unchanged (`evidence_items`).
+- **Detail.** The TomTom movements table is folded (click to show) in the HTML views.
+
 ## 11a. Names of approaches
 
 An approach is shown as "Street [bound]". The street comes from the site's Neo4j EGRESS road (`street_name`, else `name`); for a link without one — an EGRESS road without a name, or a Q3C `LinkId` that is not one of the site's EGRESS links — from any Neo4j `Road` with that `link_id` (`graph.link_names`), then from the validated TomTom road-link mapping file. Without a bound the link ID is added ("Main Road (link X)"), so two links of one street stay distinct. Without a reliable name the label is "Link X [bound] (no street name)". Nothing is guessed from geometry.

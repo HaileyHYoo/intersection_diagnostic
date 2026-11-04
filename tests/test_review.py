@@ -33,8 +33,9 @@ class Q4WordingTests(unittest.TestCase):
         self.assertIn("Traffic differs from history on A St [N] (higher volume than usual).", a["diagnosis"])
         self.assertIn("cycle length (longer than usual)", a["diagnosis"])
         self.assertIn(d001.ADAPTIVE, a["diagnosis"])
-        self.assertIn("Possible explanations, not demonstrated by these data: the longer cycle with higher volume on "
-                      "A St [N] may be SCATS lengthening the cycle as demand rose", a["diagnosis"])
+        self.assertIn("\nPossible explanations (not demonstrated by these data): " + d001.ADAPTIVE + " The longer cycle "
+                      "with higher volume on A St [N] may be SCATS lengthening the cycle as demand rose", a["diagnosis"])
+        self.assertTrue(a["diagnosis"].startswith("What the data show: Traffic differs"))
         self.assertNotIn("%", a["diagnosis"])                          # the figures are in the supporting evidence
         self.assertTrue(a["suggested_checks"][0].startswith("Verify whether the longer cycle was SCATS's adaptive "
                                                             "response or a plan or coordination change"))
@@ -43,7 +44,7 @@ class Q4WordingTests(unittest.TestCase):
 
     def test_cycle_change_without_matching_demand(self):
         ev = evidence(traffic=[("A St [N]", "LOW")], cycle=measure(ABNORMAL, "HIGH", 130.0), traffic_only=["A St [N]"])
-        self.assertIn("the longer cycle is not matched by higher volume on the screened approaches, so a plan or "
+        self.assertIn("The longer cycle is not matched by higher volume on the screened approaches, so a plan or "
                       "coordination change is a possible explanation", d001.written(ev)["diagnosis"])
 
     def test_less_green_to_busier_approach_is_checked_first(self):
