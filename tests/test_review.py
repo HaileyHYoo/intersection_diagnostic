@@ -221,3 +221,14 @@ class LLMGuardReviewTests(unittest.TestCase):
         self.assertEqual(llm.check(ok, ["road_user_impact"], allowed, None, ref), [])
         self.assertIn("link IDs not in the evidence: WILLH6X4J54XJ642",
                       llm.check(bad, ["road_user_impact"], allowed, None, ref))
+
+
+class CodeLinesTests(unittest.TestCase):
+    def test_verdict_and_coverage_lines_are_the_codes(self):
+        from diagnostics import layout
+        llm_text = ("Largest values: X. By approach: Y. Overall: partial agreement - reworded. "
+                    "Coverage: link WRONG is missing.")
+        code = "Largest values: x\nBy approach: y\nOverall: partial agreement - code\nCoverage: full 30 minutes."
+        out = layout.keep_code_lines(llm_text, code, layout.D002_LABELS, ["Overall:", "Coverage:"])
+        self.assertEqual(out.split("\n"), ["Largest values: X.", "By approach: Y.",
+                                           "Overall: partial agreement - code", "Coverage: full 30 minutes."])

@@ -271,7 +271,7 @@ The following optional contract fields have been proposed and are not in the Nov
 
 ## 10a. Report layout (methodology owner's review, 3 Nov 2026)
 
-- **Labelled lines.** The diagnosis has two lines, "What the data show:" and "Possible explanations (not demonstrated by these data):"; the TomTom part has "Largest values:", "By approach:", "Overall:" and "Coverage:". An LLM re-wording must keep the labels (`layout.py`; checked as required wording) and the line breaks are restored if it runs them together.
+- **Labelled lines.** The diagnosis has two lines, "What the data show:" and "Possible explanations (not demonstrated by these data):"; the TomTom part has "Largest values:", "By approach:", "Overall:" and "Coverage:". An LLM re-wording must keep the labels (`layout.py`; checked as required wording) and the line breaks are restored if it runs them together. The "Overall:" and "Coverage:" lines are always the code's (an LLM once named the wrong link as missing, SCATS 4566); the coverage line also names the approaches without TomTom data that are not SCATS-identified. Phase-service rows carry the difference in percentage points, so it need not be computed by the wording.
 - **Supporting Evidence on screen** is one line saying what is outside its range, plus notes the tables cannot show (a measure outside its range but normal, a measure not assessed). The rows outside their range are in bold in the tables, which hold every measurement. The D001 sentences are kept in the answer, and the contract's `supporting_evidence` is unchanged (`evidence_items`).
 - **Detail.** The TomTom movements table is folded (click to show) in the HTML views.
 

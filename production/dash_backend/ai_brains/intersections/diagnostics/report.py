@@ -44,8 +44,9 @@ def evidence_tables(site: dict) -> list[dict]:
               "rows": [[name, *_values(c), c["status"].title()]
                        for name, c in (("Cycle length (s)", comps["cycle_length"]), ("Cycle Stability", comps["cycle_stability"]))]}
     service = {"title": "Phase service by approach (green share %)",
-               "columns": ["Approach", "Current", "Usual", "Normal range", "Status"],
+               "columns": ["Approach", "Current", "Usual", "Normal range", "Difference (pp)", "Status"],
                "rows": [[approach_label(a), *_values(a),
+                         "-" if a.get("current") is None or a.get("usual") is None else f"{a['current'] - a['usual']:+.1f}",
                          (a["direction"] or a["status"]).title()] for a in comps["phase_service"]["approaches"]]}
     return [traffic, signal, service]
 

@@ -425,6 +425,10 @@ def run(source, site: dict, period: Period, rules: dict, llm=None) -> dict:
           "queue": measured["queue_status"], "missing_approach_links": missing, "missing_approaches": missing_names,
           "coverage": coverage(rows, flagged, measured["queue_status"]),
           "coverage_note": "; ".join(notes) or DEFAULT_NOTE}
+    others = [n for n, link in zip(missing_names, missing) if link not in flagged]
+    if others and ev["coverage"]["statement"]:                 # approaches with no TomTom data, not SCATS-identified
+        ev["coverage"]["statement"] += (f" No adequate TomTom data on the other approach"
+                                        f"{'es' if len(others) > 1 else ''}: {', '.join(others)}.")
     draft = written(ev)
     if not available:
         return {"template_id": TEMPLATE, "template_version": spec["version"], "question": spec["question"], "evidence": ev,
@@ -434,12 +438,9 @@ def run(source, site: dict, period: Period, rules: dict, llm=None) -> dict:
     worded = llm_mod.word(llm, SYSTEM, user, ["road_user_impact", "agreement", "coverage"], ev, draft,
                           required={"road_user_impact": named + ["By approach:", f"Overall: {draft['agreement']}"]})
     worded["answer"]["agreement"] = draft["agreement"]          # the verdict is code's, never re-worded
-    text = worded["answer"]["road_user_impact"]
-    if "historically abnormal" not in text:                      # methodology 13: always distinguish the two
-        text = text.rstrip() + " " + CAVEAT
-    statement = ev["coverage"]["statement"]
-    if statement and statement not in text:                     # the 30-minute coverage is always stated
-        text = text.rstrip() + " " + statement
-    worded["answer"]["road_user_impact"] = layout.lines(text, layout.D002_LABELS)
+    # The LLM may re-word "Largest values" and "By approach"; the verdict and the coverage lines are always the
+    # code's (seen live: an LLM named the wrong link as missing, SCATS 4566), with the caveat of methodology 13.
+    worded["answer"]["road_user_impact"] = layout.keep_code_lines(
+        worded["answer"]["road_user_impact"], draft["road_user_impact"], layout.D002_LABELS, ["Overall:", "Coverage:"])
     return {"template_id": TEMPLATE, "template_version": spec["version"], "question": spec["question"], "evidence": ev,
             **worded}
