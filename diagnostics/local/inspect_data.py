@@ -352,11 +352,28 @@ def kpi_check(source, settings: Settings, site: str, end=None, references: int =
                         totals[stamp] += fields[feed_field]
             entry[f"sum_of_{feed_field}_over_approaches"] = {k: round(v, 1) for k, v in sorted(totals.items())}
         out["periods"].append(entry)
+    # Timing check: the 15-minute link volumes (stamped on the grid, end-labelled) around the analysis period, to
+    # compare with the PerfApproach Volume of the records stamped :07/:22 and see which quarter-hour they describe.
+    links = {a["link"] for a in approaches}
+    feed = feeds["link_volume"]
+    try:
+        rows = source.raw("link_volume", period.start - timedelta(minutes=30), period.end, None)
+        vols = {}
+        for r in rows:
+            link = ids.link(r.get(feed["link_tag"]))
+            if link in links:
+                stamp = to_utc(r["time"]).astimezone(zone(rules)).strftime("%H:%M")
+                vols.setdefault(link, {})[stamp] = r["value"]
+        out["link_volume_15min"] = {k: dict(sorted(v.items())) for k, v in sorted(vols.items())}
+    except Exception as exc:  # noqa: BLE001
+        out["link_volume_15min"] = f"{type(exc).__name__}: {exc}"
     return out
 
 
 def kpi_check_text(k: dict) -> str:
     lines = [f"KPI check for site {k['site']}, {k['period']}",
+             "  scats-aggregation/volume per link (15-min, stamped at the quarter-hour end): "
+             + (json.dumps(k.get("link_volume_15min")) if k.get("link_volume_15min") is not None else "-"),
              "  Neo4j EGRESS approaches: " + ", ".join(f"{a['link']} ({a['street']})" for a in k["neo4j_egress"])]
     for e in k["periods"]:
         lines.append(f"  {e['role'][:3]} {e['period']}")
