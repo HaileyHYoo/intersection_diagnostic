@@ -97,7 +97,7 @@ def build(svc, run_id: str, red: int = 2, sites: list[str] | None = None, tries:
     if tomtom_sites is not None:                              # sites with a TomTom mapping first
         reds = sorted(reds, key=lambda s: s["site"] not in tomtom_sites)
     for r in _pick_red(svc, run_id, reds, red, tries):
-        md = r["report"]["markdown"].replace("\n## ", "\n#### ")
+        md = r["report"]["markdown"].replace("\n### ", "\n##### ").replace("\n## ", "\n#### ")   # keep the supplement below its section
         lines += ["### " + md[2:] if md.startswith("# ") else md, ""]
         rejected = [f"{t['template_id']}: {t['rejected']}" for t in (r.get("templates") or {}).values() if t.get("rejected")]
         if rejected:
@@ -185,13 +185,13 @@ def to_html(text: str, title: str = "Intersections Diagnostics V1 - example outp
         if line.strip() == "---":
             out.append("<hr>")
         elif line.startswith("#"):
-            level = min(len(line) - len(line.lstrip("#")), 4)
+            level = min(len(line) - len(line.lstrip("#")), 5)
             out.append(f"<h{level}>{inline(line.lstrip('#').strip())}</h{level}>")
         else:
             out.append(f"<p>{inline(line)}</p>")
     flush()
     style = ("body{font:14px/1.45 system-ui,sans-serif;max-width:1000px;margin:24px auto;padding:0 16px;color:#1d2433}"
-             "h1{font-size:22px}h2{font-size:18px;margin-top:32px;border-bottom:1px solid #ccd}h3{font-size:15px}"
+             "h1{font-size:22px}h2{font-size:18px;margin-top:32px;border-bottom:1px solid #ccd}h3{font-size:16px}h4{font-size:15px}h5{font-size:14px;color:#556}"
              "table{border-collapse:collapse;margin:6px 0 14px}th,td{border:1px solid #ccd;padding:3px 8px;text-align:left}"
              "th{background:#f1f3f8}code{background:#f1f3f8;padding:0 3px}hr{border:0;border-top:2px solid #ccd;margin:28px 0}")
     return (f"<!doctype html><html lang=en><meta charset=utf-8><title>{title}</title><style>{style}</style><body>"
