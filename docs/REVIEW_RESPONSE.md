@@ -65,6 +65,7 @@ Two re-runs (651303f563f6, b77b122afab4) gave identical counts; the screening is
 
 - **History is at the minimum.** The baseline uses 7 reference weeks (2026-09-25 excluded as a public holiday), but no value has more than 6 observations: 9,843 of 20,115 values have exactly 5, the minimum, and 4,806 fewer. Gaps in the Friday afternoon records (e.g. 2 and 9 Oct) are not replaced, as agreed, so one more gap would make many sites Grey.
 - **Low-volume approaches.** Of 1,058 abnormal approach volumes, 34 have a usual value below 20 vehicles in 30 minutes and 22 differ from usual by fewer than 5 vehicles.
+- **Reference speed coverage.** Some links have a current speed but too few reference weeks with speed samples, so their reference is shown as "-" with the number of weeks (e.g. SCATS 4566: no TomTom speed record for any of its links on Fri 23 Oct 15:00–15:30; two links have none in any reference week). This is a gap in the speed feed, not an estimate.
 - **Snapshot scope.** The snapshot also holds cycle values for 891 sites with KPI data that are not in the screened network; they are not used.
 
 ## 6. Data issues raised with the data owners
