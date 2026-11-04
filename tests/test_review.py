@@ -232,3 +232,26 @@ class CodeLinesTests(unittest.TestCase):
         out = layout.keep_code_lines(llm_text, code, layout.D002_LABELS, ["Overall:", "Coverage:"])
         self.assertEqual(out.split("\n"), ["Largest values: X.", "By approach: Y.",
                                            "Overall: partial agreement - code", "Coverage: full 30 minutes."])
+
+
+class IndependentStatsTests(unittest.TestCase):
+    def test_every_check_is_counted_without_gates(self):
+        from diagnostics.local import independent
+        from diagnostics.local.fake import FakeSource
+        from diagnostics.service import DiagnosticsService
+        from diagnostics.settings import Settings
+        from diagnostics.store import SQLiteStore
+        s = Settings()
+        svc = DiagnosticsService(FakeSource(s.rules, s.schema, "2026-10-27T08:30:00+11:00", n_sites=20), s,
+                                 SQLiteStore(":memory:"))
+        summary, rows = independent.run(svc, "2026-10-27T08:30")
+        by = {r["site"]: r for r in rows}
+        self.assertEqual(summary["sites"], 20)
+        self.assertTrue(by["4318"]["detector_below_threshold"])              # Q2 FAIL ...
+        self.assertIn(by["4318"]["q1"], ("NORMAL", "ABNORMAL"))              # ... and still assessed for Q1/Q3
+        self.assertEqual(by["4318"]["category"], "detector_health")
+        self.assertTrue(by["4327"]["approach_hasgreen_0"])
+        self.assertTrue(by["4330"]["no_current_cycle_length"])
+        self.assertEqual(summary["data_checks"]["detector_below_threshold"]["sites"],
+                         sum(r["detector_below_threshold"] for r in rows))
+        self.assertEqual(sum(summary["results_each_question_alone"]["category"].values()), 20)

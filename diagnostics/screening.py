@@ -208,7 +208,8 @@ def classify(q2: dict, q1: dict | None, q3: dict | None) -> tuple[str, list[str]
 
 
 # ---------------------------------------------------------------------- network
-def screen(source, settings, baseline: dict, period: Period, network: list[dict] | None = None) -> dict:
+def screen(source, settings, baseline: dict, period: Period, network: list[dict] | None = None,
+           independent: bool = False) -> dict:
     """Screen every site. `network` (optional) is the host's own site list:
     [{site, name, lat, lon, detectors: [numbers], links: [{link, street}]}]; without it the source is read.
     A site that fails to process is reported in `errors` and does not stop the run."""
@@ -263,7 +264,11 @@ def screen(source, settings, baseline: dict, period: Period, network: list[dict]
                         "notes": caution_notes(q1, q3, category),
                         "selectable": rules["click"].get(category, []), "q2": q2, "q1": q1, "q3": q3,
                         "total_volume_veh_h": total_volume(q1),
-                        **({"if_detectors_passed": shadow} if shadow else {})})
+                        **({"if_detectors_passed": shadow} if shadow else {}),
+                        # analysis only (local/independent.py): every check for every site, without the Q2 gate
+                        **({"independent": {"q1": q1_all, "q3": q3_all, "detectors": len(detectors.get(site, [])),
+                                            "links": len(links.get(site, [])),
+                                            "perf_records_now": len(green.get(site, {}))}} if independent else {})})
     counts = defaultdict(int)
     for r in results:
         counts[r["category"]] += 1

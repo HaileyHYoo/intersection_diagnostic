@@ -12,6 +12,7 @@
     python main.py contract-check [--run ID]         validate a stored run against the production contract
     python main.py examples [--run ID | --end ...]   example outputs per category (Markdown + HTML) for review
     python main.py queue-probe --site 719 --end 2026-11-02T15:30   which TomTom queue-archive request works
+    python main.py stats --end 2026-10-30T15:30      every check counted on its own for every site (no gates), JSON + CSV
     python main.py export-run --run ID               the run's screening log and baseline snapshot as plain JSON files
     python main.py kpi-check --site 707 --end 2026-10-30T15:30 [--references 3]   every stored PerfKpi/PerfApproach field
     python main.py site-history --site 4397 --from 2026-10-01 --to 2026-10-31   categories over screened periods
@@ -349,6 +350,16 @@ def cmd_export_run(args):
     return 0
 
 
+def cmd_stats(args):
+    from diagnostics.local import independent
+    svc = make_service(args, fake=args.fake)
+    summary, rows = independent.run(svc, args.end)
+    print(independent.text(summary))
+    stamp = svc.period(args.end).key.replace(":", "")
+    for path in independent.save(summary, rows, args.out_dir, stamp):
+        print("Saved:", path)
+
+
 def cmd_kpi_check(args):
     from diagnostics.local import inspect_data
     from diagnostics.settings import Settings
@@ -485,6 +496,13 @@ def main(argv=None) -> int:
     p.add_argument("--run")
     p.add_argument("--out-dir", default=str(ROOT / "out"))
     p.set_defaults(func=cmd_export_run)
+
+    p = sub.add_parser("stats", help="every check counted on its own for every site (no gates)")
+    p.add_argument("--end", help="period end (default: the latest completed period)")
+    p.add_argument("--fake", action="store_true", help="use the synthetic network")
+    p.add_argument("--sites", type=int, default=48, help=argparse.SUPPRESS)
+    p.add_argument("--out-dir", default=str(ROOT / "out"))
+    p.set_defaults(func=cmd_stats)
 
     p = sub.add_parser("kpi-check", help="every stored IntersectionPerfKpi / IntersectionPerfApproach field for a site")
     p.add_argument("--site", required=True)
