@@ -104,12 +104,13 @@ def audit_q1(svc, baseline, period, sites, links, perf_now, tomtom) -> dict:
 
 
 # ---------------------------------------------------------------------- 2. Q2 detectors
-def audit_q2(svc, period, refs, sites, detectors) -> dict:
+def audit_q2(svc, period, refs, sites, detectors, run_sites: dict | None = None) -> dict:
     rules = svc.settings.rules
     m = Measures(svc.source, rules, svc.settings.schema)
     window = rules["q2"]["window_minutes"]
     now = m.detector_totals(period, window)
     fields_extra, active_missing = [], []
+    extra_sites, missing_sites = set(), set()
     low = {}                                                     # (site, detector) -> count now
     for site in sites:
         active = {d["detector"] for d in detectors.get(site, []) if d["active"]}
@@ -118,8 +119,10 @@ def audit_q2(svc, period, refs, sites, detectors) -> dict:
         extra = sorted(d for d, t in present.items() if d not in active and t["records"] and t["total"] > 0)
         if missing:
             active_missing.append(f"{site}: d{missing[:4]}")
+            missing_sites.add(site)
         if extra:
             fields_extra.append(f"{site}: d{extra[:4]}")
+            extra_sites.add(site)
         gate = screening.q2_gate(detectors.get(site, []), present, rules)
         for r in gate["detectors"]:
             if r["status"] == screening.FAIL:
@@ -133,7 +136,7 @@ def audit_q2(svc, period, refs, sites, detectors) -> dict:
             if t and t["records"] == t["expected"]:
                 hist[(site, det)].append(t["total"])
     minimum = rules["q2"]["min_vehicles"]
-    kinds, ex = Counter(), defaultdict(list)
+    kinds, ex, kind_of = Counter(), defaultdict(list), {}
     for key, count in low.items():
         values = hist.get(key, [])
         usual = median(values) if len(values) >= 3 else None
@@ -146,8 +149,29 @@ def audit_q2(svc, period, refs, sites, detectors) -> dict:
         else:
             kind = "below the threshold now, usually above it: unusual low count"
         kinds[kind] += 1
+        kind_of[key] = kind
         ex[kind].append(f"{key[0]} d{key[1]}: {count:.0f} now, usual {usual if usual is None else round(usual)} "
                         f"({len(values)} weeks)")
+    # the two groups the methodology owner asked about: one low-count detector (screened) and Detector Health
+    groups = {}
+    run_sites = run_sites or {}
+    for name, members in (
+            ("one low-count detector, screened (tolerated)", [k for k, s in run_sites.items() if s["q2"].get("tolerated")]),
+            ("Detector Health Issue (two or more)", [k for k, s in run_sites.items() if s["category"] == "detector_health"])):
+        dets = [(site, det) for (site, det) in kind_of if site in set(members)]
+        per_site = defaultdict(set)
+        for key in dets:
+            per_site[key[0]].add(kind_of[key])
+        groups[name] = {
+            "sites": len(members),
+            "low_count_detectors_by_type": dict(Counter(kind_of[k] for k in dets).most_common()),
+            "sites_whose_low_detectors_are_all_low_volume_movements": sum(
+                1 for v in per_site.values() if v == {"low-volume movement: usually below the threshold too"}),
+            "sites_with_a_possible_fault_or_unusual_low_count": sum(
+                1 for v in per_site.values() if any(x.startswith(("zero now", "below the threshold now")) for x in v)),
+            "sites_with_a_counting_field_not_in_neo4j": len(set(members) & extra_sites),
+            "sites_with_an_active_detector_without_record": len(set(members) & missing_sites),
+            "examples": _ex(f"{site}: " + "; ".join(sorted(per_site[site])) for site in members if site in per_site)}
     return {
         "source": "scats/volume fields d[n], n = Neo4j Detector.detector_number (active, BELONG_TO); 60-minute count "
                   "of the valid 5-minute records; missing records are INSUFFICIENT DATA, never zero",
@@ -156,6 +180,7 @@ def audit_q2(svc, period, refs, sites, detectors) -> dict:
         "counting_field_without_neo4j_detector": len(fields_extra),
         "examples_counting_field_without_detector": _ex(fields_extra),
         "low_count_detectors": len(low), "low_count_detector_types": dict(kinds.most_common()),
+        "by_group": groups,
         "examples": {k: _ex(v) for k, v in ex.items()},
         "types": {"low-volume movement": "operation – the detector is usually below 10 vehicles in this hour",
                   "possible detector fault / unusual low count": "data – to check with the detector owner",
@@ -164,8 +189,9 @@ def audit_q2(svc, period, refs, sites, detectors) -> dict:
 
 
 # ---------------------------------------------------------------------- 3. Q3A/Q3B cycle KPIs
-def audit_kpi(kpi_rows: dict, period, site_tag: str, network: set) -> dict:
+def audit_kpi(kpi_rows: dict, period, site_tag: str, network: set, labels: dict | None = None) -> dict:
     formula_bad, empty, zero_cycle = Counter(), Counter(), Counter()
+    empty_by_week = defaultdict(set)
     seen_empty = defaultdict(set)
     ex = defaultdict(list)
     for pkey, rows in kpi_rows.items():
@@ -182,6 +208,7 @@ def audit_kpi(kpi_rows: dict, period, site_tag: str, network: set) -> dict:
                 if f.get("TotalVolume") == 0 and f.get("AvgCycle") not in (None, 0):
                     empty[role] += 1
                     seen_empty[role].add(site)
+                    empty_by_week[(labels or {}).get(pkey, pkey)].add(site)
                     ex["empty"].append(f"{site} {stamp[:16]}: AvgCycle {f.get('AvgCycle')}, CycleStability "
                                        f"{f.get('CycleStability')}, TotalVolume 0")
                 if f.get("AvgCycle") == 0:
@@ -194,6 +221,7 @@ def audit_kpi(kpi_rows: dict, period, site_tag: str, network: set) -> dict:
             "records_not_matching_the_stability_formula": dict(formula_bad),
             "records_with_a_cycle_but_total_volume_0": dict(empty),
             "records_with_avg_cycle_0": dict(zero_cycle),
+            "sites_with_a_cycle_but_total_volume_0_by_week": {k: len(v) for k, v in empty_by_week.items()},
             "examples": {k: _ex(v) for k, v in ex.items()},
             "types": {"formula mismatch": "implementation/data – stored stability not equal to (1 - CV/0.20)*100",
                       "cycle with TotalVolume 0": "data – a record with a cycle but no volume (possible empty record); "
@@ -305,6 +333,119 @@ def audit_q3c(perf_rows: dict, period, run_sites: dict, feed: dict) -> dict:
         "change_at_least_30pp": dict(large.most_common()), "examples_large_change": {k: _ex(v) for k, v in large_ex.items()}}
 
 
+# ---------------------------------------------------------------------- 7. history coverage per reference week
+def _quarter(t, late: bool):
+    t = to_utc(t if isinstance(t, datetime) else datetime.fromisoformat(str(t)))
+    q = t.replace(minute=t.minute - t.minute % 15, second=0, microsecond=0)
+    from datetime import timedelta
+    return q if late or q == t else q + timedelta(minutes=15)
+
+
+def _complete(rows, feed, ends, late, link: bool) -> int:
+    """Sites (or site-links) with a usable value in every quarter-hour of the period."""
+    tag, ltag = feed["site_tag"], feed.get("link_tag")
+    got = defaultdict(lambda: defaultdict(dict))
+    for r in rows:
+        key = (ids.site(r.get(tag)),) + ((ids.link(r.get(ltag)),) if link else ())
+        got[key][_quarter(r["time"], late)][r["field"]] = r["value"]
+    ok = 0
+    for per in got.values():
+        if link:
+            ok += all(per.get(e, {}).get("HasGreen") == 1 and isinstance(per.get(e, {}).get("GreenShare"), (int, float))
+                      for e in ends)
+        else:
+            ok += all(isinstance(per.get(e, {}).get("AvgCycle"), (int, float)) and
+                      isinstance(per.get(e, {}).get("CycleStability"), (int, float)) for e in ends)
+    return ok
+
+
+def audit_history_coverage(source, settings, period, refs, kpi_rows, perf_rows) -> dict:
+    """Per week (analysis period and reference weeks): sites with both quarter-hours of cycle KPIs, and approaches
+    with valid green in both, with the records the screening uses (:22 and :37 for 15:00-15:30) and with those it
+    used before the timing fix (:07 and :22). A week that loses many sites after the fix has a data gap in its
+    last quarter-hour (e.g. a Friday afternoon gap starting around 15:30)."""
+    feeds = settings.schema["influx"]["sources"]
+    old_kpi = _raw_by_period(source, "site_kpi", [period] + refs, False)
+    old_perf = _raw_by_period(source, "approach_perf", [period] + refs, False)
+    rows = []
+    for p in [period] + refs:
+        ends = [to_utc(e) for e in p.interval_ends(15)]
+        rows.append({"week": p.label().split(" (")[0], "role": "analysis" if p is period else "reference",
+                     "kpi_sites_now": _complete(kpi_rows[p.key], feeds["site_kpi"], ends, True, False),
+                     "kpi_sites_before_fix": _complete(old_kpi[p.key], feeds["site_kpi"], ends, False, False),
+                     "green_approaches_now": _complete(perf_rows[p.key], feeds["approach_perf"], ends, True, True),
+                     "green_approaches_before_fix": _complete(old_perf[p.key], feeds["approach_perf"], ends, False, True)})
+    return {"per_week": rows,
+            "reading": "a reference week whose counts are much lower 'now' than 'before fix' has a gap in its last "
+                       "quarter-hour of records; a week near zero for green approaches has no valid HasGreen yet. "
+                       "Each lost week lowers the history of many sites below the 5-week minimum."}
+
+
+# ---------------------------------------------------------------------- 8. Q1 volume mapping cross-check
+def audit_volume_match(source, settings, period, perf_rows_now) -> dict:
+    """Per approach link: the Platform's PerfApproach Volume against the 15-minute link volume of the same
+    quarter-hour. Both should describe the same approach; a link where they disagree in both quarter-hours by
+    more than half (and 20 vehicles) is a candidate for a wrong detector-group or approach mapping."""
+    feeds = settings.schema["influx"]["sources"]
+    vol = defaultdict(dict)
+    for r in source.raw("link_volume", period.start, period.end, None):
+        vol[ids.link(r.get(feeds["link_volume"]["link_tag"]))][to_utc(r["time"]).replace(second=0, microsecond=0)] = r["value"]
+    perf = defaultdict(dict)
+    f = feeds["approach_perf"]
+    for r in perf_rows_now:
+        if r["field"] == "Volume" and isinstance(r["value"], (int, float)):
+            perf[(ids.site(r.get(f["site_tag"])), ids.link(r.get(f["link_tag"])))][_quarter(r["time"], True)] = r["value"]
+    compared, kinds, ex = 0, Counter(), defaultdict(list)
+    ends = [to_utc(e) for e in period.interval_ends(15)]
+    for (site, link), per in perf.items():
+        pairs = [(per.get(e), vol.get(link, {}).get(e)) for e in ends]
+        if any(a is None or b is None for a, b in pairs):
+            continue
+        compared += 1
+        if all(b >= 20 and a == 0 for a, b in pairs):
+            kind = "Platform approach volume 0 while the link has traffic"
+        elif all(a >= 20 and b == 0 for a, b in pairs):
+            kind = "link volume 0 while the Platform approach has traffic"
+        elif all(abs(a - b) > max(0.5 * max(a, b), 20) for a, b in pairs):
+            kind = "volumes differ by more than half in both quarter-hours"
+        else:
+            continue
+        kinds[kind] += 1
+        ex[kind].append(f"{site} {link}: Platform {', '.join(f'{a:.0f}' for a, _ in pairs)} vs link "
+                        f"{', '.join(f'{b:.0f}' for _, b in pairs)}")
+    return {"approach_links_compared": compared, "candidates": dict(kinds.most_common()),
+            "examples": {k: _ex(v) for k, v in ex.items()},
+            "type": "mapping – to check with the data owner: the detector group of the link or the approach's detectors"}
+
+
+# ---------------------------------------------------------------------- 9. Q3C sensitivity
+def audit_q3c_sensitivity(run_sites: dict) -> dict:
+    sites, appr = Counter(), Counter()
+    by_n, margin = defaultdict(Counter), Counter()
+    for s in run_sites.values():
+        ps = ((s.get("q3") or {}).get("components") or {}).get("phase_service")
+        if not ps:
+            continue
+        sites[ps["status"]] += 1
+        for a in ps["approaches"]:
+            if a["status"] == INSUFFICIENT:
+                continue
+            appr[a["status"]] += 1
+            by_n[a.get("n_history")][a["status"]] += 1
+            if a["status"] != "NORMAL":
+                bound = a["p_low"] if a["current"] < a["p_low"] else a["p_high"]
+                d = abs(a["current"] - bound)
+                margin["< 1 pp outside the range" if d < 1 else "1-5 pp" if d < 5 else ">= 5 pp"] += 1
+    assessed = sites.get("ABNORMAL", 0) + sites.get("NORMAL", 0)
+    return {"sites": dict(sites), "share_abnormal_of_assessed_sites": round(sites.get("ABNORMAL", 0) / assessed, 3)
+            if assessed else None,
+            "approaches_assessed": dict(appr),
+            "approach_status_by_weeks_of_history": {str(k): dict(v) for k, v in sorted(by_n.items(), key=lambda x: x[0] or 0)},
+            "abnormal_approaches_by_distance_outside_the_range": dict(margin),
+            "reading": "with 5-6 weeks the 10th-90th range is close to the minimum and maximum of the history, and a site "
+                       "is abnormal when any approach is outside it; the methodology adds no materiality threshold"}
+
+
 # ---------------------------------------------------------------------- 6. quarter-hour of the :07/:22 records
 def audit_timing(source, settings, period) -> dict:
     """PerfApproach records carry the approach Volume. Compared with the 15-minute link volumes (stamped at the
@@ -396,11 +537,15 @@ def run(svc, end: str | None, run_id: str | None = None) -> dict:
     return {"period": period.label(), "run": run_id, "reference_periods": [p.label() for p in refs],
             "reference_utc": [f"{to_utc(p.start):%Y-%m-%d %H:%M}Z" for p in refs], "skipped_days": skipped,
             "q1": audit_q1(svc, baseline, period, sites, links, perf_now, tomtom),
-            "q2": audit_q2(svc, period, refs, sites, detectors),
-            "q3ab": audit_kpi(kpi_rows, period, feeds["site_kpi"]["site_tag"], set(sites)),
+            "q2": audit_q2(svc, period, refs, sites, detectors, run_sites),
+            "q1_volume_match": audit_volume_match(source, settings, period, perf_rows[period.key]),
+            "q3ab": audit_kpi(kpi_rows, period, feeds["site_kpi"]["site_tag"], set(sites),
+                              {p.key: p.label().split(" (")[0] for p in [period] + refs}),
             "q3c": audit_q3c(perf_rows, period, run_sites, feeds["approach_perf"]),
             "classification": audit_classification(run_sites),
-            "timing": audit_timing(source, settings, period)}
+            "timing": audit_timing(source, settings, period),
+            "history_coverage": audit_history_coverage(source, settings, period, refs, kpi_rows, perf_rows),
+            "q3c_sensitivity": audit_q3c_sensitivity(run_sites)}
 
 
 def markdown(a: dict) -> str:
@@ -410,12 +555,19 @@ def markdown(a: dict) -> str:
     for key, title in (("q1", "1. Q1 – traffic volume and approach mapping"), ("q2", "2. Q2 – detectors"),
                        ("q3ab", "3. Q3A/Q3B – cycle length and stability"), ("q3c", "4. Q3C – phase service"),
                        ("classification", "5. Classification and evidence"),
-                       ("timing", "6. Which quarter-hour the PerfKpi/PerfApproach records describe")):
+                       ("timing", "6. Which quarter-hour the PerfKpi/PerfApproach records describe"),
+                       ("history_coverage", "7. History coverage per reference week"),
+                       ("q1_volume_match", "8. Q1 – Platform approach volume against link volume (mapping candidates)"),
+                       ("q3c_sensitivity", "9. Q3C – how often an assessable site is abnormal")):
         out += [f"## {title}", ""]
         for k, v in a[key].items():
             if isinstance(v, dict):
                 out.append(f"- **{k}**" + ("" if v else ": none"))
                 out += [f"  - {kk}: {vv if vv not in ({}, []) else 'none'}" for kk, vv in v.items()]
+            elif isinstance(v, list) and v and isinstance(v[0], dict):
+                cols = list(v[0])
+                out += [f"- **{k}**", "", "| " + " | ".join(cols) + " |", "|" + "---|" * len(cols)]
+                out += ["| " + " | ".join(str(r[c]) for c in cols) + " |" for r in v] + [""]
             elif isinstance(v, list):
                 out.append(f"- **{k}**: " + ("; ".join(map(str, v)) or "none"))
             else:

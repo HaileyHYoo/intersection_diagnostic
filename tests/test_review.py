@@ -275,6 +275,12 @@ class AuditTests(unittest.TestCase):
         self.assertIn("no phase information for the whole site now (empty records)", a["q3c"]["grey_no_green_approaches"])
         self.assertTrue(a["classification"]["examples"]["grey (reasons kept)"])
         self.assertIn("## 4. Q3C – phase service", audit.markdown(a))
+        weeks = a["history_coverage"]["per_week"]
+        self.assertEqual(len(weeks), 9)                                   # the analysis period and 8 reference weeks
+        self.assertEqual(weeks[0]["kpi_sites_now"], weeks[0]["kpi_sites_before_fix"])   # on-grid fake stamps
+        self.assertEqual(a["q2"]["by_group"]["Detector Health Issue (two or more)"]["sites"], 1)
+        self.assertIn("share_abnormal_of_assessed_sites", a["q3c_sensitivity"])
+        self.assertIn("| week | role |", audit.markdown(a))
 
     def test_q1_table_lists_approaches_not_assessed(self):
         from diagnostics.report import evidence_tables
