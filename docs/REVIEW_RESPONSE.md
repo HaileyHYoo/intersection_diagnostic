@@ -1,13 +1,14 @@
 # Intersections Diagnostics V1 – response to the review of run eebc0b2964f4
 
 Period reviewed: **Fri 30 Oct 2026 15:00–15:30 (Melbourne)**, region AU-VIC-Melbourne, 2,501 signalised sites.
-Re-run after the changes: **b77b122afab4** (same period, same data, same baseline).
+Final run after the changes: **5065b14ac8a7** (same period, same data, same baseline).
 
-| | Red | Amber traffic | Amber signal | Normal | Grey | Detector Health |
+| Run | Red | Amber traffic | Amber signal | Normal | Grey | Detector Health |
 |---|---|---|---|---|---|---|
-| b77b122afab4 (after the changes) | 65 | 467 | 52 | 435 | 790 | 692 |
+| b77b122afab4 – after the fixes (items 1–8) | 65 | 467 | 52 | 435 | 790 | 692 |
+| **5065b14ac8a7 – final, also with decision (B): one failing detector tolerated** | **76** | **556** | **61** | **515** | **950** | **343** |
 
-Two re-runs (651303f563f6, b77b122afab4) gave identical counts; the screening is reproducible.
+Repeated runs gave identical counts; the screening is reproducible. Items 2 and 3 answer your questions on the 790 Grey and 692 Detector Health sites of the reviewed period (run b77b122afab4); the other figures are from the final run.
 
 ## 1. Attachments
 
@@ -15,12 +16,13 @@ Two re-runs (651303f563f6, b77b122afab4) gave identical counts; the screening is
 |---|---|---|
 | `export_eebc0b2964f4/screening_log.json` | The complete JSON screening log of the run you reviewed (methodology §18.3) | As originally produced, before the changes below |
 | `export_eebc0b2964f4/baseline_snapshot.json` | The historical baseline used by that run (§18.4): reference value, 10th/90th percentiles and number of observations per site, approach and measure | Friday 15:00 slot, weeks 2026-W44; identical file for both runs |
-| `export_b77b122afab4/screening_log.json`, `baseline_snapshot.json` | The same after the changes | Use this one for the figures in this note |
-| `summary_b77b122afab4.json` | Breakdown of every category; section `review` answers the questions below | |
+| `export_5065b14ac8a7/screening_log.json`, `baseline_snapshot.json` | The same for the final run | Use this one for the figures in this note. The snapshot now holds every site's approaches, whatever its category |
+| `summary_5065b14ac8a7.json` | Breakdown of every category; section `review` answers the questions below | |
+| `stats_2026-10-30T043000Z.json` / `.csv` | Every check counted on its own for every site, without the screening's gates (one CSV row per site) | Definitions in `STATS_DEFINITIONS.md` |
 | `kpi_check_707.json`, `kpi_check_976.json` | Every stored IntersectionPerfKpi / IntersectionPerfApproach field per quarter-hour (976: analysis period; 707: analysis period and three reference weeks) | Raw values behind items 4 and 5 |
-| `examples_b77b122afab4.html` (and `.md`) | Example outputs per category; full Red reports for SCATS 4566, 4564 and 774 | Shows the new report layout |
+| `examples_5065b14ac8a7.html` (and `.md`) | Example outputs per category; full Red reports for SCATS 4566, 4564 and 774 | Shows the new report layout |
 
-**Independent check of the log and the snapshot.** Every Q2, Q1, Q3A, Q3B, Q3C result, the two-of-three rule and every category were recomputed from the values stored in the log: 0 differences in 2,501 sites. All 11,759 baseline values quoted in the log equal the snapshot (reference, 10th and 90th percentiles, number of observations); none is missing, none is NaN.
+**Independent check of the log and the snapshot.** Every Q2, Q1, Q3A, Q3B, Q3C result, the two-of-three rule and every category were recomputed from the values stored in the log: 0 differences in 2,501 sites. All 14,044 baseline values quoted in the log equal the snapshot (reference, 10th and 90th percentiles, number of observations); none is missing, none is NaN.
 
 ## 2. Priority 1 – Screening accuracy
 
@@ -36,13 +38,15 @@ Two re-runs (651303f563f6, b77b122afab4) gave identical counts; the screening is
 | Q1 (an approach without volume history) | 10 |
 | Approach without green together with fewer than two Q3 measures | 1 |
 
-*Missing data versus a legitimate zero green.* All 210 approaches without green have HasGreen = 0 **recorded** in both quarter-hours, 204 with GreenShare 0; they are recorded zeros, not missing records. Six have HasGreen = 0 with GreenShare above 0 (inconsistent records). In all 159 "no green only" sites, Q3A and Q3B are assessable. Under the alternatives in decision (A) below, the 160 Grey sites with an approach without green (159 for that reason alone, one also lacking Q3 measures) would become: (a) Normal 83, Amber 64, Red 12, Grey 1; (b) Normal 82, Amber 65, Red 12, Grey 1.
+After decision (B) the 950 Grey sites of the final run are: Q2 not assessable 282 (252 / 20 / 10), no current KPI value 455, only an approach without green 201, Q1 or a combination 12.
 
-**3. Detector Health (692).** 349 sites fail on a single detector (200 at 5–9 vehicles in 60 minutes, 77 at 1–4, 72 at 0); 304 on several detectors with some counts above 0; 39 on several detectors all at 0. Had the gate passed: Red 34, Amber 248, Normal 169, Grey 241. Of the 239 sites failing only on one detector with 1–9 vehicles while every other detector passed: Red 10, Amber 83, Normal 65, Grey 81. A threshold of 5 vehicles would let 365 sites through (22 Red); a threshold of 1 (only zero counts fail) 516 (29 Red). The gate does exclude otherwise assessable intersections.
+*Missing data versus a legitimate zero green.* All 210 approaches without green have HasGreen = 0 **recorded** in both quarter-hours, 204 with GreenShare 0; they are recorded zeros, not missing records. Six have HasGreen = 0 with GreenShare above 0 (inconsistent records). In all 159 "no green only" sites, Q3A and Q3B are assessable. In the final run, 202 Grey sites have an approach without green (201 for that reason alone; 260 approaches, all recorded HasGreen = 0, 8 of them with GreenShare above 0); under the alternatives in decision (A) they would become: (a) Normal 103, Amber 84, Red 14, Grey 1; (b) Normal 102, Amber 85, Red 14, Grey 1.
 
-**4. Q3C green share.** GreenShare is the share of the cycle in which the approach has green, not a split of the cycle between approaches: approaches served in several phases overlap, so the sum over a site's approaches is not 100 % (976: 200 %; 707: about 190 %). 185 approaches are at 100 % (60 abnormal, 13 normal, 112 without enough history); 318 changed by 30 percentage points or more, all but three abnormal; no approach has a zero-width range. Two data limitations: (i) before about 20 Oct 2026 the records have HasGreen = 0 and GreenShare 0 on every approach while the cycle runs (707 on 16 Oct; 994), so 4,719 of 7,302 phase-service reference values cannot be formed yet and 1,045 of 1,579 assessed sites cannot assess Q3C; (ii) at 707 the phase-to-approach mapping looks wrong (Kendall Road [W] 70–75 % green with zero volume; Ringwood–Warrandyte Road [S] never green; an unnamed link identical to Ringwood–Warrandyte Road [N]). The comparison with raw SCATS phase timing (`site_phase`) has not been done.
+**3. Detector Health (692).** 349 sites fail on a single detector (200 at 5–9 vehicles in 60 minutes, 77 at 1–4, 72 at 0); 304 on several detectors with some counts above 0; 39 on several detectors all at 0. Had the gate passed: Red 34, Amber 248, Normal 169, Grey 241. Of the 239 sites failing only on one detector with 1–9 vehicles while every other detector passed: Red 10, Amber 83, Normal 65, Grey 81. A threshold of 5 vehicles would let 365 sites through (22 Red); a threshold of 1 (only zero counts fail) 516 (29 Red). The gate does exclude otherwise assessable intersections. **Decided (5 Nov 2026):** one failing detector is now tolerated (see (B) below); the 343 remaining Detector Health sites all have two or more failing detectors.
 
-**5. Cycle Stability.** The data show CycleStability = max(0, 100 − 5 × CycleCvPct) (976: CV 4.502 → 77.492, CV 2.800 → 85.998). The 0 at 707 is a genuine measurement (CV 38.9 % and 44.5 %), but every CV of 20 % or more reads 0. Four sites read 0. Of the 236 stability abnormals, 54 are within 2 % of the 10th percentile, 38 are less than 5 % below usual and 25 have a usual value of 100 (Q3B has no minimum-difference condition, unlike Q3A's 10 %). Fifteen cycle-length abnormals differ from usual by only 10–12 %. Of the 65 Red sites, 50 are Red through Cycle Stability and phase service together.
+**4. Q3C green share.** GreenShare is the share of the cycle in which the approach has green, not a split of the cycle between approaches: approaches served in several phases overlap, so the sum over a site's approaches is not 100 % (976: 200 %; 707: about 190 %). In the final run 221 approaches are at 100 % (74 abnormal, 14 normal, 133 without enough history); 379 changed by 30 percentage points or more, all but three abnormal; no approach has a zero-width range. Two data limitations: (i) before about 20 Oct 2026 the records have HasGreen = 0 and GreenShare 0 on every approach while the cycle runs (707 on 16 Oct; 994), so 4,719 of 7,302 phase-service reference values cannot be formed yet and 1,234 of 1,876 screened sites cannot assess Q3C; (ii) at 707 the phase-to-approach mapping looks wrong (Kendall Road [W] 70–75 % green with zero volume; Ringwood–Warrandyte Road [S] never green; an unnamed link identical to Ringwood–Warrandyte Road [N]). The comparison with raw SCATS phase timing (`site_phase`) has not been done.
+
+**5. Cycle Stability.** The data show CycleStability = max(0, 100 − 5 × CycleCvPct) (976: CV 4.502 → 77.492, CV 2.800 → 85.998). The 0 at 707 is a genuine measurement (CV 38.9 % and 44.5 %), but every CV of 20 % or more reads 0. This matches the KPI definition, Score = (1 − CV/0.20) × 100 floored at 0, with CV the coefficient of variation of ActiveCycleLength in each 15-minute window. Four sites read 0. Of the 284 stability abnormals in the final run, 61 are within 2 % of the 10th percentile, 42 are less than 5 % below usual and 37 have a usual value of 100 (Q3B has no minimum-difference condition, unlike Q3A's 10 %). Eighteen cycle-length abnormals differ from usual by only 10–12 %. Of the 76 Red sites, 57 are Red through Cycle Stability and phase service together. The 30-minute value is the mean of the two stored 15-minute scores, for the current period and the history alike; it can differ from a score computed over all cycles of the 30 minutes when the two quarter-hours differ strongly.
 
 ## 3. Priority 2 – Diagnostic reporting
 
@@ -57,24 +61,24 @@ Two re-runs (651303f563f6, b77b122afab4) gave identical counts; the screening is
 ## 4. Decisions requested
 
 - **(A) Approach without green.** Keep "site Grey", or (a) treat the approach as not assessable, or (b) treat a recorded HasGreen = 0 as a measured 0 % green share. We suggest (b): it follows the rule already used in Q2 (a missing record is not a zero; a recorded zero is a measurement).
-- **(B) Detector gate – decided (5 Nov 2026).** A site where only one active detector is below 10 vehicles in 60 minutes is now screened instead of being a Detector Health Issue; two or more such detectors remain a Detector Health Issue, and missing records are unchanged. The tolerated detector is shown as a note. Re-run as **1cc97cbae26d** (same period and data): the 349 single-detector sites leave Detector Health (Red 11, Amber 98, Normal 80, Grey 160), giving Red 76, Amber 617 (556 traffic, 61 signal), Normal 515, Grey 950 and Detector Health 343. The Grey sites among them have another detector with missing records, no current KPI value or an approach without green.
+- **(B) Detector gate – decided (5 Nov 2026).** A site where only one active detector is below 10 vehicles in 60 minutes is now screened instead of being a Detector Health Issue; two or more such detectors remain a Detector Health Issue, and missing records are unchanged. The tolerated detector is shown as a note. In the final run **5065b14ac8a7**: the 349 single-detector sites leave Detector Health (Red 11, Amber 98, Normal 80, Grey 160), giving Red 76, Amber 617 (556 traffic, 61 signal), Normal 515, Grey 950 and Detector Health 343. The Grey sites among them have another detector with missing records, no current KPI value or an approach without green.
 - **(C) Q3B.** Keep CycleStability (clamped at 0, no minimum difference) or use CycleCvPct (higher = poorer, not clamped), possibly with a minimum difference as in Q3A.
-- **(D) Log sections.** `traffic_abnormalities` and `signal_abnormalities` also list Grey sites with an abnormal finding (247 and 16), each marked with its category. Keep, or list Amber and Red only?
+- **(D) Log sections.** `traffic_abnormalities` and `signal_abnormalities` also list Grey sites with an abnormal finding (298 and 21), each marked with its category. Keep, or list Amber and Red only?
 
 ## 5. Other observations
 
-- **History is at the minimum.** The baseline uses 7 reference weeks (2026-09-25 excluded as a public holiday), but no value has more than 6 observations: 9,843 of 20,115 values have exactly 5, the minimum, and 4,806 fewer. Gaps in the Friday afternoon records (e.g. 2 and 9 Oct) are not replaced, as agreed, so one more gap would make many sites Grey.
-- **Low-volume approaches.** Of 1,058 abnormal approach volumes, 34 have a usual value below 20 vehicles in 30 minutes and 22 differ from usual by fewer than 5 vehicles.
+- **History is at the minimum.** The baseline uses 7 reference weeks (2026-09-25 excluded as a public holiday), but no value has more than 6 observations: 10,182 of 20,686 values have exactly 5, the minimum, and 4,815 fewer. Gaps in the Friday afternoon records (e.g. 2 and 9 Oct) are not replaced, as agreed, so one more gap would make many sites Grey.
+- **Low-volume approaches.** Of 1,283 abnormal approach volumes, 47 have a usual value below 20 vehicles in 30 minutes and 30 differ from usual by fewer than 5 vehicles.
 - **Reference speed coverage.** Some links have a current speed but too few reference weeks with speed samples, so their reference is shown as "-" with the number of weeks (e.g. SCATS 4566: no TomTom speed record for any of its links on Fri 23 Oct 15:00–15:30; two links have none in any reference week). This is a gap in the speed feed, not an estimate.
 - **Snapshot scope.** The snapshot also holds cycle values for 891 sites with KPI data that are not in the screened network; they are not used.
 
 ## 6. Data issues raised with the data owners
 
-- IntersectionPerfKpi has no current value at about 390 sites that passed Q2 (coverage).
-- IntersectionPerfApproach before about 20 Oct: HasGreen = 0 and GreenShare 0 on every approach; six records with HasGreen = 0 and GreenShare > 0.
+- IntersectionPerfKpi has no current value at 455 screened sites (596 network-wide): coverage of the KPI product.
+- IntersectionPerfApproach before about 20 Oct: HasGreen = 0 and GreenShare 0 on every approach; eight records with HasGreen = 0 and GreenShare > 0.
 - Link-to-approach mapping at 707; unnamed `STNA…` links in Neo4j (e.g. 707, 983); site 4705 has no name.
 - TomTom mapping file at 4566: two TomTom approaches mapped to the same link (WILLH6X4J54X); the other William Street [N] link has none.
 
 ## 7. Next steps
 
-Apply decisions (A)–(D); re-run the period and the following weeks; repeat the Q3C checks in late November, when five weeks of valid green-share history exist; compare Q3C with raw `site_phase` timing if required.
+Confirm the quarter-hour that the PerfKpi/PerfApproach records stamped at :07/:22 describe (being checked against the 15-minute link volumes); apply decisions (A), (C) and (D); re-run the period and the following weeks; repeat the Q3C checks in late November, when five weeks of valid green-share history exist; compare Q3C with raw `site_phase` timing if required.
