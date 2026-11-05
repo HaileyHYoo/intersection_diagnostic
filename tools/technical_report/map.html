@@ -1,0 +1,42 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;font:13px Calibri,Arial,sans-serif;color:#1d2433;background:#fff}
+.wrap{display:flex;gap:14px;padding:16px;align-items:stretch;width:1240px}
+.col{display:flex;flex-direction:column;gap:8px;flex:1}
+.h{font-weight:bold;color:#fff;background:#1F3864;padding:6px 8px;border-radius:3px;text-align:center}
+.b{border:1px solid #9aa7c2;background:#f3f6fb;border-radius:4px;padding:6px 8px;line-height:1.3}
+.b b{color:#1F3864}.s{font-size:11px;color:#556}
+.arr{display:flex;align-items:center;font-size:30px;color:#1F3864}
+.red{border-color:#c0392b;background:#fdf1ef}.amb{border-color:#d68910;background:#fef7ea}
+</style></head><body><div class="wrap">
+<div class="col"><div class="h">Data sources</div>
+<div class="b"><b>Neo4j</b><div class="s">Intersection, Detector (BELONG_TO, active), Road (EGRESS link_id, street)</div></div>
+<div class="b"><b>InfluxDB scats/volume</b><div class="s">5-min detector counts d[n] → Q2</div></div>
+<div class="b"><b>scats-aggregation/volume</b><div class="s">15-min link volume by DetectorGroupId → Q1</div></div>
+<div class="b"><b>IntersectionPerfKpi</b><div class="s">AvgCycle, CycleStability → Q3A, Q3B</div></div>
+<div class="b"><b>IntersectionPerfApproach</b><div class="s">GreenShare, HasGreen per LinkId → Q3C</div></div>
+<div class="b"><b>TomTom</b><div class="s">IntersectionTurnKpi / IntersectionKpi (delay), Junction Analytics API (queue), mapping file → Q5</div></div>
+<div class="b"><b>aimes/speed</b><div class="s">TomTom link speed → supplementary</div></div>
+</div>
+<div class="arr">→</div>
+<div class="col"><div class="h">Level 1 – network screening (code only)</div>
+<div class="b"><b>Weekly baseline</b><div class="s">same weekday and 30 min, 8 weeks, holidays out; median, 10th–90th percentile, ≥ 5 weeks</div></div>
+<div class="b"><b>Q2 Detector health gate</b><div class="s">each active detector ≥ 10 veh in 60 min; one failing detector tolerated</div></div>
+<div class="b"><b>Q1 Traffic</b><div class="s">any evaluated approach outside range and ≥ 10 % from usual</div></div>
+<div class="b"><b>Q3 Signal operation</b><div class="s">Q3A cycle length · Q3B stability (poorer only) · Q3C phase service; 2 of 3 abnormal</div></div>
+<div class="b"><b>Classification</b><div class="s">Red · Amber traffic · Amber signal · Normal · Grey · Detector Health</div></div>
+</div>
+<div class="arr">→</div>
+<div class="col"><div class="h">Level 2 – click on a site</div>
+<div class="b red"><b>Red</b><div class="s">D001 (Q4) SCATS interpretation · D002 (Q5) TomTom road-user impact · link speed</div></div>
+<div class="b amb"><b>Amber</b><div class="s">saved Q1/Q3 evidence · link speed (no Q4/Q5)</div></div>
+<div class="b"><b>Other categories</b><div class="s">saved evidence and reasons</div></div>
+<div class="b"><b>LLM wording (optional)</b><div class="s">re-words the code's answer; rejected unless every number, link ID, approach, label and verdict is kept</div></div>
+</div>
+<div class="arr">→</div>
+<div class="col"><div class="h">Outputs and records</div>
+<div class="b"><b>Map layer</b><div class="s">categories, evidence, notes (production contract)</div></div>
+<div class="b"><b>Four-section report</b><div class="s">Diagnosis · Supporting Evidence · TomTom Road-User Impact · Suggested Engineering Checks</div></div>
+<div class="b"><b>Screening JSON log</b><div class="s">S3, once per completed run (§18.3)</div></div>
+<div class="b"><b>Baseline snapshot</b><div class="s">S3, per weekday and slot (§18.4)</div></div>
+<div class="b"><b>Audit record</b><div class="s">config, provenance, template IDs, who wrote each answer</div></div>
+</div></div></body></html>

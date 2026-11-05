@@ -5,3 +5,6 @@ __pycache__/
 out/
 .venv/
 archive/
+tools/technical_report/content.json
+tools/technical_report/toc.json
+tools/technical_report/report.*
