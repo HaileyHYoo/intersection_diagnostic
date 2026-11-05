@@ -12,7 +12,7 @@ const PAGE_W = 11906, MARGIN = 1134, TEXT_W = PAGE_W - 2 * MARGIN;   // A4, 2 cm
 // inline markup: **bold**, `code`, _italic_
 function runs(text, opts = {}) {
   const out = [];
-  const re = /(\*\*[^*]+\*\*|`[^`]+`|_[^_]+_)/g;
+  const re = /(\*\*[^*]+\*\*|`[^`]+`|(?<![A-Za-z0-9])_[^_]+_(?![A-Za-z0-9]))/g;   // _italic_ only between non-word characters, so data_latency_minutes stays as is
   let last = 0, m;
   while ((m = re.exec(text))) {
     if (m.index > last) out.push(new TextRun({ text: text.slice(last, m.index), ...opts }));
