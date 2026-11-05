@@ -164,7 +164,7 @@ class RuleTests(unittest.TestCase):
         class Source:
             def detector_counts(self, start, end, sites=None):
                 ends = period.interval_ends(5, 60)
-                return [{"site": "1", "detector": 1, "time": t - timedelta(minutes=2), "value": v}
+                return [{"site": "1", "detector": 1, "time": t + timedelta(minutes=3), "value": v}   # written 3 min later
                         for t, v in zip(ends, [19, -10] + [0] * 10)]
         totals = Measures(Source(), self.rules, Settings().schema).detector_totals(period, 60)["1"][1]
         self.assertEqual((totals["total"], totals["records"], totals["negatives"]), (19, 11, 1))
@@ -263,6 +263,27 @@ class LateRecordTests(unittest.TestCase):
         kpi, _ = Measures(Source(), settings.rules, settings.schema).site_kpi([period])
         self.assertEqual(kpi[period.key]["1"]["cycle_length"], 120.0)              # (110 + 130) / 2, not (100 + 110) / 2
         self.assertGreaterEqual(asked[0], period.end + timedelta(minutes=15))     # the query reaches the 15:37 record
+
+
+    def test_a_detector_record_stamped_03_is_the_five_minutes_that_ended_before_it(self):
+        """SCATS detector counts: 15:03 = 14:55-15:00, like the quarter-hour feeds."""
+        from datetime import timedelta
+        from diagnostics.measures import Measures
+        settings = Settings()
+        period = timewin.period_ending("2026-10-30T15:30", settings.rules)          # 60-min window 14:30-15:30
+        asked = []
+
+        class Source:
+            def detector_counts(self, start, end, sites=None):
+                asked.append((start, end))
+                first = period.end - timedelta(minutes=60)
+                rows = [{"site": "1", "detector": 1, "time": first + timedelta(minutes=3), "value": 100.0}]  # 14:25-14:30: outside
+                rows += [{"site": "1", "detector": 1, "time": t + timedelta(minutes=3), "value": 1.0}
+                         for t in period.interval_ends(5, 60)]                               # 14:33 ... 15:33
+                return rows
+        totals = Measures(Source(), settings.rules, settings.schema).detector_totals(period, 60)["1"][1]
+        self.assertEqual((totals["total"], totals["records"], totals["expected"]), (12.0, 12, 12))
+        self.assertGreaterEqual(asked[0][1], period.end + timedelta(minutes=5))     # the query reaches the 15:33 record
 
 
 class GreenShareNoiseTests(unittest.TestCase):

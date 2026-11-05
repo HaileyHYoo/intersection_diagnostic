@@ -52,7 +52,7 @@ python main.py inspect --site 4397 --end 2026-10-27T08:30 --hours 2
 
 **Results for site 4397, 30 Oct 2026 (UTC 01:30–03:30):**
 - confirmed: `d[n]` = detector number (1–8); detector counts are integers; the three EGRESS links have volume and green share; the 15-minute volumes are end-labelled; the TomTom mapping and queue archive work (3 approaches, 1 row per minute);
-- found: detector counts are stamped at :03/:08 and PerfKpi/PerfApproach at :07/:22, which is now handled with `off_grid: "ceil"`;
+- found: detector counts are stamped at :03/:08 and PerfKpi/PerfApproach at :07/:22, which is now handled by assigning them to the interval that ended before the stamp (`alignment.written_after_interval`: 03:03 = 02:55–03:00, 15:07 = 14:45–15:00);
 - confirmed in a second run (UTC 23:00–01:00): the TomTom KPIs are end-labelled (the latest quarter can arrive a few minutes late); the TomTom queue archive stamps carry `Z` (UTC); every value the screening needs for the period is present.
 - observed:
   - detector 1 at 4397 counts 1–2 vehicles per hour, so this site is a Detector Health Issue under the Q2 rule at both times;

@@ -38,11 +38,12 @@ class Measures:
 
     def _written_after(self, feed: str) -> bool:
         """Feeds whose records are written after the interval they describe (alignment.written_after_interval):
-        a record stamped 15:07 is the quarter-hour 14:45-15:00 (confirmed with the data owner, Nov 2026)."""
+        a PerfKpi record stamped 15:07 is the quarter-hour 14:45-15:00 (confirmed with the data owner, Nov 2026),
+        and a detector record stamped 15:03 is the 5 minutes 14:55-15:00."""
         return feed in self.rules["alignment"].get("written_after_interval", [])
 
-    def _late_span(self, periods: list[Period], feed: str):
-        start, end = _span(periods)
+    def _late_span(self, periods: list[Period], feed: str, window_minutes: int | None = None):
+        start, end = _span(periods, window_minutes)
         return start, end + timedelta(minutes=self._step(feed)) if self._written_after(feed) else end
 
     def _label(self, feed: str) -> str:
@@ -134,7 +135,7 @@ class Measures:
     def detector_totals(self, period: Period, window_minutes: int, sites=None) -> dict[str, dict[int, dict]]:
         """{site: {detector: {total, records, expected, negatives}}} for the window ending with the period."""
         step = self._step("detector_counts")
-        rows = self.source.detector_counts(*_span([period], window_minutes), sites=sites)
+        rows = self.source.detector_counts(*self._late_span([period], "detector_counts", window_minutes), sites=sites)
         series = self._series(rows, lambda r: (r["site"], r["detector"]), step, "detector_counts")
         ends = period.interval_ends(step, window_minutes)
         negative = self.rules["q2"].get("negative_counts", "missing")
