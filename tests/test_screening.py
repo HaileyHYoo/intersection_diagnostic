@@ -243,6 +243,28 @@ class RuleTests(unittest.TestCase):
         self.assertEqual(cls(ABNORMAL, INSUFFICIENT), "grey")
 
 
+class LateRecordTests(unittest.TestCase):
+    def test_a_record_stamped_07_is_the_quarter_hour_that_ended_before_it(self):
+        """IntersectionPerfKpi/PerfApproach: 15:07 = 14:45-15:00 (confirmed with the data owner)."""
+        from datetime import timedelta
+        from diagnostics.measures import Measures
+        settings = Settings()
+        period = timewin.period_ending("2026-10-30T15:30", settings.rules)          # 15:00-15:30 local
+        asked = []
+
+        class Source:
+            def site_kpi(self, start, end, sites=None):
+                asked.append(end)
+                rows = []
+                for k, written in enumerate(("15:07:04", "15:22:05", "15:37:04")):    # 14:45-15:00, 15:00-15:15, 15:15-15:30
+                    t = datetime.fromisoformat(f"2026-10-30T{written}+11:00")
+                    rows.append({"site": "1", "field": "cycle_length", "time": t, "value": [100.0, 110.0, 130.0][k]})
+                return rows
+        kpi, _ = Measures(Source(), settings.rules, settings.schema).site_kpi([period])
+        self.assertEqual(kpi[period.key]["1"]["cycle_length"], 120.0)              # (110 + 130) / 2, not (100 + 110) / 2
+        self.assertGreaterEqual(asked[0], period.end + timedelta(minutes=15))     # the query reaches the 15:37 record
+
+
 class GreenShareNoiseTests(unittest.TestCase):
     def test_float_noise_is_not_low_against_a_constant_history(self):
         from datetime import timedelta
@@ -254,7 +276,7 @@ class GreenShareNoiseTests(unittest.TestCase):
             def approach_perf(self, start, end, sites=None):
                 rows = []
                 for k, t in enumerate(period.interval_ends(15)):
-                    stamp = t - timedelta(minutes=8)                       # live feeds write at :07/:22
+                    stamp = t + timedelta(minutes=7, seconds=4)            # written 7 min after its quarter-hour
                     share = 99.99999999999999 if k == 0 else 100.0
                     rows += [{"site": "4397", "link": "GRAT", "bound": "E", "field": "green_share", "time": stamp, "value": share},
                              {"site": "4397", "link": "GRAT", "bound": "E", "field": "has_green", "time": stamp, "value": 1.0}]

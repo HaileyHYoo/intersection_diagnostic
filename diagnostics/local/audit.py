@@ -40,17 +40,21 @@ def _periods(svc, end):
     return period, used, skipped
 
 
-def _in(t, p) -> bool:
+def _in(t, p, late: bool = False) -> bool:
     t = to_utc(t if isinstance(t, datetime) else datetime.fromisoformat(str(t)))
+    if late:                                       # written after its quarter-hour: the one that ended before
+        t = t.replace(minute=t.minute - t.minute % 15, second=0, microsecond=0)
     return to_utc(p.start) < t <= to_utc(p.end)
 
 
-def _raw_by_period(source, key: str, periods: list) -> dict:
+def _raw_by_period(source, key: str, periods: list, late: bool = False) -> dict:
     """{period key: [raw rows]} for one feed, every site, every field (one query per period)."""
+    from datetime import timedelta
     read = getattr(source, "raw_all", source.raw)
     out = {}
     for p in periods:
-        out[p.key] = [r for r in read(key, p.start, p.end, None) if _in(r["time"], p)]
+        rows = read(key, p.start, p.end + timedelta(minutes=15 if late else 0), None)
+        out[p.key] = [r for r in rows if _in(r["time"], p, late)]
     return out
 
 
@@ -329,11 +333,12 @@ def audit_timing(source, settings, period) -> dict:
             closer["floor" if b < a else "ceil" if a < b else "tie"] += 1
     mean = lambda xs: round(sum(xs) / len(xs) * 100, 1) if xs else None
     return {"records_compared": len(err["ceil"]),
-            "mean_abs_difference_pct": {"ceil (quarter-hour the stamp falls in; current code)": mean(err["ceil"]),
-                                        "floor (quarter-hour ended before the stamp)": mean(err["floor"])},
+            "mean_abs_difference_pct": {"ceil (quarter-hour the stamp falls in)": mean(err["ceil"]),
+                                        "floor (quarter-hour ended before the stamp; the screening since Nov 2026)":
+                                            mean(err["floor"])},
             "closer": dict(closer),
-            "reading": "if 'floor' is clearly closer, a record stamped hh:07 describes hh-15..hh:00 and the screening's "
-                       "Q3 values are 15 minutes earlier than its Q1 volumes"}
+            "reading": "'floor' should be clearly closer: a record stamped hh:07 describes hh-15..hh:00 (confirmed with "
+                       "the data owner), so the screening assigns it to that quarter-hour"}
 
 
 # ---------------------------------------------------------------------- 5. classification trace
@@ -375,8 +380,9 @@ def run(svc, end: str | None, run_id: str | None = None) -> dict:
     for d in source.detectors(sites):
         detectors[d["site"]].append(d)
     feeds = settings.schema["influx"]["sources"]
-    perf_rows = _raw_by_period(source, "approach_perf", [period] + refs)
-    kpi_rows = _raw_by_period(source, "site_kpi", [period] + refs)
+    late = settings.rules["alignment"].get("written_after_interval", [])
+    perf_rows = _raw_by_period(source, "approach_perf", [period] + refs, "approach_perf" in late)
+    kpi_rows = _raw_by_period(source, "site_kpi", [period] + refs, "site_kpi" in late)
     perf_now = {(ids.site(r.get(feeds["approach_perf"]["site_tag"])), ids.link(r.get(feeds["approach_perf"]["link_tag"])))
                 for r in perf_rows[period.key]}
     try:

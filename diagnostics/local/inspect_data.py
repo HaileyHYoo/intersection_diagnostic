@@ -328,14 +328,18 @@ def kpi_check(source, settings: Settings, site: str, end=None, references: int =
     for p in periods:
         entry = {"period": p.label(), "role": "analysis" if p is period else "reference", "kpi": {}, "approaches": {}}
         for key, feed, target in (("site_kpi", kpi_feed, "kpi"), ("approach_perf", app_feed, "approaches")):
+            late = key in rules["alignment"].get("written_after_interval", [])
             try:
-                rows = read(key, p.start, p.end, [site])
+                rows = read(key, p.start, p.end + timedelta(minutes=15 if late else 0), [site])
             except Exception as exc:  # noqa: BLE001
                 entry[target] = f"{type(exc).__name__}: {exc}"
                 continue
             for r in rows:
                 t = to_utc(r["time"])
-                if not to_utc(p.start) < t <= to_utc(p.end):            # end-labelled: (start, end] is the period
+                # the quarter-hour a record describes: the one it falls in, or for a record written after its
+                # quarter-hour (alignment.written_after_interval) the one that ended before its stamp
+                q = t.replace(minute=t.minute - t.minute % 15, second=0, microsecond=0) if late else t
+                if not to_utc(p.start) < q <= to_utc(p.end):
                     continue
                 stamp = t.astimezone(zone(rules)).strftime("%H:%M:%S").removesuffix(":00")
                 if target == "kpi":

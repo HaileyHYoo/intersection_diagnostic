@@ -12,7 +12,7 @@
   "time_note": "All data are stored in UTC. Inputs without an offset, 30-minute slots, weekdays, holidays and display use the region's local time; every query is sent in UTC.",
   "period_minutes": 30,
   "quarter_minutes": 15,
-  "data_latency_minutes": 5,
+  "data_latency_minutes": 10,
   "history": {
     "weeks": 8,
     "min_observations": 5,
@@ -50,6 +50,8 @@
   },
   "alignment": {
     "note": "Live feeds are written at a fixed offset from the grid (detector counts at :03/:08, PerfKpi/PerfApproach at :07/:22), so an off-grid record goes to the interval its stamp falls in (ceil). Within tolerance_seconds of a grid point it is moved onto that point.",
+    "written_after_interval": ["site_kpi", "approach_perf"],
+    "written_after_note": "IntersectionPerfKpi and IntersectionPerfApproach records are written about 7 minutes after the quarter-hour they describe (15:07 = 14:45-15:00; confirmed with the data owner, Nov 2026): they go to the quarter-hour that ended before the stamp, and the query reaches 15 minutes past the period. The period's last record is written at about end + 7 min, hence data_latency_minutes 10.",
     "tolerance_seconds": 60,
     "off_grid": "ceil",
     "duplicates": "last"

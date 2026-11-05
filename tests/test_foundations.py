@@ -15,8 +15,8 @@ def utc(*args):
 
 class PeriodTests(unittest.TestCase):
     def test_latest_period_is_latest_completed_after_latency(self):
-        # 14:07 local (AEDT, UTC+11) minus 5 min latency -> 14:02 -> period 13:30-14:00
-        now = utc(2026, 10, 30, 3, 7)
+        # 14:12 local (AEDT, UTC+11) minus 10 min latency -> 14:02 -> period 13:30-14:00
+        now = utc(2026, 10, 30, 3, 12)
         p = timewin.latest_period(RULES, now)
         self.assertEqual(p.local_start.strftime("%H:%M"), "13:30")
         self.assertEqual(p.local_end.strftime("%H:%M"), "14:00")
@@ -24,12 +24,12 @@ class PeriodTests(unittest.TestCase):
     def test_analysis_period_is_the_latest_completed_clock_slot(self):
         # methodology: latest completed 30-minute period, slots of :00/:30 (48 a day)
         zone = timewin.zone(RULES)
-        for now, slot in (("16:19", "15:30"), ("16:34", "15:30"), ("16:35", "16:00"), ("16:59", "16:00")):
+        for now, slot in (("16:19", "15:30"), ("16:39", "15:30"), ("16:40", "16:00"), ("16:59", "16:00")):
             local = datetime.fromisoformat(f"2026-10-30T{now}").replace(tzinfo=zone)
             self.assertEqual(timewin.latest_period(RULES, local).slot, slot, now)
 
     def test_latency_can_step_back_a_period(self):
-        p = timewin.latest_period(RULES, utc(2026, 10, 30, 3, 3))   # 14:03 local -> 13:58
+        p = timewin.latest_period(RULES, utc(2026, 10, 30, 3, 8))   # 14:08 local -> 13:58
         self.assertEqual(p.slot, "13:00")
 
     def test_end_labelled_quarters(self):

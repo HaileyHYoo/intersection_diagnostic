@@ -40,6 +40,8 @@ def grid_point(stamp: datetime, step_minutes: int, tolerance_seconds: float, off
         return datetime.fromtimestamp(nearest, stamp.tzinfo)
     if off_grid == "ceil":
         return datetime.fromtimestamp(below + step, stamp.tzinfo)
+    if off_grid == "floor":                        # a record written after its interval: the interval ended before it
+        return datetime.fromtimestamp(below, stamp.tzinfo)
     return None
 
 
@@ -51,8 +53,10 @@ class Aligner:
         self.stats = {"records": 0, "on_grid": 0, "snapped": 0, "off_grid_dropped": 0, "off_grid_ceiled": 0,
                       "duplicates": 0, "invalid_values": 0}
 
-    def align(self, points, step_minutes: int, label: str = "end") -> dict[datetime, float]:
-        """{interval end: value} from (timestamp, value) pairs of one series."""
+    def align(self, points, step_minutes: int, label: str = "end", off_grid: str | None = None) -> dict[datetime, float]:
+        """{interval end: value} from (timestamp, value) pairs of one series. off_grid overrides the default rule
+        for one feed (e.g. "floor" for records written some minutes after the interval they describe)."""
+        rule = off_grid or self.off_grid
         chosen: dict[datetime, tuple[datetime, float]] = {}
         shift = timedelta(minutes=step_minutes) if label == "start" else timedelta(0)
         for stamp, raw in points:
@@ -62,7 +66,7 @@ class Aligner:
                 self.stats["invalid_values"] += 1
                 continue
             stamp = to_utc(stamp) + shift
-            point = grid_point(stamp, step_minutes, self.tolerance, self.off_grid)
+            point = grid_point(stamp, step_minutes, self.tolerance, rule)
             if point is None:
                 self.stats["off_grid_dropped"] += 1
                 continue

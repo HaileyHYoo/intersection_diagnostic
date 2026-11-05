@@ -86,7 +86,8 @@ Every threshold and switch is in `diagnostics/config/rules.json`.
 | Grey when an approach has no green | `q3c.grey_site_if_any_approach_without_green` true |
 | Grey when an approach has no volume | `q1.grey_if_any_approach_missing` true |
 | Days left out of the history | `history.exclude` (public holidays, DST change days, year end) |
-| Data latency allowance | `data_latency_minutes` 5 |
+| Data latency allowance | `data_latency_minutes` 10 (the Q3 records are written about 7 minutes after their quarter-hour) |
+| Feeds written after their quarter-hour | `alignment.written_after_interval` (IntersectionPerfKpi, IntersectionPerfApproach) |
 | Templates run on a click | `click` (D001 and D002 for Red only) |
 | Usual value | `reference_value` `"median"` (as in the production contract) |
 | TomTom queue (API) | `tomtom.api_enabled` true (methodology §13); needs `TOMTOM_API_KEY` in `.env`, otherwise only the queue is "unavailable" |

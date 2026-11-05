@@ -189,9 +189,9 @@ class ScheduleTests(unittest.TestCase):
 
     def test_next_run_is_the_next_period_end_plus_latency(self):
         at = lambda h, m: datetime(2026, 10, 30, h, m, tzinfo=self.tz)
-        self.assertEqual(schedule.next_run_time(self.rules, at(16, 19)), at(16, 35))
-        self.assertEqual(schedule.next_run_time(self.rules, at(16, 35)), at(17, 5))
-        self.assertEqual(schedule.next_run_time(self.rules, at(16, 34)), at(16, 35))
+        self.assertEqual(schedule.next_run_time(self.rules, at(16, 19)), at(16, 40))
+        self.assertEqual(schedule.next_run_time(self.rules, at(16, 40)), at(17, 10))
+        self.assertEqual(schedule.next_run_time(self.rules, at(16, 39)), at(16, 40))
 
     def test_run_scheduled_screens_each_new_period(self):
         settings = Settings()

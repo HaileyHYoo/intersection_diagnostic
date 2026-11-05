@@ -17,18 +17,17 @@ Classifications are made by deterministic code. The LLM never decides a category
 
 - **Timestamps label the end of the interval (decision).** A 15-minute record stamped 01:15 covers 01:00–01:15. A 5-minute record stamped 01:05 covers 01:00–01:05.
 - **Analysis period.** The latest completed 30-minute period. Periods are the day's 48 clock slots (:00–:30, :30–:00), as the methodology's 30-minute time slots, the contract's `slot_index` (0–47) and "refreshed when a new completed 30-minute period becomes available" imply. The "latest two completed 15-minute intervals" of Q1 are the two quarters of that slot.
-  - A period is used `data_latency_minutes` (5) after it ends, so at 16:19 the period is 15:30–16:00, and from 16:35 it is 16:00–16:30.
+  - A period is used `data_latency_minutes` (10) after it ends, so at 16:19 the period is 15:30–16:00, and from 16:40 it is 16:00–16:30. The last Q3 record of a period is written about 7 minutes after it ends (see below), hence 10.
   - The Q2 window is the 60 minutes ending with the period (15:00–16:00 for that example).
   - The history is the same slot on the same weekday in the 8 previous weeks (15:30–16:00 on the eight previous Fridays).
   - Any past period can also be selected.
-- **Records used for the period.** The 30-minute period ending at T uses the 15-minute records stamped T−15 and T. The Q2 window uses the twelve 5-minute records stamped T−55 … T.
+- **Records used for the period.** The 30-minute period ending at T uses the volume records stamped T−15 and T, and the `IntersectionPerfKpi` / `IntersectionPerfApproach` records written at about T−8 and T+7 (see below). The Q2 window uses the twelve 5-minute records stamped T−55 … T.
 - **Time zones.** All data are stored in UTC. The region tag gives the local time zone (`rules.region_timezones`, e.g. `AU-VIC-Melbourne` → `Australia/Melbourne`), as in the chatbot.
   - Local time is used for inputs without an offset, 30-minute slots, weekdays, holidays and display.
   - Every query is sent in UTC.
-- **Putting records on the grid (decision)** (`series.py`). Live feeds are written at a fixed offset from the grid (30 Oct 2026 inspection, site 4397): 5-minute detector counts at :03, :08 …, and `IntersectionPerfKpi` / `IntersectionPerfApproach` at :07, :22, :37, :52. Each record therefore goes to the interval its stamp falls in (`off_grid: "ceil"`):
-  - 03:22:05 belongs to 03:15–03:30;
-  - 03:28 belongs to 03:25–03:30;
-  - so the 30 minutes ending 03:30 use the Q3 records 03:07 and 03:22, and Q2 uses the twelve detector records 02:33 … 03:28.
+- **Putting records on the grid** (`series.py`). Live feeds are written at a fixed offset from the grid (30 Oct 2026 inspection, site 4397): 5-minute detector counts at :03, :08 …, and `IntersectionPerfKpi` / `IntersectionPerfApproach` at :07, :22, :37, :52.
+  - **`IntersectionPerfKpi` / `IntersectionPerfApproach` are written after the quarter-hour they describe (corrected Nov 2026, confirmed with the data owner):** a record stamped 15:07 is 14:45–15:00. Such a record goes to the quarter-hour that ended before its stamp (`alignment.written_after_interval`, rule "floor"), and the query reaches 15 minutes past the period. So the 30 minutes ending 15:30 use the records 15:22 (15:00–15:15) and 15:37 (15:15–15:30). The evidence: at SCATS 707 the PerfApproach Volume of the 15:07 and 15:22 records (Falconer Road 137, 120) matches the link volumes of 14:45–15:00 and 15:00–15:15 (141, 123), not 15:00–15:15 and 15:15–15:30 (123, 180); `python main.py audit` (section 6) compares every record. Before this correction the Q3 values of a period were those of the 30 minutes ending 15 minutes earlier, 15 minutes out of step with Q1.
+  - The other feeds go to the interval their stamp falls in (`off_grid: "ceil"`): a detector record stamped 03:28 belongs to 03:25–03:30, so Q2 uses the twelve records 02:33 … 03:28. (Whether the detector records are also written after their interval is to be confirmed with the data owner; the 60-minute Q2 window would move by 5 minutes.)
   - A stamp within `alignment.tolerance_seconds` (60 s) of a grid point is moved onto that point (a late write). If two records land on the same interval, the latest one is kept (`duplicates: "last"`).
   - A feed labelled at the interval start (`timestamp_label: "start"` in the schema) is shifted by one interval first.
   - The counts of moved, assigned and duplicate records are kept with every run.

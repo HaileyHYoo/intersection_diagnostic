@@ -36,6 +36,15 @@ class Measures:
     def _step(self, feed: str) -> int:
         return self.schema["influx"]["sources"][feed]["interval_minutes"]
 
+    def _written_after(self, feed: str) -> bool:
+        """Feeds whose records are written after the interval they describe (alignment.written_after_interval):
+        a record stamped 15:07 is the quarter-hour 14:45-15:00 (confirmed with the data owner, Nov 2026)."""
+        return feed in self.rules["alignment"].get("written_after_interval", [])
+
+    def _late_span(self, periods: list[Period], feed: str):
+        start, end = _span(periods)
+        return start, end + timedelta(minutes=self._step(feed)) if self._written_after(feed) else end
+
     def _label(self, feed: str) -> str:
         return self.schema["influx"]["sources"][feed].get("timestamp_label", self.schema["timestamps"]["label"])
 
@@ -46,7 +55,8 @@ class Measures:
             if None not in (k if isinstance(k, tuple) else (k,)):
                 grouped[k].append((r["time"], r["value"]))
         label = self._label(feed)
-        return {k: self.aligner.align(points, step, label) for k, points in grouped.items()}
+        rule = "floor" if self._written_after(feed) else None
+        return {k: self.aligner.align(points, step, label, rule) for k, points in grouped.items()}
 
     # ------------------------------------------------------------------ Q1
     def link_volumes(self, periods: list[Period]) -> dict[str, dict[str, float]]:
@@ -67,7 +77,7 @@ class Measures:
     def site_kpi(self, periods: list[Period], sites=None) -> tuple[dict, dict]:
         """({period: {site: {field: value}}}, {period: {site: {field: origin}}})."""
         step = self._step("site_kpi")
-        span = _span(periods)
+        span = self._late_span(periods, "site_kpi")
         series = self._series(self.source.site_kpi(*span, sites=sites), lambda r: (r["site"], r["field"]), step, "site_kpi")
         fallback = {}
         if self.rules.get("fallbacks", {}).get("enabled"):
@@ -98,7 +108,7 @@ class Measures:
         whatever HasGreen says (for inspection only; screening never uses it).
         """
         step = self._step("approach_perf")
-        rows = self.source.approach_perf(*_span(periods), sites=sites)
+        rows = self.source.approach_perf(*self._late_span(periods, "approach_perf"), sites=sites)
         bounds = {(r["site"], r["link"]): r.get("bound") for r in rows if r.get("bound")}
         series = self._series(rows, lambda r: (r["site"], r["link"], r["field"]), step, "approach_perf")
         fraction = self.schema["influx"]["sources"]["approach_perf"].get("green_share_unit") == "fraction"
