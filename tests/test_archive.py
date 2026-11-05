@@ -102,6 +102,8 @@ class ArchiveTests(unittest.TestCase):
         self.assertEqual(values[("4300", "SWANN4300Q9", "q1_volume")].n_history_obs, 8)
         self.assertIn(("4300", "SWANN4300Q9", "q3c_phase_service"), values)
         self.assertIn(("4300", None, "q3b_cycle_stability"), values)
+        # sites that were not screened (Detector Health) are in the snapshot too: it does not depend on the gate
+        self.assertTrue(any(k[0] == "4318" and k[2] == "q1_volume" for k in values))
 
     def test_weekly_job_writes_the_snapshot(self):
         day = timewin.period_ending(END, self.settings.rules).day

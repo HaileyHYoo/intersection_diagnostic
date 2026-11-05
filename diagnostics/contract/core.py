@@ -89,7 +89,8 @@ def _archive(archive, inp, settings, period, baseline, result, payload, started)
     """The baseline snapshot of this slot under the host's baseline_version; with a contract that has
     ScreeningLog the host logs the COMPLETED run itself (write_screening_log), else our own log is written."""
     snapshot_key = history.write_baseline_snapshot(archive, settings.region, baseline, period, inp.baseline_version,
-                                                    history.approaches_of(result["sites"]), settings.rules["history"]["weeks"])
+                                                    history.approaches_of(result["sites"]) + result.get("network_links", []),
+                                                    settings.rules["history"]["weeks"])
     if hasattr(adapter.S, "ScreeningLog"):
         return
     history.write_screening_log(archive, {

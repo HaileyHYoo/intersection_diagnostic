@@ -113,7 +113,7 @@ class DiagnosticsService:
             baseline = self.baselines.get(period)
             result = screening.screen(self.source, self.settings, baseline, period)
             snapshot = history.snapshot_version(period, baseline["version"])
-            snapshot_key = self._snapshot(baseline, period, history.approaches_of(result["sites"]))
+            snapshot_key = self._snapshot(baseline, period, history.approaches_of(result["sites"]) + result["network_links"])
             notes = [n for n in [day_note(period.day)] if n]
             if baseline["skipped_days"]:
                 notes.append("Reference days left out of the history: " + ", ".join(

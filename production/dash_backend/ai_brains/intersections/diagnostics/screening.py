@@ -277,7 +277,11 @@ def screen(source, settings, baseline: dict, period: Period, network: list[dict]
     counts = defaultdict(int)
     for r in results:
         counts[r["category"]] += 1
-    return {"sites": results, "counts": dict(counts), "errors": errors, "alignment": m.aligner.stats}
+    # every EGRESS link of every site, whatever its category: the baseline snapshot covers them all, so it does not
+    # depend on the Q2 gate (a gate change must not leave the week's snapshot without the newly screened sites)
+    network_links = [{"site": site, "link": a["link"]} for site, rows in links.items() for a in rows]
+    return {"sites": results, "counts": dict(counts), "errors": errors, "alignment": m.aligner.stats,
+            "network_links": network_links}
 
 
 def street_names(source, links: dict, green: dict, baseline: dict) -> dict[str, str]:
