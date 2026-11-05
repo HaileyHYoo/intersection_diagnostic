@@ -1,31 +1,37 @@
 **Subject:** Intersections Diagnostics V1 – response to your review of run eebc0b2964f4 (Fri 30 Oct 15:00–15:30)
 
-Dear Professor,
+Dear Prof. Sarvi,
 
-Thank you for the detailed review. I have worked through every point, and the attached note (`REVIEW_RESPONSE.md`) gives the answer to each one with the supporting figures. In brief:
+Thank you for the detailed review. I have worked through every point; the attached note (`REVIEW_RESPONSE.md`) answers each one with the supporting figures. The final run of the same period, **5065b14ac8a7**, also includes your decision to tolerate one failing detector. It gives **Red 76, Amber 617 (556 traffic, 61 signal), Normal 515, Grey 950 and Detector Health 343**. In brief:
 
-**Screening accuracy**
+**Priority 1 – Screening accuracy**
 
-1. **SCATS 976** – you were right. A code error checked "insufficient data" before "abnormal" in Q3C (and Q1). It now follows the methodology: any abnormal approach makes the component abnormal. 976 is Red. The period re-run as **b77b122afab4** gives Red 65, Amber 519, Normal 435, Grey 790 and Detector Health 692.
-2. **Grey (790)** – 230 cannot pass Q2 (detector records missing), 390 have no current IntersectionPerfKpi value, 159 are Grey only because an approach has no green, and 11 for Q1 or a combination. The no-green approaches are **recorded zeros** (HasGreen = 0, GreenShare 0), not missing data. In all 159 of those sites Q3A and Q3B can be assessed.
-3. **Detector Health (692)** – 349 sites fail on a single detector, 200 of them at 5–9 vehicles. Had the gate passed, 34 would be Red and 248 Amber. So the gate does exclude otherwise assessable intersections. The note gives the effect of thresholds 5 and 1.
-4. **Q3C** – GreenShare is the share of the cycle in which the approach has green, not a split between approaches, so 100 % is valid (976: phases A and B were the whole cycle). The main limitation is history: before about 20 Oct the records hold HasGreen = 0 on every approach, so most sites cannot assess Q3C yet. 707's phase-to-approach mapping also looks wrong and has been raised with the data owner. I have not yet compared Q3C with the raw `site_phase` timing.
-5. **Cycle Stability** – the stored value is max(0, 100 − 5 × CycleCvPct). 707's 0 is genuine (CV around 40 %), but every CV above 20 % reads 0. Q3B also has no minimum difference: 38 of the 236 abnormals are less than 5 % below usual.
+1. **SCATS 976** – fixed. A code error checked "insufficient data" before "abnormal" in Q3C (and Q1). Any abnormal approach now makes the component abnormal, as in the methodology, and 976 is Red.
+2. **Grey (790 in the reviewed period)** – 230 could not pass Q2, 390 had no current IntersectionPerfKpi value, 159 were Grey only because an approach had no green, and 11 were Grey because of Q1 or a combination. The no-green approaches are **recorded zeros** (HasGreen = 0, GreenShare 0), not missing data, and Q3A and Q3B remain valid in all those sites (see decision A).
+3. **Detector Health (692 in the reviewed period)** – 349 sites failed on a single detector (200 at 5–9 vehicles, 77 at 1–4, 72 at 0) and 343 on several detectors. As agreed, one failing detector is now tolerated and shown as a note. The 349 sites are screened (11 Red, 98 Amber, 80 Normal, 160 Grey), and the 343 remaining Detector Health sites all have two or more failing detectors.
+4. **Q3C** – 100 % is a valid value. GreenShare is the share of the cycle in which the approach has green, not a split between approaches (976: phases A and B made the whole cycle).
+   - 221 approaches are at 100 %, and 379 changed by 30 percentage points or more.
+   - The main limitation is history: before about 20 Oct the records hold HasGreen = 0 on every approach, so 1,234 of 1,876 screened sites cannot assess Q3C yet.
+   - 707's phase-to-approach mapping looks wrong and has been raised with the data owner. A comparison with raw `site_phase` timing has not been done.
+5. **Cycle Stability** – the stored values match the KPI definition, Score = (1 − CV/0.20) × 100 floored at 0.
+   - 707's zero is a genuine measurement: its cycle varied by about 40 %, and every CV of 20 % or more reads 0.
+   - Q3B has no minimum-difference condition, so 61 of the 284 stability abnormals lie within 2 % of the threshold.
 
-**Reporting**
+**Priority 2 – Diagnostic reporting** (example reports for SCATS 4566, 4564 and 774 attached)
 
-- The diagnosis now separates "What the data show" from "Possible explanations (not demonstrated by these data)". It states that SCATS adapts cycle length and phase service to demand and coordination, and orders the checks by priority.
-- Q5 gives agreement / partial agreement / disagreement / insufficient coverage. It names the matching and differing approaches and states the 30-minute coverage. Junction Analytics and the supplementary link speed are kept apart (see 774).
-- The supplementary link speed now shows a reference speed beside the current one. It is the median TomTom speed of the same 30 minutes in the screening's reference weeks, read from the same `aimes/speed` feed when the site is selected. Nothing is stored and no network-wide speed baseline is built. Please tell me if you would rather keep it unavailable.
-- Names come from the validated road-link mappings. The rows outside their range are in bold in the tables, so the text no longer repeats them. No number or link ID can be invented: an LLM answer that adds one is rejected, and the code wording is used instead.
+- The diagnosis separates "What the data show" from "Possible explanations (not demonstrated by these data)", recognises SCATS adaptive operation, and lists the checks in order of priority.
+- Q5 gives agreement / partial agreement / disagreement / insufficient coverage, names the matching and differing approaches, and states the 30-minute coverage.
+- Junction Analytics and the supplementary link speed are kept apart (774 shows its link speed). The link speed now includes a reference speed: the median of the same 30 minutes in the reference weeks, from the same feed. Please tell me if you would rather keep it unavailable.
+- Names come from the validated road-link mappings, the rows outside their range are in bold in the tables, and the repetition has been removed. No number or link ID can be invented: an LLM answer that adds one is rejected, and the code wording is used instead.
 
-**Log and snapshot.** As requested, the complete JSON screening log and the baseline snapshot are attached, for the run you reviewed and for the re-run. I recomputed every result from the log and found no differences. All 11,759 baseline values quoted in the log match the snapshot.
+**Log and snapshot.** The complete JSON screening log and the baseline snapshot are attached, for the run you reviewed and for the final run. I recomputed every result from the log and found no differences; all 14,044 baseline values quoted in the log match the snapshot.
+
+**Independent statistics.** The attached stats files count every check for all 2,501 intersections, without the screening's gates (definitions in `STATS_DEFINITIONS.md`). For example, 596 intersections network-wide have no Signal Performance KPI at all.
 
 **Decisions I would ask you to make**
 
-- **(A) No-green approach:** keep "site Grey", treat the approach as not assessable, or treat a recorded HasGreen = 0 as 0 % green. I suggest the last, as it follows the Q2 rule that a recorded zero is a measurement. About 12 sites would become Red.
-- **(B) Detector gate:** keep 10 vehicles per detector, lower it, or judge each detector against its own history.
-- **(C) Q3B:** keep CycleStability, or use CycleCvPct (not clamped), possibly with a minimum difference as in Q3A.
+- **(A) No-green approach:** keep "site Grey", treat the approach as not assessable, or treat a recorded HasGreen = 0 as 0 % green. I suggest the last, as it follows the Q2 rule that a recorded zero is a measurement. About 14 sites would become Red.
+- **(C) Q3B:** keep the stored CycleStability as now, or change the method (use CycleCvPct, or add a minimum difference as in Q3A).
 - **(D) Log sections:** should the traffic and signal abnormality sections list only Amber and Red sites, or also Grey sites with an abnormal finding (as now)?
 
 One further point: the baseline is at its minimum. No value has more than 6 of the 7 reference weeks, and about half have exactly 5, because of gaps in the Friday afternoon data. One more gap would turn many sites Grey.
@@ -33,12 +39,12 @@ One further point: the baseline is at its minimum. No value has more than 6 of t
 Attachments:
 
 - `REVIEW_RESPONSE.md`
-- `export_eebc0b2964f4/` and `export_b77b122afab4/` (each with `screening_log.json` and `baseline_snapshot.json`)
-- `summary_b77b122afab4.json`
+- `STATS_DEFINITIONS.md`
+- `export_eebc0b2964f4/` and `export_5065b14ac8a7/` (each with `screening_log.json` and `baseline_snapshot.json`)
+- `summary_5065b14ac8a7.json`
+- `stats_2026-10-30T043000Z.json` and `.csv`
 - `kpi_check_707.json` and `kpi_check_976.json`
-- `examples_b77b122afab4.html`
-
-Once you have decided (A)–(D), I will apply them and re-run the period.
+- `examples_5065b14ac8a7.html`
 
 Kind regards,
 Hailey
