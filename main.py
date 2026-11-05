@@ -12,6 +12,7 @@
     python main.py contract-check [--run ID]         validate a stored run against the production contract
     python main.py examples [--run ID | --end ...]   example outputs per category (Markdown + HTML) for review
     python main.py queue-probe --site 719 --end 2026-11-02T15:30   which TomTom queue-archive request works
+    python main.py audit --end 2026-10-30T15:30      Q1-Q3 input audit: problem types with example intersections (read only)
     python main.py stats --end 2026-10-30T15:30      every check counted on its own for every site (no gates), JSON + CSV
     python main.py export-run --run ID               the run's screening log and baseline snapshot as plain JSON files
     python main.py kpi-check --site 707 --end 2026-10-30T15:30 [--references 3]   every stored PerfKpi/PerfApproach field
@@ -350,6 +351,16 @@ def cmd_export_run(args):
     return 0
 
 
+def cmd_audit(args):
+    from diagnostics.local import audit
+    svc = make_service(args, fake=args.fake)
+    result = audit.run(svc, args.end, args.run)
+    stamp = svc.period(args.end).key.replace(":", "")
+    for path in audit.save(result, args.out_dir, stamp):
+        print("Saved:", path)
+    print(audit.markdown(result)[:4000])
+
+
 def cmd_stats(args):
     from diagnostics.local import independent
     svc = make_service(args, fake=args.fake)
@@ -496,6 +507,14 @@ def main(argv=None) -> int:
     p.add_argument("--run")
     p.add_argument("--out-dir", default=str(ROOT / "out"))
     p.set_defaults(func=cmd_export_run)
+
+    p = sub.add_parser("audit", help="Q1-Q3 input audit with problem types and example intersections (read only)")
+    p.add_argument("--end", help="period end (default: the latest completed period)")
+    p.add_argument("--run", help="screening run of that period (default: the latest one)")
+    p.add_argument("--fake", action="store_true", help="use the synthetic network")
+    p.add_argument("--sites", type=int, default=48, help=argparse.SUPPRESS)
+    p.add_argument("--out-dir", default=str(ROOT / "out"))
+    p.set_defaults(func=cmd_audit)
 
     p = sub.add_parser("stats", help="every check counted on its own for every site (no gates)")
     p.add_argument("--end", help="period end (default: the latest completed period)")

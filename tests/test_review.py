@@ -255,3 +255,36 @@ class IndependentStatsTests(unittest.TestCase):
         self.assertEqual(summary["data_checks"]["detector_below_threshold"]["sites"],
                          sum(r["detector_below_threshold"] for r in rows))
         self.assertEqual(sum(summary["results_each_question_alone"]["category"].values()), 20)
+
+
+class AuditTests(unittest.TestCase):
+    def test_audit_classifies_and_gives_examples(self):
+        from diagnostics.local import audit
+        from diagnostics.local.fake import FakeSource
+        from diagnostics.service import DiagnosticsService
+        from diagnostics.settings import Settings
+        from diagnostics.store import SQLiteStore
+        s = Settings()
+        svc = DiagnosticsService(FakeSource(s.rules, s.schema, "2026-10-27T08:30:00+11:00", n_sites=20), s,
+                                 SQLiteStore(":memory:"))
+        svc.screen("2026-10-27T08:30")
+        a = audit.run(svc, "2026-10-27T08:30")
+        self.assertIn("4333: DEAD4333XX, NEWL4333XX", a["q1"]["examples"]["egress_link_without_volume_history"])
+        self.assertEqual(a["q2"]["low_count_detector_types"],
+                         {"zero now, usually above the threshold: possible detector fault": 2})      # 4318 d3, d4
+        self.assertIn("no phase information for the whole site now (empty records)", a["q3c"]["grey_no_green_approaches"])
+        self.assertTrue(a["classification"]["examples"]["grey (reasons kept)"])
+        self.assertIn("## 4. Q3C – phase service", audit.markdown(a))
+
+    def test_q1_table_lists_approaches_not_assessed(self):
+        from diagnostics.report import evidence_tables
+        site = {"q1": {"approaches": [{"link": "A", "street": "A St", "bound": "N", "status": "INSUFFICIENT DATA",
+                                       "current": None, "usual": 10.0, "p_low": 8.0, "p_high": 12.0,
+                                       "pct_difference": None, "direction": None}],
+                       "not_evaluated": [{"link": "B", "street": "B Rd", "reason": "no volume data in the reference weeks"}]},
+                "q3": {"components": {"cycle_length": {"current": None, "status": "INSUFFICIENT DATA"},
+                                      "cycle_stability": {"current": None, "status": "INSUFFICIENT DATA"},
+                                      "phase_service": {"approaches": []}}}}
+        rows = evidence_tables(site)[0]["rows"]
+        self.assertEqual(rows[0][-1], "Not assessed: no current volume")
+        self.assertEqual(rows[1], ["B Rd (link B)", "-", "-", "-", "-", "Not assessed: no volume in any reference week"])

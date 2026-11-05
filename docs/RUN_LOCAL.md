@@ -52,6 +52,7 @@ python main.py map                                    # http://127.0.0.1:8765, l
 python main.py screen --end 2026-05-12T08:30          # a past period (history = the 8 weeks before it)
 python main.py summary                                # why sites got their category in the latest run, plus REVIEW (methodology owner's checks)
 python main.py kpi-check --site 707 --end 2026-10-30T15:30 --references 3   # every stored PerfKpi/PerfApproach field per quarter-hour
+python main.py audit --end 2026-10-30T15:30          # Q1-Q3 input audit: problem types with example intersections (read only)
 python main.py stats --end 2026-10-30T15:30          # every check counted on its own for every site, without gates (JSON + CSV)
 python main.py export-run --run <run_id>              # the screening log and baseline snapshot as plain JSON (out/export_<run_id>/)
 python main.py inspect --site 994 --end 2026-10-30T15:00 --history   # history per reference week and approach (why values are missing)

@@ -92,6 +92,7 @@ Q1 and Q3 run only after a PASS.
 | Q3B Cycle stability | `IntersectionPerfKpi.CycleStability`, mean of the two quarter-hours | Only poorer stability: **below the 10th percentile (higher = more stable; confirmed from the data: stability falls as CycleCvPct rises)** |
 | Q3C Phase service by approach | `IntersectionPerfApproach.GreenShare` (%) per `LinkId`, mean of the two quarter-hours **(decision)** | Below the 10th percentile = LOW, above the 90th = HIGH; no percentage threshold |
 
+- **What GreenShare measures.** At SCATS 976 and 707 an approach served by several phases has the sum of the single-phase approaches' shares (976: E in A and B = 100 %, W in A ≈ 77 %, S in B ≈ 23 %), and approaches with the same phases have the same share (707: N and NW, phase A). GreenShare is therefore the share of the cycle taken by the phases serving the approach, from phase durations, not measured signal-group green time; the report labels it so. `python main.py audit` tests this over the whole network.
 - **Q3C evaluated approaches.** The site's links that had green in the reference weeks.
 - **Approach without green.** `HasGreen = 0`, or no GreenShare/HasGreen record, in either quarter-hour. **Any evaluated approach without green makes the whole site Grey (decision,** `q3c.grey_site_if_any_approach_without_green`**, strictest setting).**
 - **Q3C component result (methodology 8: "an abnormal phase-service finding means at least one evaluated approach is abnormal").** ABNORMAL if any approach is abnormal, **even when another approach lacks a value or history**; otherwise INSUFFICIENT if any evaluated approach lacks a value or history; otherwise NORMAL. (Corrected 3 Nov 2026: SCATS 976 on 30 Oct 15:00 had one approach outside its range and another with too little history, and was shown Amber instead of Red.) A no-green approach still makes the site Grey through the site-level rule above.
@@ -271,6 +272,8 @@ The following optional contract fields have been proposed and are not in the Nov
 
 
 ## 10a. Report layout (methodology owner's review, 3 Nov 2026)
+
+- **Approaches assessed.** The Q1 table lists every EGRESS approach; one that was not assessed says why ("no current volume", "fewer than 5 historical values", "no volume in any reference week").
 
 - **Labelled lines.** The diagnosis has two lines, "What the data show:" and "Possible explanations (not demonstrated by these data):"; the TomTom part has "Largest values:", "By approach:", "Overall:" and "Coverage:". An LLM re-wording must keep the labels (`layout.py`; checked as required wording) and the line breaks are restored if it runs them together. The "Overall:" and "Coverage:" lines are always the code's (an LLM once named the wrong link as missing, SCATS 4566); the coverage line also names the approaches without TomTom data that are not SCATS-identified. Phase-service rows carry the difference in percentage points, so it need not be computed by the wording.
 - **Supporting Evidence on screen** is one line saying what is outside its range, plus notes the tables cannot show (a measure outside its range but normal, a measure not assessed). The rows outside their range are in bold in the tables, which hold every measurement. The D001 sentences are kept in the answer, and the contract's `supporting_evidence` is unchanged (`evidence_items`).
