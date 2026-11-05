@@ -160,12 +160,15 @@ def audit_q2(svc, period, refs, sites, detectors) -> dict:
 
 
 # ---------------------------------------------------------------------- 3. Q3A/Q3B cycle KPIs
-def audit_kpi(kpi_rows: dict, period, site_tag: str) -> dict:
+def audit_kpi(kpi_rows: dict, period, site_tag: str, network: set) -> dict:
     formula_bad, empty, zero_cycle = Counter(), Counter(), Counter()
+    seen_empty = defaultdict(set)
     ex = defaultdict(list)
     for pkey, rows in kpi_rows.items():
         role = "current" if pkey == period.key else "history"
         for (site,), stamps in _records(rows, site_tag).items():
+            if site not in network:
+                continue                                  # KPI records of sites outside the screened network
             for stamp, f in stamps.items():
                 cv, st = f.get("CycleCvPct"), f.get("CycleStability")
                 if isinstance(cv, (int, float)) and isinstance(st, (int, float)):
@@ -174,11 +177,14 @@ def audit_kpi(kpi_rows: dict, period, site_tag: str) -> dict:
                         ex["formula"].append(f"{site} {stamp[:16]}: stability {st:.2f}, CV {cv:.2f}")
                 if f.get("TotalVolume") == 0 and f.get("AvgCycle") not in (None, 0):
                     empty[role] += 1
+                    seen_empty[role].add(site)
                     ex["empty"].append(f"{site} {stamp[:16]}: AvgCycle {f.get('AvgCycle')}, CycleStability "
                                        f"{f.get('CycleStability')}, TotalVolume 0")
                 if f.get("AvgCycle") == 0:
                     zero_cycle[role] += 1
                     ex["zero"].append(f"{site} {stamp[:16]}")
+    for role, s in seen_empty.items():
+        empty[f"{role}_sites"] = len(s)
     return {"source": "IntersectionPerfKpi AvgCycle and CycleStability (MinutesPast 15), mean of the two 15-minute "
                       "records; a missing record gives no value (never zero); history formed the same way",
             "records_not_matching_the_stability_formula": dict(formula_bad),
@@ -255,8 +261,11 @@ def audit_q3c(perf_rows: dict, period, run_sites: dict, feed: dict) -> dict:
             cur = row.get("current")
             if cur is not None and cur >= 99.999:
                 mine = frozenset().union(*[_phases(f.get("Phases")) for f in recs.values()]) if recs else frozenset()
+                others_ran = any(f.get("HasGreen") == 1 and (f.get("GreenShare") or 0) > 0 and _phases(f.get("Phases")) - mine
+                                 for st in site_now.values() for f in st.values())
                 kind = ("approach runs in every phase recorded at the site (genuine)" if mine and mine == all_phases
-                        else "100 % while other phases exist at the site (check mapping)" if mine
+                        else "other phases exist but did not run in the period (genuine)" if mine and not others_ran
+                        else "100 % while another phase ran (check phase-to-approach mapping)" if mine
                         else "100 % without phase information (check record)")
                 full[kind] += 1
                 full_ex[kind].append(f"{name}: phases {','.join(sorted(mine)) or '-'} of {','.join(sorted(all_phases)) or '-'}"
@@ -266,12 +275,14 @@ def audit_q3c(perf_rows: dict, period, run_sites: dict, feed: dict) -> dict:
                 now_set = frozenset().union(*[_phases(f.get("Phases")) for f in recs.values()]) if recs else frozenset()
                 past_sets = Counter(_phases(f.get("Phases")) for _, _, f in past if f.get("HasGreen") == 1)
                 usual_set = past_sets.most_common(1)[0][0] if past_sets else frozenset()
-                empty_past = sum(1 for _, _, f in past if f.get("HasGreen") == 1 and not f.get("Volume")
-                                 and not f.get("DemandShare"))
+                empty_past = sum(1 for _, _, f in past if f.get("HasGreen") == 1 and f.get("Volume") == 0
+                                 and f.get("DemandShare") == 0 and (f.get("GreenShare") or 0) >= 99.999)
                 if usual_set and now_set and usual_set != now_set:
                     kind = "phases serving the approach differ from history (configuration or mapping change)"
                 elif empty_past:
-                    kind = "history includes records with no volume and no demand (possible empty records)"
+                    kind = "history includes 100 % green records with no volume and no demand (possible empty records)"
+                elif not usual_set:
+                    kind = "history has no phase information (Phases not stored then): cause not determinable"
                 else:
                     kind = "same phases, different phase durations (signal operation)"
                 large[kind] += 1
@@ -288,6 +299,41 @@ def audit_q3c(perf_rows: dict, period, run_sites: dict, feed: dict) -> dict:
         "grey_no_green_approaches": dict(nogreen.most_common()), "examples_no_green": {k: _ex(v) for k, v in ng_ex.items()},
         "current_100pct": dict(full.most_common()), "examples_100pct": {k: _ex(v) for k, v in full_ex.items()},
         "change_at_least_30pp": dict(large.most_common()), "examples_large_change": {k: _ex(v) for k, v in large_ex.items()}}
+
+
+# ---------------------------------------------------------------------- 6. quarter-hour of the :07/:22 records
+def audit_timing(source, settings, period) -> dict:
+    """PerfApproach records carry the approach Volume. Compared with the 15-minute link volumes (stamped at the
+    quarter-hour end), which quarter-hour does a record stamped at :07 or :22 describe? 'ceil' is the quarter-hour its
+    stamp falls in (what the screening assumes), 'floor' the quarter-hour that ended just before the stamp."""
+    from datetime import timedelta
+    feeds = settings.schema["influx"]["sources"]
+    start, end = period.start - timedelta(minutes=45), period.end
+    perf = getattr(source, "raw_all", source.raw)("approach_perf", start, end, None)
+    vols = defaultdict(dict)
+    for r in source.raw("link_volume", start - timedelta(minutes=15), end, None):
+        vols[ids.link(r.get(feeds["link_volume"]["link_tag"]))][to_utc(r["time"]).replace(second=0, microsecond=0)] = r["value"]
+    err = {"ceil": [], "floor": []}
+    closer = Counter()
+    for r in perf:
+        if r["field"] != "Volume" or not isinstance(r["value"], (int, float)) or r["value"] <= 0:
+            continue
+        t = to_utc(r["time"])
+        floor = t.replace(minute=t.minute - t.minute % 15, second=0, microsecond=0)
+        ceil = floor + timedelta(minutes=15)
+        series = vols.get(ids.link(r.get(feeds["approach_perf"]["link_tag"])), {})
+        if floor in series and ceil in series:
+            a, b = abs(series[ceil] - r["value"]), abs(series[floor] - r["value"])
+            err["ceil"].append(a / max(series[ceil], 1))
+            err["floor"].append(b / max(series[floor], 1))
+            closer["floor" if b < a else "ceil" if a < b else "tie"] += 1
+    mean = lambda xs: round(sum(xs) / len(xs) * 100, 1) if xs else None
+    return {"records_compared": len(err["ceil"]),
+            "mean_abs_difference_pct": {"ceil (quarter-hour the stamp falls in; current code)": mean(err["ceil"]),
+                                        "floor (quarter-hour ended before the stamp)": mean(err["floor"])},
+            "closer": dict(closer),
+            "reading": "if 'floor' is clearly closer, a record stamped hh:07 describes hh-15..hh:00 and the screening's "
+                       "Q3 values are 15 minutes earlier than its Q1 volumes"}
 
 
 # ---------------------------------------------------------------------- 5. classification trace
@@ -345,9 +391,10 @@ def run(svc, end: str | None, run_id: str | None = None) -> dict:
             "reference_utc": [f"{to_utc(p.start):%Y-%m-%d %H:%M}Z" for p in refs], "skipped_days": skipped,
             "q1": audit_q1(svc, baseline, period, sites, links, perf_now, tomtom),
             "q2": audit_q2(svc, period, refs, sites, detectors),
-            "q3ab": audit_kpi(kpi_rows, period, feeds["site_kpi"]["site_tag"]),
+            "q3ab": audit_kpi(kpi_rows, period, feeds["site_kpi"]["site_tag"], set(sites)),
             "q3c": audit_q3c(perf_rows, period, run_sites, feeds["approach_perf"]),
-            "classification": audit_classification(run_sites)}
+            "classification": audit_classification(run_sites),
+            "timing": audit_timing(source, settings, period)}
 
 
 def markdown(a: dict) -> str:
@@ -356,7 +403,8 @@ def markdown(a: dict) -> str:
                                                                                           a["reference_utc"])), ""]
     for key, title in (("q1", "1. Q1 – traffic volume and approach mapping"), ("q2", "2. Q2 – detectors"),
                        ("q3ab", "3. Q3A/Q3B – cycle length and stability"), ("q3c", "4. Q3C – phase service"),
-                       ("classification", "5. Classification and evidence")):
+                       ("classification", "5. Classification and evidence"),
+                       ("timing", "6. Which quarter-hour the PerfKpi/PerfApproach records describe")):
         out += [f"## {title}", ""]
         for k, v in a[key].items():
             if isinstance(v, dict):
