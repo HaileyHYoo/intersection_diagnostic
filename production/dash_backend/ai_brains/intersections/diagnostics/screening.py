@@ -56,6 +56,9 @@ def q2_gate(detectors: list[dict], totals: dict[int, dict], rules: dict) -> dict
                                                   (the missing ones could only add to it)
         below the minimum, all records present    FAIL
         below the minimum, records missing        INSUFFICIENT DATA (a missing record is not a zero)
+
+    Site: FAIL when more than q2.tolerated_failed_detectors detectors FAIL (decision with the methodology owner,
+    5 Nov 2026: one failing detector is tolerated); a tolerated detector is listed in "tolerated" and shown as a note.
     """
     rule = rules["q2"]
     if rule.get("active_detectors_only", True):
@@ -75,9 +78,10 @@ def q2_gate(detectors: list[dict], totals: dict[int, dict], rules: dict) -> dict
                      "expected_records": t["expected"], "negative_records": t["negatives"]})
     failed = [r for r in rows if r["status"] == FAIL]
     missing = [r for r in rows if r["status"] == INSUFFICIENT]
+    tolerated = failed if 0 < len(failed) <= rule.get("tolerated_failed_detectors", 0) else []
     if not rows:
         status, reason = INSUFFICIENT, "no active detector is associated with the intersection"
-    elif failed:
+    elif failed and not tolerated:
         # An observed low count takes precedence over missing records at other detectors.
         status, reason = FAIL, f"{len(failed)} detector(s) below {rule['min_vehicles']} vehicles in 60 minutes"
     elif missing:
@@ -86,7 +90,8 @@ def q2_gate(detectors: list[dict], totals: dict[int, dict], rules: dict) -> dict
     else:
         status, reason = PASS, None
     return {"status": status, "reason": reason, "threshold": rule["min_vehicles"], "detectors": rows,
-            "failed": [r["detector"] for r in failed], "missing": [r["detector"] for r in missing]}
+            "failed": [r["detector"] for r in failed], "missing": [r["detector"] for r in missing],
+            "tolerated": [r["detector"] for r in tolerated]}
 
 
 # ---------------------------------------------------------------------- Q1
@@ -261,7 +266,7 @@ def screen(source, settings, baseline: dict, period: Period, network: list[dict]
             continue
         results.append({"site": site, "name": site_name(s.get("streets")) or s.get("name"), "lat": s.get("lat"),
                         "lon": s.get("lon"), "category": category, "label": CATEGORIES[category], "reasons": reasons,
-                        "notes": caution_notes(q1, q3, category),
+                        "notes": detector_notes(q2, category) + caution_notes(q1, q3, category),
                         "selectable": rules["click"].get(category, []), "q2": q2, "q1": q1, "q3": q3,
                         "total_volume_veh_h": total_volume(q1),
                         **({"if_detectors_passed": shadow} if shadow else {}),
@@ -301,6 +306,16 @@ def street_names(source, links: dict, green: dict, baseline: dict) -> dict[str, 
 
 MEASURE_NAMES = {"cycle_length": "cycle length (Q3A)", "cycle_stability": "Cycle Stability (Q3B)",
                  "phase_service": "phase service (Q3C)"}
+
+
+def detector_notes(q2: dict, category: str) -> list[str]:
+    """The detector tolerated by the Q2 gate (decision, 5 Nov 2026), shown with the site's evidence."""
+    if not q2.get("tolerated") or category == "detector_health":
+        return []
+    rows = {r["detector"]: r for r in q2["detectors"]}
+    parts = [f"detector {d} counted {rows[d]['count_60min']:.0f} vehicles" for d in q2["tolerated"]]
+    return [f"Screened with one detector below {q2['threshold']} vehicles in 60 minutes ({', '.join(parts)}); "
+            "it may be a low-volume movement or a detector fault."]
 
 
 def caution_notes(q1: dict | None, q3: dict | None, category: str) -> list[str]:

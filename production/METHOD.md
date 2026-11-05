@@ -66,8 +66,9 @@ Classifications are made by deterministic code. The LLM never decides a category
 
 | Site result | When |
 |---|---|
-| FAIL → Detector Health Issue | Any active detector FAILs. An observed low count takes precedence over insufficient detectors elsewhere. |
-| INSUFFICIENT → Grey | No detector FAILs, but at least one is INSUFFICIENT, or the site has no active detector |
+| FAIL → Detector Health Issue | **Two or more** active detectors FAIL (decision with the methodology owner, 5 Nov 2026, `q2.tolerated_failed_detectors`: 1). An observed low count takes precedence over insufficient detectors elsewhere. |
+| PASS with one detector tolerated | Exactly one active detector FAILs (any count below 10, including 0) and every other detector PASSes. The site is screened; the detector is listed in `q2.tolerated` and shown as a note ("may be a low-volume movement or a detector fault"). With `tolerated_failed_detectors: 0` the gate is the strict one first written. |
+| INSUFFICIENT → Grey | No detector FAILs beyond the tolerated one, but at least one is INSUFFICIENT (records missing, unchanged), or the site has no active detector |
 | PASS | Every active detector PASSes |
 
 Q1 and Q3 run only after a PASS.

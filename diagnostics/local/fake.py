@@ -11,7 +11,8 @@ behaviour it was built for:
     amber_traffic   E volume -50%
     amber_signal    cycle length +30% and cycle stability poorer
     single_signal   cycle length +30% only (one Q3 measure -> Q3 normal -> Normal)
-    detector_fail   one active detector counts 0 in the last 60 minutes   -> Detector Health Issue
+    detector_fail   two active detectors count 0 in the last 60 minutes   -> Detector Health Issue
+                    (one would be tolerated by the Q2 gate)
     detector_gap    one active detector counts 0 and misses a 5-minute record -> Grey (a busy detector with
                     a missing record still passes: detector 6 at the same site)
     volume_gap      one approach misses a 15-minute volume record           -> Grey
@@ -178,7 +179,7 @@ class FakeSource:
                     else:
                         value = self._volume(site, by_link[d["link"]], stamp) / 6
                     if self._current(stamp, 60):
-                        if n["scenario"] == "detector_fail" and d["detector"] == 3:
+                        if n["scenario"] == "detector_fail" and d["detector"] in (3, 4):
                             value = 0.0
                         if n["scenario"] == "detector_gap" and d["detector"] in (5, 6) \
                                 and stamp == self.scenario_end - timedelta(minutes=20):

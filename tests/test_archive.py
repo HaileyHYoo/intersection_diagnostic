@@ -77,7 +77,7 @@ class ArchiveTests(unittest.TestCase):
                       log["intersections"])                             # Normal sites too, though not drawn
         dh = next(d for d in log["detector_health_issues"] if d["site"] == "4318")
         self.assertEqual(dh["threshold"], 10)
-        self.assertEqual([d["detector"] for d in dh["failed_detectors"]], [3])
+        self.assertEqual([d["detector"] for d in dh["failed_detectors"]], [3, 4])
         self.assertIn("count_60min", dh["failed_detectors"][0])
         traffic = next(t for t in log["traffic_abnormalities"] if t["site"] == "4300")
         self.assertTrue({"current", "usual", "p_low", "p_high", "pct_difference"} <= set(traffic["approaches"][0]))

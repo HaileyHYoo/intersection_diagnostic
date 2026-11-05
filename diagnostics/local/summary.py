@@ -52,6 +52,13 @@ def summarise(payload: dict) -> dict:
                          "detectors_with_negative_records": sum(1 for d in q2_rows if d.get("negative_records")),
                          "of_which_grey_or_insufficient": sum(1 for d in q2_rows if d.get("negative_records")
                                                               and d["status"] == INSUFFICIENT)}
+    tolerated = [s for s in sites if s["q2"].get("tolerated")]
+    out["q2_one_detector_tolerated"] = {
+        "sites": len(tolerated), "category": dict(Counter(s["category"] for s in tolerated).most_common()),
+        "tolerated_detector_count_60min": dict(Counter(_bucket(d["count_60min"], [0, 1, 5, 10])
+                                                       for s in tolerated for d in s["q2"]["detectors"]
+                                                       if d["detector"] in s["q2"]["tolerated"])),
+        "examples": [s["site"] for s in tolerated][:8]}
     out["detector_health"] = {"sites": len(dh), "failed_detectors_per_site": dict(sorted(failed_n.items())),
                               "failed_detector_counts_60min": dict(failed_counts),
                               "sites_where_every_failed_detector_counted_0": all_zero,
@@ -342,7 +349,7 @@ def review(sites: list[dict]) -> dict:
 def text(summary: dict) -> str:
     lines = [f"Run {summary['run']}  {summary['period']}  sites {summary['sites']}  errors {summary['errors']}",
              "  categories: " + ", ".join(f"{k} {v}" for k, v in summary["categories"].items())]
-    for key in ("q2_records", "detector_health", "grey", "traffic_abnormal", "signal"):
+    for key in ("q2_records", "q2_one_detector_tolerated", "detector_health", "grey", "traffic_abnormal", "signal"):
         lines.append(f"  {key}:")
         for k, v in summary[key].items():
             lines.append(f"    {k}: {v}")

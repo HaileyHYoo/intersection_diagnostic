@@ -101,7 +101,8 @@ def evidence_summary(site: dict) -> tuple[str, list[str]]:
         parts.append(f"phase service on {len(ps)} approach{'es' if len(ps) > 1 else ''}")
     head = ("Outside the normal range (marked in bold in the tables): " + ", ".join(parts) + "."
             if parts else "No measure is outside its normal range.")
-    notes = []
+    from .screening import detector_notes
+    notes = detector_notes(site["q2"], site["category"])
     for key, name in (("cycle_length", "Cycle length"), ("cycle_stability", "Cycle Stability")):
         c = comps[key]
         if c["status"] == "INSUFFICIENT DATA":

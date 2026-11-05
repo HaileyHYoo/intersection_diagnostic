@@ -43,7 +43,7 @@ class NetworkScreeningTests(unittest.TestCase):
     def test_detector_failure_is_not_grey(self):
         site = self.sites["4318"]
         self.assertEqual(site["q2"]["status"], screening.FAIL)
-        self.assertEqual(site["q2"]["failed"], [3])
+        self.assertEqual(site["q2"]["failed"], [3, 4])
         self.assertIsNone(site["q1"])                  # Q1/Q3 are not run after a failed gate
 
     def test_inactive_detector_is_ignored(self):
@@ -122,22 +122,39 @@ class RuleTests(unittest.TestCase):
     def t(total, records=12, negatives=0):
         return {"total": total, "records": records, "expected": 12, "negatives": negatives}
 
+    strict = load_rules(overrides={"q2": {"tolerated_failed_detectors": 0}})    # the gate as first written
+
     def test_q2_observed_failure_wins_over_missing(self):
         dets = [{"detector": 1, "active": True}, {"detector": 2, "active": True}]
-        t = self.t
-        self.assertEqual(screening.q2_gate(dets, {1: t(3), 2: t(4, records=11)}, self.rules)["status"], screening.FAIL)
-        self.assertEqual(screening.q2_gate(dets, {1: t(30), 2: t(4, records=11)}, self.rules)["status"], INSUFFICIENT)
-        self.assertEqual(screening.q2_gate(dets, {1: t(30)}, self.rules)["status"], INSUFFICIENT)   # no records at all
-        self.assertEqual(screening.q2_gate(dets, {1: t(30), 2: t(10)}, self.rules)["status"], screening.PASS)
-        self.assertEqual(screening.q2_gate([], {}, self.rules)["status"], INSUFFICIENT)
+        t, rules = self.t, self.strict
+        self.assertEqual(screening.q2_gate(dets, {1: t(3), 2: t(4, records=11)}, rules)["status"], screening.FAIL)
+        self.assertEqual(screening.q2_gate(dets, {1: t(30), 2: t(4, records=11)}, rules)["status"], INSUFFICIENT)
+        self.assertEqual(screening.q2_gate(dets, {1: t(30)}, rules)["status"], INSUFFICIENT)   # no records at all
+        self.assertEqual(screening.q2_gate(dets, {1: t(30), 2: t(10)}, rules)["status"], screening.PASS)
+        self.assertEqual(screening.q2_gate([], {}, rules)["status"], INSUFFICIENT)
 
     def test_q2_passes_on_eleven_records_when_the_count_is_reached(self):
         dets = [{"detector": 1, "active": True}]
-        gate = screening.q2_gate(dets, {1: self.t(10, records=11)}, self.rules)
+        gate = screening.q2_gate(dets, {1: self.t(10, records=11)}, self.strict)
         self.assertEqual(gate["status"], screening.PASS)
         self.assertEqual(gate["detectors"][0]["records"], 11)
-        self.assertEqual(screening.q2_gate(dets, {1: self.t(9, records=11)}, self.rules)["status"], INSUFFICIENT)
-        self.assertEqual(screening.q2_gate(dets, {1: self.t(9)}, self.rules)["status"], screening.FAIL)
+        self.assertEqual(screening.q2_gate(dets, {1: self.t(9, records=11)}, self.strict)["status"], INSUFFICIENT)
+        self.assertEqual(screening.q2_gate(dets, {1: self.t(9)}, self.strict)["status"], screening.FAIL)
+
+    def test_one_failing_detector_is_tolerated(self):
+        """Decision with the methodology owner (5 Nov 2026): one detector below 10 vehicles is screened."""
+        dets = [{"detector": k, "active": True} for k in (1, 2, 3)]
+        t = self.t
+        gate = screening.q2_gate(dets, {1: t(6), 2: t(40), 3: t(50)}, self.rules)
+        self.assertEqual((gate["status"], gate["failed"], gate["tolerated"]), (screening.PASS, [1], [1]))
+        self.assertIn("detector 1 counted 6 vehicles", screening.detector_notes(gate, "red")[0])
+        zero = screening.q2_gate(dets, {1: t(0), 2: t(40), 3: t(50)}, self.rules)
+        self.assertEqual(zero["status"], screening.PASS)                    # a single detector at 0 as well
+        two = screening.q2_gate(dets, {1: t(6), 2: t(3), 3: t(50)}, self.rules)
+        self.assertEqual((two["status"], two["tolerated"]), (screening.FAIL, []))   # two failing: Detector Health
+        gap = screening.q2_gate(dets, {1: t(6), 2: t(4, records=11), 3: t(50)}, self.rules)
+        self.assertEqual(gap["status"], INSUFFICIENT)                       # missing records unchanged: Grey
+        self.assertEqual(screening.detector_notes(two, "detector_health"), [])
 
     def test_negative_five_minute_counts_are_missing(self):
         from datetime import timedelta

@@ -26,7 +26,9 @@
     "min_vehicles": 10,
     "negative_counts": "missing",
     "note": "Per detector: >= min_vehicles over the 60 minutes passes even with missing 5-minute records; below it, FAIL needs all records, otherwise INSUFFICIENT DATA. A negative 5-minute count is not a valid count and is treated as missing (\"missing\"); \"zero\" counts it as 0, \"keep\" uses it as stored.",
-    "active_detectors_only": true
+    "active_detectors_only": true,
+    "tolerated_failed_detectors": 1,
+    "tolerance_note": "Decision with the methodology owner (5 Nov 2026): a site where only one active detector is below min_vehicles (with all its records) is screened instead of being a Detector Health Issue; two or more such detectors remain a Detector Health Issue. Missing records are unchanged (INSUFFICIENT DATA). 0 restores the strict gate."
   },
   "q1": {
     "min_pct_difference": 10,
