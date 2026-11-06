@@ -32,9 +32,9 @@ Neo4j queries are in `graph`:
 - **ID normalisation.** Site numbers are normalised to the plain number. Link IDs lose the characters listed in `ids.strip_chars` (quotes, back-quote, spaces) at both ends only. A leading apostrophe added by spreadsheet auto-formatting is removed, and characters inside an ID are kept.
 - **Logical field names.** Field names above the source layer are logical (`cycle_length`, `green_share`, …), so a renamed field is one edit in the schema.
 
-## Still to confirm on live data
+## Live-data checks (development repository)
 
-Run this for a few sites and periods. It writes `out/inspect_S<site>_<time>.json` and only reads from the databases:
+Run in the development repository for a few sites and periods. It writes `out/inspect_S<site>_<time>.json` and only reads from the databases:
 
 ```bash
 python main.py inspect --site 4397 --end 2026-10-27T08:30 --hours 2
@@ -45,18 +45,17 @@ python main.py inspect --site 4397 --end 2026-10-27T08:30 --hours 2
 | `d[n]` is `Detector.detector_number` | `checks.detectors`: the active Neo4j detectors equal `fields_with_nonzero_counts` (unused fields `d[9]`… are zero) | Change `detector_field` or the `detectors` query |
 | Value types of `scats/volume` | `feeds.detector_counts.value_types` | Nothing to change: strings are converted, and anything non-numeric is missing |
 | Stamps are interval ends | `checks.timestamps`: each feed's `last` equals the window end | Set the feed's `timestamp_label` |
-| Off-grid stamps | `feeds.*.offset_within_step`, `on_grid` | Nothing to change with `off_grid: "ceil"`; check `period_values` |
+| Off-grid stamps | `feeds.*.offset_within_step`, `on_grid` | Nothing to change: `alignment.written_after_interval` lists the feeds written after their interval; check `period_values` |
 | EGRESS links have volume and green share | `checks.links` | Check the link ID format and `ids.strip_chars` |
 | What the screening would use | `checks.period_values`: no `None` for Q2 detectors, Q1 volumes, Q3 KPIs, Q3C green | A `None` means the site would be Grey |
 | TomTom queue time format | `checks.tomtom.queue_time_format` | If stamps have no offset and are not UTC, set `tomtom_queue.naive_timestamp_timezone` |
 
 **Results for site 4397, 30 Oct 2026 (UTC 01:30–03:30):**
 - confirmed: `d[n]` = detector number (1–8); detector counts are integers; the three EGRESS links have volume and green share; the 15-minute volumes are end-labelled; the TomTom mapping and queue archive work (3 approaches, 1 row per minute);
-- found: detector counts are stamped at :03/:08 and PerfKpi/PerfApproach at :07/:22, which is now handled with `off_grid: "ceil"`;
+- found: detector counts are stamped at :03/:08 and PerfKpi/PerfApproach at :07/:22, which is handled: PerfKpi/PerfApproach records describe the quarter-hour before their stamp (15:07 = 14:45–15:00, confirmed with the data owner, Nov 2026), detector records the 5 minutes their stamp falls in;
 - confirmed in a second run (UTC 23:00–01:00): the TomTom KPIs are end-labelled (the latest quarter can arrive a few minutes late); the TomTom queue archive stamps carry `Z` (UTC); every value the screening needs for the period is present.
 - observed:
-  - detector 1 at 4397 counts 1–2 vehicles per hour, so this site is a Detector Health Issue under the Q2 rule at both times;
+  - detector 1 at 4397 counts 1–2 vehicles per hour; with one failing detector tolerated (decision, 5 Nov 2026) the site is screened, with a note;
   - `d[12]` counted traffic but is not associated with the site in Neo4j, so it is not part of Q2;
   - GreenShare is 100% on two of the three approaches (once stored as 99.99999999999999). Green share is rounded to 3 decimals (`q3c.round_decimals`) so that float noise is not read as LOW against a 100–100 range.
-- still open: whether a PerfKpi record stamped :07 covers the 15 minutes up to :07 (the reading used) or an earlier quarter written late — a question for the production team.
 

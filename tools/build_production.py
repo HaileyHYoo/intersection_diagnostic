@@ -22,7 +22,7 @@ SOURCE = ROOT / "diagnostics"
 OUT = ROOT / "production"
 TARGET = OUT / "dash_backend" / "ai_brains" / "intersections" / "diagnostics"
 EXCLUDE_DIRS = {"local", "__pycache__"}
-DOCS = {"docs/PRODUCTION_UPDATE.md": "PRODUCTION_UPDATE.md", "docs/METHOD.md": "METHOD.md",
+DOCS = {"docs/PRODUCTION_UPDATE.md": "PRODUCTION_UPDATE.md",
         "docs/SCHEMA.md": "SCHEMA.md", "docs/DATA_MAPPING.md": "DATA_MAPPING.md", "requirements.txt": "requirements.txt", ".env.example": ".env.example"}
 
 
