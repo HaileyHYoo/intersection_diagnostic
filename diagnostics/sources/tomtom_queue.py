@@ -133,13 +133,19 @@ class QueueArchive:
             url = template.replace("{junction_uuid}", uuid).replace("{intersection_id}", uuid)
             key = (url, tuple(sorted(params.items())))
             try:
-                if key not in self._cache:
-                    self._cache[key] = parse_archive(self.fetch(url, params), self.spec)
+                # Only the historical archive is kept: complete past days do not change, while the recent archive
+                # grows during the day (a long-lived service would otherwise miss the newer minutes).
+                if backend == "historical archive" and key in self._cache:
+                    got = self._cache[key]
+                else:
+                    got = parse_archive(self.fetch(url, params), self.spec)
+                    if backend == "historical archive":
+                        self._cache[key] = got
             except DataUnavailable as exc:
                 hint = (" (older than 24 h; check TOMTOM_QUEUE_HISTORIC_PARAMS)" if backend == "historical archive" else "")
                 failures.append(f"{backend}: {exc}{hint}")
                 continue
-            out += [r for r in self._cache[key] if a < r["time"] <= b]
+            out += [r for r in got if a < r["time"] <= b]
         if failures and not out:
             raise DataUnavailable("; ".join(failures))
         return out

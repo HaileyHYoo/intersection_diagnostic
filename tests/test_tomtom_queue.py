@@ -54,6 +54,17 @@ class QueueArchiveTests(unittest.TestCase):
         self.assertEqual(calls[0]["archiveType"], "HISTORICAL")
         self.assertNotIn("archiveType", calls[1])
 
+    def test_recent_archive_is_read_again_on_each_call(self):
+        """The recent archive grows during the day: a later click in a long-lived service must see the new minutes."""
+        blobs = [archive("time,approachId,queueLengthMeters\n2026-11-09T03:31:00Z,A,10\n"),
+                 archive("time,approachId,queueLengthMeters\n2026-11-09T03:31:00Z,A,10\n2026-11-09T04:01:00Z,A,20\n")]
+        calls = []
+        q = QueueArchive(self.spec, fetch=lambda url, params: calls.append(params) or blobs[len(calls) - 1],
+                         now=lambda: datetime(2026, 11, 9, 5, tzinfo=UTC))
+        q.rows("j", datetime(2026, 11, 9, 3, 30, tzinfo=UTC), datetime(2026, 11, 9, 4, tzinfo=UTC))
+        later = q.rows("j", datetime(2026, 11, 9, 4, tzinfo=UTC), datetime(2026, 11, 9, 4, 30, tzinfo=UTC))
+        self.assertEqual((len(calls), [r["queue_m"] for r in later]), (2, [20.0]))
+
     def test_historical_failure_names_the_setting(self):
         def fail(url, params):
             raise DataUnavailable("TomTom queue archive request failed (HTTP 404)")
