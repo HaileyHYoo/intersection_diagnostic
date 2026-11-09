@@ -281,7 +281,7 @@ def coverage(rows: list[dict], flagged: dict[str, dict], queue_status: str, peri
     elif full and queue:
         statement = "Delay and queue are available for the full 30 minutes on every SCATS-identified approach."
     else:
-        statement = "Coverage of the SCATS-identified approaches: " + "; ".join(parts) + "."
+        statement = "SCATS-identified approaches: " + "; ".join(parts) + "."
         if not queue:
             statement += " Junction Analytics queue: " + queue_status + "."
     return {"per_approach": parts, "full_period": bool(flagged) and full and queue, "statement": statement}
