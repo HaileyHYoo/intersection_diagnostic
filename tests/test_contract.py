@@ -68,6 +68,19 @@ class ContractTests(unittest.TestCase):
         self.assertEqual((back["q1"]["approaches"][0]["street"], back["q1"]["approaches"][0]["bound"]),
                          (first["street"], first["bound"]))
 
+    def test_a_link_without_street_name_keeps_its_label_through_the_contract(self):
+        """Seen live (9 Nov 2026): "Link X [S] (no street name)" read back from the contract became
+        "Link X [S] (no street name) (link X)" in every Red report text."""
+        from diagnostics.names import approach_label
+        site = next(s for s in self.result.sites if s.q1.approaches)
+        model = site.model_copy(deep=True)
+        a = model.q1.approaches[0]
+        a.approach_name = f"Link {a.approach_id} [S] (no street name)"
+        back = adapter.site_from_model(model)["q1"]["approaches"][0]
+        self.assertEqual(approach_label(back), f"Link {a.approach_id} [S] (no street name)")
+        named = adapter.site_from_model(site)["q1"]["approaches"][0]
+        self.assertEqual(approach_label(named), site.q1.approaches[0].approach_name)
+
     def test_store_round_trip_and_panel(self):
         run = S.ScreeningRun(run_id=self.result.run_id, status=S.RunStatus.COMPLETED, started_at=self.result.completed_at,
                              key=S.ScreeningCacheKey(region=self.result.region, period_end=self.result.period.end,

@@ -215,7 +215,9 @@ def site_from_model(m: S.SiteScreeningResult) -> dict:
     def row(approach_id, name, hc, status, direction):
         label = re.match(r"^(.*) \[([A-Z]{1,2})\]$", name or "")         # approach_label: "Street [N]"
         street, bound = (label.group(1), label.group(2)) if label else (name or None, None)
-        return {"link": approach_id, "street": street, "bound": bound, "current": hc.current, "usual": hc.reference,
+        # The saved name is kept as the label, so "Link X [S] (no street name)" is not re-labelled with its link ID.
+        return {"link": approach_id, "street": street, "bound": bound, "label": name or None,
+                "current": hc.current, "usual": hc.reference,
                 "p_low": hc.p10, "p_high": hc.p90, "n_history": hc.n_history_obs, "pct_difference": hc.pct_diff,
                 "status": status, "direction": direction}
 
