@@ -35,6 +35,7 @@ from . import intersections_diagnostics_schemas as _bundled
 from ..stats import ABNORMAL, INSUFFICIENT, NORMAL
 from ..timewin import Period, period_ending
 from ..templates.d001 import approach_label
+from ..templates.d002 import DEFAULT_NOTE
 
 
 
@@ -315,8 +316,12 @@ def q5_output(d002: dict, period: Period, rules: dict, template: S.TemplateRef |
     ev = d002["evidence"]
     template = template or template_ref(rules, "D002")
     if not ev["available"]:
+        # The methodology's fixed message with its reason (e.g. no TomTom approach mapping), as in the local report.
+        note = ev.get("coverage_note")
+        reason = f" Reason: {note}." if note and note != DEFAULT_NOTE else ""
         return S.Q5Output(template=template, available=False, period=period_model(period),
-                          missing_approach_ids=ev["missing_approach_links"], narrative=d002["answer"]["road_user_impact"],
+                          missing_approach_ids=ev["missing_approach_links"],
+                          narrative=d002["answer"]["road_user_impact"] + reason,
                           **optional(S.Q5Output, generated_by=d002["generated_by"], llm_rejected=d002["rejected"]))
     ident = lambda a: a["link"] or f"tomtom:{a['tomtom_approach']}"
     approaches = [S.TomTomApproachMetrics(approach_id=ident(a), approach_name=a["approach"], delay_s=a["delay_s"],

@@ -153,7 +153,13 @@ def findings(ev: dict) -> tuple[str, str]:
     if cl["status"] == ABNORMAL:
         longer = cl["direction"] == "HIGH"
         matching = [k for k, d in traffic.items() if d == cl["direction"]]
-        if matching:
+        opposite = [k for k, d in traffic.items() if d != cl["direction"]]
+        if matching and opposite:
+            # Volume moved both ways (seen live at SCATS 1037): the cycle change is not clearly a demand response.
+            maybe.append(f"volume is {'higher' if longer else 'lower'} on {_and(matching)} but "
+                         f"{'lower' if longer else 'higher'} on {_and(opposite)}, so the {'longer' if longer else 'shorter'} "
+                         "cycle is not clearly a response to demand; a plan or coordination change is also possible")
+        elif matching:
             maybe.append(f"the {'longer' if longer else 'shorter'} cycle with {'higher' if longer else 'lower'} volume "
                          f"on {_and(matching)} may be SCATS {'lengthening' if longer else 'shortening'} the cycle "
                          f"as demand {'rose' if longer else 'fell'}")

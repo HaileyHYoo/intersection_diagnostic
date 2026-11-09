@@ -81,6 +81,17 @@ class ContractTests(unittest.TestCase):
         named = adapter.site_from_model(site)["q1"]["approaches"][0]
         self.assertEqual(approach_label(named), site.q1.approaches[0].approach_name)
 
+    def test_tomtom_unavailable_keeps_its_reason(self):
+        """SCATS 1037, 10 Nov 2026: the production report showed only the fixed message."""
+        from diagnostics.timewin import period_ending
+        period = period_ending(END, self.settings.rules)
+        d002 = {"evidence": {"available": False, "missing_approach_links": [], "coverage_note": "the site has no TomTom approach mapping"},
+                "answer": {"road_user_impact": "TomTom confirmation unavailable for this intersection or analysis period."},
+                "generated_by": "code", "rejected": None}
+        q5 = adapter.q5_output(d002, period, self.settings.rules)
+        self.assertEqual(q5.narrative, "TomTom confirmation unavailable for this intersection or analysis period. "
+                                       "Reason: the site has no TomTom approach mapping.")
+
     def test_store_round_trip_and_panel(self):
         run = S.ScreeningRun(run_id=self.result.run_id, status=S.RunStatus.COMPLETED, started_at=self.result.completed_at,
                              key=S.ScreeningCacheKey(region=self.result.region, period_end=self.result.period.end,
@@ -212,7 +223,8 @@ class CoreTests(unittest.TestCase):
     def test_tomtom_unavailable(self):
         d = self.diagnose("4306")
         self.assertFalse(d.q5.available)
-        self.assertEqual(d.q5.narrative, S.TOMTOM_UNAVAILABLE_MESSAGE)
+        self.assertTrue(d.q5.narrative.startswith(S.TOMTOM_UNAVAILABLE_MESSAGE))     # the fixed message, then its reason
+        self.assertIn("Reason: ", d.q5.narrative)
 
     def test_only_red_sites(self):
         with self.assertRaises(ValueError):

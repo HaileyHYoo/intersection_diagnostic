@@ -47,6 +47,16 @@ class Q4WordingTests(unittest.TestCase):
         self.assertIn("The longer cycle is not matched by higher volume on the screened approaches, so a plan or "
                       "coordination change is a possible explanation", d001.written(ev)["diagnosis"])
 
+    def test_cycle_change_with_volume_moving_both_ways(self):
+        """SCATS 1037, 10 Nov 2026: shorter cycle, volume lower on [W] but higher on [E]."""
+        ev = evidence(traffic=[("Q St [W]", "LOW"), ("Q St [E]", "HIGH")], cycle=measure(ABNORMAL, "LOW", 70.0),
+                      traffic_only=["Q St [W]", "Q St [E]"])
+        a = d001.written(ev)
+        self.assertIn("Volume is lower on Q St [W] but higher on Q St [E], so the shorter cycle is not clearly a "
+                      "response to demand; a plan or coordination change is also possible", a["diagnosis"])
+        self.assertNotIn("shortening the cycle", a["diagnosis"])
+        self.assertEqual(llm_problems(a), [])
+
     def test_less_green_to_busier_approach_is_checked_first(self):
         ev = evidence(traffic=[("A St [N]", "HIGH"), ("B Rd [E]", "HIGH")], cycle=measure(ABNORMAL, "HIGH", 130.0),
                       service=[("A St [N]", "LOW"), ("B Rd [E]", "HIGH")], same=["A St [N]", "B Rd [E]"])
