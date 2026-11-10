@@ -24,7 +24,7 @@ from . import arms as arm_lookup
 from .templates.d001 import approach_label
 from statistics import median
 
-from .timewin import Period, reference_periods, to_utc
+from .timewin import Period, reference_periods, reference_span, to_utc
 
 METRIC = "TomTom link speed (km/h), harmonic mean of the samples in the 30-minute period"
 
@@ -107,13 +107,15 @@ def link_speed(source, site: dict, period: Period, schema: dict, region: str | N
             reference = {link: [v] for link, v in hist.items()}
             out["reference_weeks"] = weeks
             word = "median" if rules.get("reference_value") == "median" else "mean"
-            out["reference"] = (f"{word} TomTom speed of the same 30 minutes in the {read} reference weeks (same "
-                                f"weekday, holidays left out), read from the same feed; shown when at least "
-                                f"{rules['history']['min_observations']} weeks have samples")
+            out["reference"] = (f"{word} TomTom speed of the same 30 minutes, {reference_span(period, rules)}, read "
+                                f"from the same feed; shown when at least {rules['history']['min_observations']} "
+                                "weeks have samples")
         except Exception as exc:  # noqa: BLE001
             out["reference"] = f"unavailable - {type(exc).__name__}: {str(exc)[:120]}"
     else:
         out["reference"] = "unavailable - no existing historical reference speed is configured"
+    step = schema.get("influx", {}).get("sources", {}).get("link_speed", {}).get("interval_minutes", 5)
+    out["period_minutes"] = period.minutes
     arms, arm_note = arm_lookup.link_arms(source, site["site"], region) if region else ({}, None)
     if arm_note:
         out["notes"].append(arm_note)
@@ -125,6 +127,7 @@ def link_speed(source, site: dict, period: Period, schema: dict, region: str | N
                                   "arm": arms.get(a["link"]),
                                   "speed_kmh": None if speed is None else round(speed, 1),
                                   "samples": sum(1 for v in values if v > 0),
+                                  "minutes": min(period.minutes, step * sum(1 for v in values if v > 0)),
                                   "reference_kmh": None if ref is None else round(ref, 1),
                                   "reference_weeks": out.get("reference_weeks", {}).get(a["link"]),
                                   "status": "available" if speed is not None else "unavailable"})
@@ -140,10 +143,11 @@ def table(speed: dict) -> dict:
     fmt = lambda x: "-" if x is None else f"{x:.1f}"
     with_arm = any(a.get("arm") is not None for a in speed["approaches"])
     return {"title": "TomTom incoming-link speed (same 30 min)",
-            "columns": ["Approach"] + (["Arm"] if with_arm else []) + ["Speed (km/h)", "Samples", "Reference (km/h)"]
+            "columns": ["Approach"] + (["Arm"] if with_arm else [])
+                       + ["Speed (km/h)", f"Minutes with speed (of {speed.get('period_minutes', 30)})", "Reference (km/h)"]
                        + (["Reference weeks"] if "reference_weeks" in speed else []),
             "rows": [[a["approach"]] + (["-" if a.get("arm") is None else str(a["arm"])] if with_arm else [])
                      + [fmt(a["speed_kmh"]) if a["speed_kmh"] is not None else "unavailable",
-                        str(a["samples"]), fmt(a["reference_kmh"])]
+                        str(a.get("minutes", a["samples"])), fmt(a["reference_kmh"])]
                      + ([str(a.get("reference_weeks") or 0)] if "reference_weeks" in speed else [])
                      for a in speed["approaches"]]}

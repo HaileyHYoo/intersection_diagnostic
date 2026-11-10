@@ -66,10 +66,10 @@ def tomtom_tables(d002: dict) -> list[dict]:
         return []
     queue = d002["evidence"]["queue"] == "available"
     approach = {"title": "TomTom approach performance (same 30 min)",
-                "columns": ["Approach", "Approach delay (s)", "Control delay (s)", "Multi-stop rate", "15-min periods observed (of 2)"]
-                + (["Mean queue (m)", "Max queue (m)", "Queue minutes"] if queue else []),
+                "columns": ["Approach", "Approach delay (s)", "Control delay (s)", "Multi-stop rate", "Delay minutes (of 30)"]
+                + (["Mean queue (m)", "Max queue (m)", "Queue minutes (of 30)"] if queue else []),
                 "rows": [[a["approach"], _fmt(a["approach_delay_s"]), _fmt(a["control_delay_s"]),
-                          "-" if a["multi_stop_rate"] is None else f"{a['multi_stop_rate']:.3f}", str(a["quarters_observed"])]
+                          "-" if a["multi_stop_rate"] is None else f"{a['multi_stop_rate']:.3f}", str(15 * a["quarters_observed"])]
                          + ([_fmt(a["queue_mean_m"]), _fmt(a["queue_max_m"]), str(a["queue_minutes"])] if queue else [])
                          for a in rows]}
     to = lambda m: " ".join(x for x in (m.get("to_street"), f"({m['to_direction'].lower()}bound)" if m.get("to_direction")

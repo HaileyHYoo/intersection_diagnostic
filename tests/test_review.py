@@ -99,9 +99,8 @@ class Q5VerdictTests(unittest.TestCase):
                 {"link": "LB", "quarters_observed": 1, "queue_minutes": 12}]
         cov = d002.coverage(rows, flagged, "available")
         self.assertFalse(cov["full_period"])
-        self.assertEqual(cov["statement"], "SCATS-identified approaches: A St [N]: delay in 2 of 2 "
-                         "15-minute periods, queue in 30 of 30 minutes; B Rd [E]: delay in 1 of 2 15-minute periods, "
-                         "queue in 12 of 30 minutes.")
+        self.assertEqual(cov["statement"], "SCATS-identified approaches: A St [N]: delay in 30 of 30 minutes, "
+                         "queue in 30 of 30 minutes; B Rd [E]: delay in 15 of 30 minutes, queue in 12 of 30 minutes.")
         full = d002.coverage(rows[:1], {"LA": flagged["LA"]}, "available")
         self.assertEqual(full["statement"], "Delay and queue are available for the full 30 minutes on every "
                                             "SCATS-identified approach.")

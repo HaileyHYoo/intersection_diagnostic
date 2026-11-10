@@ -149,22 +149,25 @@ def reference_periods(period: Period, rules: dict) -> tuple[list[Period], dict[s
     return used, skipped
 
 
-def reference_text(period: Period, rules: dict) -> str:
-    """The reference period in words, e.g. "Tuesdays 10:00-10:30 in the 8 weeks from 15 Sep to 27 Oct 2026 (7 used;
-    left out: 3 Nov, public holiday: Melbourne Cup)". Usual value, range and minimum come from the rules."""
-    history = rules["history"]
+def reference_span(period: Period, rules: dict) -> str:
+    """"Tuesdays 10:00-10:30 in the 8 weeks 2026-09-15 to 2026-11-03 (7 used; excluded: 2026-11-03, public holiday:
+    Melbourne Cup)": the reference weeks with their dates and every excluded day with its reason."""
+    weeks = rules["history"]["weeks"]
     used, skipped = reference_periods(period, rules)
-    first = period.day - timedelta(days=7 * history["weeks"])
+    first = period.day - timedelta(days=7 * weeks)
     last = period.day - timedelta(days=7)
     a, b = period.local_start, period.local_end
-    day_month = lambda d: f"{d.day} {d.strftime('%b')}"
-    span = f"{day_month(first)} to {day_month(last)} {last.year}"
-    text = (f"Reference: {a.strftime('%A')}s {a.strftime('%H:%M')}-{b.strftime('%H:%M')} in the {history['weeks']} weeks "
-            f"from {span} ({len(used)} used")
+    text = (f"{a.strftime('%A')}s {a.strftime('%H:%M')}-{b.strftime('%H:%M')} in the {weeks} weeks "
+            f"{first.isoformat()} to {last.isoformat()} ({len(used)} used")
     if skipped:
-        text += "; left out: " + "; ".join(f"{day_month(date.fromisoformat(d))}, {why}" for d, why in skipped.items())
-    word = "median" if rules.get("reference_value", "median") == "median" else "mean"
-    pct = rules["percentiles"]
-    return (text + f"). Usual value = {word} of the valid weeks; normal range = {pct['low'] * 100:.0f}th-"
-            f"{pct['high'] * 100:.0f}th percentile; at least {history['min_observations']} valid weeks are needed.")
+        text += "; excluded: " + "; ".join(f"{d}, {why}" for d, why in skipped.items())
+    return text + ")"
 
+
+def reference_text(period: Period, rules: dict) -> str:
+    """The reference period in words, with the usual value, normal range and minimum from the rules."""
+    history, pct = rules["history"], rules["percentiles"]
+    word = "median" if rules.get("reference_value", "median") == "median" else "mean"
+    return (f"Reference: {reference_span(period, rules)}. Usual value = {word} of the valid weeks; normal range = "
+            f"{pct['low'] * 100:.0f}th-{pct['high'] * 100:.0f}th percentile; at least {history['min_observations']} "
+            "valid weeks are needed.")

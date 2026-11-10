@@ -108,6 +108,13 @@ class ContractTests(unittest.TestCase):
         added = [a for a in q5.approaches if a.approach_id == "L2"]
         self.assertEqual([(a.approach_name, a.is_observed, a.delay_s) for a in added], [("B St [S]", False, None)])
 
+    def test_reference_dates_and_excluded_days(self):
+        """Methodology owner, Nov 2026: the reference weeks as dates, with each excluded day and its reason."""
+        from diagnostics.timewin import period_ending, reference_text
+        text = reference_text(period_ending("2026-11-10T10:30", self.settings.rules), self.settings.rules)
+        self.assertTrue(text.startswith("Reference: Tuesdays 10:00-10:30 in the 8 weeks 2026-09-15 to 2026-11-03 "
+                                        "(7 used; excluded: 2026-11-03, public holiday: Melbourne Cup)."))
+
     def test_store_round_trip_and_panel(self):
         run = S.ScreeningRun(run_id=self.result.run_id, status=S.RunStatus.COMPLETED, started_at=self.result.completed_at,
                              key=S.ScreeningCacheKey(region=self.result.region, period_end=self.result.period.end,
@@ -231,7 +238,7 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(d.q4.template.template_id, "ID_Q4_SCATS_INTERPRETATION")
         ev = d.q4.supporting_evidence                     # every approach and measure, out-of-range first, with values
         self.assertEqual([e.source for e in ev], ["Reference"] + ["Q1"] * 4 + ["Q3A", "Q3B"] + ["Q3C"] * 5)
-        self.assertTrue(ev[0].statement.startswith("Reference: Tuesdays 08:00-08:30 in the 8 weeks from 1 Sep to 20 Oct 2026"))
+        self.assertTrue(ev[0].statement.startswith("Reference: Tuesdays 08:00-08:30 in the 8 weeks 2026-09-01 to 2026-10-20 (8 used)"))
         self.assertTrue(ev[1].statement.endswith("outside its normal range."))
         self.assertIn("veh/30 min; usual", ev[1].statement)                       # units after every value
         self.assertIn("reference weeks)", ev[1].statement)

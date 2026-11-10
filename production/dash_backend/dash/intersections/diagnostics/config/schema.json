@@ -121,6 +121,7 @@
           "Provider": "TomTom"
         },
         "unit": "km/h",
+        "interval_minutes": 5,
         "aggregation": "harmonic",
         "window": "[start, end)",
         "note": "The chatbot's link-speed feed (road_closure_analysis/closure_did.py SPEED: DetectorGroupId = Road.link_id confirmed). A period's speed is the harmonic mean of the positive samples in [start, end), as the chatbot's binned_query(how='pace'). TrafficCondition is a string field and is not read."

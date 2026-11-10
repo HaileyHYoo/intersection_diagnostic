@@ -416,6 +416,11 @@ def link_speed_report(speed: dict, site_no: str, period: S.AnalysisPeriod):
               and speed["reference"].startswith(("median", "mean"))]
     if no_ref:
         notes.append("No reference speed (too few reference weeks with samples): " + ", ".join(no_ref))
+    total = speed.get("period_minutes", 30)
+    short = [f"{a['approach']} ({a['minutes']} of {total} minutes)" for a in speed["approaches"]
+             if a.get("minutes") is not None and a["speed_kmh"] is not None and a["minutes"] < total]
+    if short:                                       # LinkSpeed has no coverage field; stated in minutes, as Q5
+        notes.append("Speed observed in part of the period: " + ", ".join(short))
     # The approach label ("Street [bound]"), so two links of one street are told apart (seen live at SCATS 1037).
     return S.LinkSpeedReport(site_no=site_no, period=period, notes=notes, links=[
         S.LinkSpeed(link_id=a["link"], street_name=a.get("approach") or a.get("street") or "", arm=a.get("arm"), speed_kmh=a["speed_kmh"],

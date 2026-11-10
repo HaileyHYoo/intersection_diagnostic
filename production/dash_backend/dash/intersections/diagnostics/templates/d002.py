@@ -270,7 +270,8 @@ def coverage(rows: list[dict], flagged: dict[str, dict], queue_status: str, peri
         a = by_link.get(link)
         delay_q = a["quarters_observed"] if a else 0
         queue_m = a["queue_minutes"] if a else 0
-        part = f"{f['approach']}: delay in {delay_q} of {quarters} 15-minute periods"
+        step = period_minutes // quarters                  # minutes per stored turn record (15)
+        part = f"{f['approach']}: delay in {delay_q * step} of {period_minutes} minutes"
         if queue:
             part += f", queue in {queue_m} of {period_minutes} minutes"
             full = full and queue_m >= period_minutes
