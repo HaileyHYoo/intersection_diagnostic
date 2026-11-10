@@ -392,10 +392,12 @@ def run(source, site: dict, period: Period, rules: dict, llm=None) -> dict:
     if not measured["mapping_size"]:
         notes.append("the site has no TomTom approach mapping")
     elif not available and not error:
-        # Mapped, but nothing to rank (seen live: the fixed message with no reason). Name what is missing.
-        notes.append("no TomTom delay records (IntersectionTurnKpi) for the mapped approaches in this period"
-                     if not rows else
-                     "the TomTom delay records for this period have no delay value")
+        # Mapped, but no delay to rank (seen live: the fixed message with no reason). Name what is missing,
+        # and the queue's own status, since the queue is not shown when the confirmation is unavailable.
+        notes.append("no TomTom delay records (IntersectionTurnKpi) for the mapped approaches in this period")
+        queued = [a["approach"] for a in rows if a.get("queue_minutes")]
+        notes.append("Junction Analytics queue: " + (f"recorded for {', '.join(queued)}, but Q5 needs delay to compare"
+                                                     if queued else measured.get("queue_status") or "unavailable"))
     partial = [a["approach"] for a in rows if a["delay_s"] is not None and not a["adequate"]]
     if partial:
         notes.append("delay observed in only part of the period: " + ", ".join(partial))

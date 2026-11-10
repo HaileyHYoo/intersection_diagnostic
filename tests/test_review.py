@@ -315,9 +315,12 @@ class Q5UnavailableReasonTests(unittest.TestCase):
         period = timewin.period_ending("2026-11-10T11:30", rules)
         site = {"site": "1", "q1": {"approaches": [], "not_evaluated": []},
                 "q3": {"components": {"phase_service": {"approaches": []}}}}
-        empty = {"approaches": [], "mapping_size": 4, "site_control_delay_s": None, "queue_status": "available"}
+        empty = {"approaches": [], "mapping_size": 4, "site_control_delay_s": None,
+                 "queue_status": "unavailable - the site has no verified TomTom junction"}
         with mock.patch.object(d002, "measure", return_value=empty):
             r = d002.run(None, site, period, rules)
         self.assertFalse(r["evidence"]["available"])
         self.assertIn("no TomTom delay records (IntersectionTurnKpi)", r["evidence"]["coverage_note"])
+        self.assertIn("Junction Analytics queue: unavailable - the site has no verified TomTom junction",
+                      r["evidence"]["coverage_note"])
 
