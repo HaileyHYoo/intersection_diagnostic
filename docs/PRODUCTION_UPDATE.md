@@ -79,6 +79,7 @@ Replace `dash_backend/dash/intersections/diagnostics/` with this version. Only t
 |---|---|---|
 | `contract/adapter.py` | `q4.supporting_evidence` lists every approach and measure with current value, usual value, normal range and difference, out-of-range first, plus the Q3C label and the approaches not assessed with the reason | Section 2 |
 | `contract/adapter.py`, `timewin.py` | Section 2 starts with the reference period in words (weekday, time, the 8 weeks with dates, weeks left out and why, median, 10th-90th percentile, minimum 5 weeks); every value carries its unit (veh/30 min, s, %, Cycle Stability score 0-100) and the number of reference weeks behind its usual value | Section 2 |
+| `contract/adapter.py` | `TomTomApproachMetrics.delay_s` is the TomTom **approach delay** and `control_delay_s` the **control delay** (both are ranked in Q5). Before, both held the control delay. Please show them as two columns, "Approach delay (s)" and "Control delay (s)" | Section 3 table |
 | `contract/adapter.py` | `q5.narrative` for an unavailable TomTom confirmation is the fixed message followed by its reason | Section 3 (if the page shows `q5.narrative`) |
 | `contract/adapter.py` | A SCATS-identified approach with no TomTom data is added to `q5.approaches` with its name and `is_observed=False` | The comparison line reads "Princess Street [S]" instead of the link ID |
 | `contract/adapter.py` | `LinkSpeed.street_name` carries the bound ("Queensberry Street [W]"); a note says why a usual speed is blank | Link speed table and notes |

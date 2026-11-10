@@ -107,6 +107,10 @@ class ContractTests(unittest.TestCase):
         q5 = adapter.q5_output(d002, period_ending(END, self.settings.rules), self.settings.rules)
         added = [a for a in q5.approaches if a.approach_id == "L2"]
         self.assertEqual([(a.approach_name, a.is_observed, a.delay_s) for a in added], [("B St [S]", False, None)])
+        row["approach_delay_s"] = 55.0                        # both ranked delays reach the page (9-10 Nov 2026)
+        q5 = adapter.q5_output(d002, period_ending(END, self.settings.rules), self.settings.rules)
+        first = q5.approaches[0]
+        self.assertEqual((first.delay_s, first.control_delay_s), (55.0, 40.0))
 
     def test_reference_dates_and_excluded_days(self):
         """Methodology owner, Nov 2026: the reference weeks as dates, with each excluded day and its reason."""
