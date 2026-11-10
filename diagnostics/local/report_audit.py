@@ -79,7 +79,9 @@ def flags(s: dict, d002: dict | None, speed: dict | None) -> list[str]:
     q1, comps = s.get("q1") or {}, (s.get("q3") or {}).get("components") or {}
     flagged_q1 = [a for a in q1.get("approaches", []) if a["status"] == "ABNORMAL"]
     if any((a.get("usual") or 0) < 20 for a in flagged_q1):
-        out.append("q1_low_volume(<20 veh/30 min usual)")
+        out.append("q1_low_volume_usual_lt_20")                   # usual below 20 veh/30 min (no spaces: one token)
+    if any(a.get("usual") == 0 for a in flagged_q1):
+        out.append("q1_usual_zero")
     if any(abs(a.get("pct_difference") or 0) >= 50 for a in flagged_q1):
         out.append("q1_change>=50%")
     if q1.get("not_evaluated"):
@@ -88,6 +90,8 @@ def flags(s: dict, d002: dict | None, speed: dict | None) -> list[str]:
     flagged_ps = [a for a in ps if a["status"] == "ABNORMAL"]
     if any((a.get("usual") or 0) >= 99.5 for a in flagged_ps):
         out.append("q3c_usual_100%")
+    if any(a.get("usual") == 0 for a in flagged_ps):
+        out.append("q3c_usual_zero")
     if any(a.get("current") is not None and a.get("usual") is not None and abs(a["current"] - a["usual"]) >= 30
            for a in flagged_ps):
         out.append("q3c_change>=30pp")
@@ -141,7 +145,7 @@ def _row(label: str, p: dict, run_id: str, s: dict, d002: dict | None, speed: di
 
 
 def run(svc, periods: list[tuple[str, str]], out_dir, amber_speed: bool = True, resume: bool = False,
-        progress=print) -> Path:
+        progress=print, rescreen: bool = False) -> Path:
     batch = Path(out_dir) / "report_audit" / datetime.now().strftime("%Y%m%d_%H%M")
     batch.mkdir(parents=True, exist_ok=True)
     index = batch / "index.csv"
@@ -150,7 +154,7 @@ def run(svc, periods: list[tuple[str, str]], out_dir, amber_speed: bool = True, 
         writer = csv.DictWriter(fh, fieldnames=COLUMNS)
         writer.writeheader()
         for label, end in periods:
-            view = svc.screen(end)
+            view = svc.screen(end, force=rescreen)
             run_id = view["run_id"]
             p = svc.store.get_run(run_id)["payload"]
             folder = batch / _slug(label)

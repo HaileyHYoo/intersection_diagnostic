@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from . import archive as history
 from . import link_speed as speed
@@ -29,7 +29,7 @@ from .report import assemble
 from .settings import Settings, config_snapshot
 from .store import SQLiteStore
 from .templates import d001, d002
-from .timewin import Period, latest_period, period_ending, reference_text
+from .timewin import Period, latest_period, period_ending, reference_text, to_utc
 from .vic_calendar import day_note
 
 log = logging.getLogger(__name__)
@@ -58,6 +58,12 @@ class DiagnosticsService:
     # ------------------------------------------------------------------ Level 1
     def screen(self, period_end: datetime | str | None = None, force: bool = False, now: datetime | None = None) -> dict:
         period = self.period(period_end, now)
+        ready = to_utc(now or datetime.now(timezone.utc)) - timedelta(minutes=self.settings.rules.get("data_latency_minutes", 0))
+        if period_end is not None and period.end > ready and not getattr(self.source, "synthetic", False):
+            # A period whose data are not all written yet would screen as Grey everywhere and be stored as such
+            # (seen 10 Nov 2026: PM peak requested before 17:40, 2,501 Grey sites).
+            raise ValueError(f"{period.label()} cannot be screened yet: its data are complete "
+                             f"{self.settings.rules.get('data_latency_minutes', 0)} minutes after it ends.")
         key = self._key(period)
         if not force:
             done = self.store.find_run(*key)

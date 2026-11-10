@@ -70,6 +70,8 @@ def time_of_day(local: datetime) -> float:
 
 
 class FakeSource:
+    synthetic = True                     # any period can be screened (no data latency in the synthetic network)
+
     def __init__(self, rules: dict, schema: dict, scenario_end: datetime | str | None = None, n_sites: int = 48,
                  seed: int = 7, now: datetime | None = None):
         self.rules, self.schema, self.seed = rules, schema, seed

@@ -295,7 +295,8 @@ def cmd_audit_reports(args):
     from diagnostics.local import report_audit
     svc = make_service(args, fake=args.fake)
     periods = report_audit.parse_periods(args.end)
-    batch = report_audit.run(svc, periods, args.out_dir, amber_speed=not args.no_amber_speed, resume=args.resume)
+    batch = report_audit.run(svc, periods, args.out_dir, amber_speed=not args.no_amber_speed, resume=args.resume,
+                             rescreen=args.rescreen)
     print("Saved:", batch)
     return 0
 
@@ -529,6 +530,7 @@ def main(argv=None) -> int:
                    help='period ends, optionally labelled: "AM peak=2026-11-10T08:30" "Weekend midday=2026-11-08T12:30"')
     p.add_argument("--no-amber-speed", action="store_true", help="skip link speed on Amber pages (much faster)")
     p.add_argument("--resume", action="store_true", help="reuse Red reports already saved for the same run")
+    p.add_argument("--rescreen", action="store_true", help="screen the periods again instead of reusing stored runs")
     p.add_argument("--fake", action="store_true", help="use the demo store")
     p.add_argument("--sites", type=int, default=48)
     p.add_argument("--out-dir", default=str(ROOT / "out"))

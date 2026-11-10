@@ -367,3 +367,20 @@ class ReportAuditTests(unittest.TestCase):
             self.assertIn("Q5 (Red) verdicts", (batch / "summary.md").read_text(encoding="utf-8"))
             self.assertNotIn("83.3125", (batch / "index.csv").read_text(encoding="utf-8-sig"))
 
+
+class FuturePeriodTests(unittest.TestCase):
+    def test_a_period_whose_data_are_not_complete_is_refused(self):
+        """10 Nov 2026: PM peak requested before 17:40 screened 2,501 sites Grey and was stored."""
+        from datetime import datetime, timezone
+        from diagnostics.service import DiagnosticsService
+        from diagnostics.settings import Settings
+        from diagnostics.store import SQLiteStore
+
+        class Live:                                   # a source without the synthetic flag
+            pass
+        svc = DiagnosticsService(Live(), Settings(), SQLiteStore(":memory:"))
+        now = datetime(2026, 11, 10, 6, 35, tzinfo=timezone.utc)            # 17:35 Melbourne
+        with self.assertRaises(ValueError) as ctx:
+            svc.screen("2026-11-10T17:30", now=now)
+        self.assertIn("cannot be screened yet", str(ctx.exception))
+
