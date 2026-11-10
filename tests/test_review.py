@@ -342,3 +342,28 @@ class Q5QueueObservedTests(unittest.TestCase):
         errol = next(p for p in comp["per_approach"] if p["link"] == "ERROL")
         self.assertIn("does not have the longest queue", d002._per_approach_sentence(errol))
 
+
+class ReportAuditTests(unittest.TestCase):
+    def test_batch_writes_index_summary_and_reports(self):
+        import csv
+        import tempfile
+        from pathlib import Path
+        from diagnostics.local import report_audit
+        from diagnostics.local.fake import FakeSource
+        from diagnostics.service import DiagnosticsService
+        from diagnostics.settings import Settings
+        from diagnostics.store import SQLiteStore
+        st = Settings()
+        svc = DiagnosticsService(FakeSource(st.rules, st.schema, "2026-10-27T08:30:00+11:00", n_sites=20), st,
+                                 SQLiteStore(":memory:"))
+        periods = report_audit.parse_periods(["AM peak=2026-10-27T08:30"])
+        self.assertEqual(periods, [("AM peak", "2026-10-27T08:30")])
+        with tempfile.TemporaryDirectory() as out:
+            batch = report_audit.run(svc, periods, out, progress=lambda *_: None)
+            rows = list(csv.DictReader((batch / "index.csv").open(encoding="utf-8-sig")))
+            self.assertTrue(rows and {r["category"] for r in rows} <= {"Red - Needs Attention",
+                            "Amber - Traffic Abnormality", "Amber - Signal-Operation Abnormality"})
+            self.assertTrue((batch / "am_peak" / "red.md").read_text(encoding="utf-8").count("## ") > 0)
+            self.assertIn("Q5 (Red) verdicts", (batch / "summary.md").read_text(encoding="utf-8"))
+            self.assertNotIn("83.3125", (batch / "index.csv").read_text(encoding="utf-8-sig"))
+

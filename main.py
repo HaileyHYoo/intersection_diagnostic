@@ -11,6 +11,7 @@
     python main.py archive --run ID                  write a run's screening JSON log if it is missing
     python main.py contract-check [--run ID]         validate a stored run against the production contract
     python main.py contract-report --site 1037       the SiteReport the production page receives (JSON + page view)
+    python main.py audit-reports --end "AM peak=2026-11-10T08:30" ...   every Red/Amber report of several periods
     python main.py examples [--run ID | --end ...]   example outputs per category (Markdown + HTML) for review
     python main.py queue-probe --site 719 --end 2026-11-02T15:30   which TomTom queue-archive request works
     python main.py audit --end 2026-10-30T15:30      Q1-Q3 input audit: problem types with example intersections (read only)
@@ -289,6 +290,16 @@ def _arrival_probe(uuid, period, args):
     print("Send the saved file(s); they hold no API key.")
 
 
+def cmd_audit_reports(args):
+    """Every Red report and Amber evidence page of several periods, with an index for a full review."""
+    from diagnostics.local import report_audit
+    svc = make_service(args, fake=args.fake)
+    periods = report_audit.parse_periods(args.end)
+    batch = report_audit.run(svc, periods, args.out_dir, amber_speed=not args.no_amber_speed, resume=args.resume)
+    print("Saved:", batch)
+    return 0
+
+
 def cmd_contract_report(args):
     """The production contract's SiteReport for Red/Amber sites of a stored run, as JSON and as a page view."""
     from diagnostics.local import contract_view
@@ -512,6 +523,16 @@ def main(argv=None) -> int:
     p.add_argument("--sites", type=int, default=48)
     p.add_argument("--out-dir", default=str(ROOT / "out"))
     p.set_defaults(func=cmd_examples)
+
+    p = sub.add_parser("audit-reports", help="every Red/Amber report of several periods, for a full review")
+    p.add_argument("--end", nargs="+", required=True,
+                   help='period ends, optionally labelled: "AM peak=2026-11-10T08:30" "Weekend midday=2026-11-08T12:30"')
+    p.add_argument("--no-amber-speed", action="store_true", help="skip link speed on Amber pages (much faster)")
+    p.add_argument("--resume", action="store_true", help="reuse Red reports already saved for the same run")
+    p.add_argument("--fake", action="store_true", help="use the demo store")
+    p.add_argument("--sites", type=int, default=48)
+    p.add_argument("--out-dir", default=str(ROOT / "out"))
+    p.set_defaults(func=cmd_audit_reports)
 
     p = sub.add_parser("contract-report", help="the production SiteReport for sites of a stored run (JSON + page view)")
     p.add_argument("--site", nargs="+", required=True, help="Red or Amber SCATS site numbers")

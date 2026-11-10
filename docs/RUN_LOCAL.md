@@ -63,6 +63,7 @@ python main.py site-history --site 4397 --from 2026-10-01 --to 2026-10-31   # ca
 python main.py archive --run <run_id>                 # rewrite the log of a run whose log write failed
 python main.py contract-check                         # validate the latest stored run against the production contract (Pydantic)
 python main.py contract-report --site 1037 4566       # the SiteReport the production page receives: out/contract_report_<run>_<site>.json + .md
+python main.py audit-reports --end "AM peak=2026-11-10T08:30" "Midday=2026-11-10T12:30" "PM peak=2026-11-10T17:30" "Weekend midday=2026-11-08T12:30"   # every Red report and Amber page of each period + index.csv + summary.md (out/report_audit/<batch>/)
 python main.py examples --site 4566 4564 774 --red 3  # example outputs per category in out\examples_<run>.md / .html
 python main.py watch                                  # (later extension) screen every 30 minutes; Ctrl+C to stop
 python main.py backfill --from 2026-10-26T07:00 --to 2026-10-26T10:00   # (later extension) screen past periods one by one
