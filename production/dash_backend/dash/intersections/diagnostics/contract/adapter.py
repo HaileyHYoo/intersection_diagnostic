@@ -432,7 +432,8 @@ def link_speed_report(speed: dict, site_no: str, period: S.AnalysisPeriod):
     notes.append("Reference speed: " + speed["reference"])
     # Why a usual speed is blank: the contract has no field for the number of reference weeks with samples.
     no_ref = [f"{a['approach']} ({a['reference_weeks'] or 0} week{'' if a['reference_weeks'] == 1 else 's'} with samples)"
-              for a in speed["approaches"] if a["reference_kmh"] is None and "reference_weeks" in a
+              for a in speed["approaches"] if a["reference_kmh"] is None and a["speed_kmh"] is not None
+              and "reference_weeks" in a
               and speed["reference"].startswith(("median", "mean"))]
     if no_ref:
         notes.append("No reference speed (too few reference weeks with samples): " + ", ".join(no_ref))

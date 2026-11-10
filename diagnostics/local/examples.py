@@ -90,7 +90,7 @@ def build(svc, run_id: str, red: int = 2, sites: list[str] | None = None, tries:
     if p.get("notes"):
         lines += [f"- {n}" for n in p["notes"]] + [""]
 
-    lines += [f"- Report wording: {'LLM (' + str(getattr(svc.llm, 'model', '') or 'host client') + '), checked against the evidence' if svc.llm else 'code only (no LLM configured)'}",
+    lines += [f"- Report wording: {'LLM (' + str(getattr(svc.llm, 'model', '') or 'host client') + '), checked against the evidence; code wording where the LLM answer was not used (stated per report)' if svc.llm else 'code only (no LLM configured)'}",
               ""]
     lines += ["## Red - Needs Attention (click: Q4 + Q5 report)", ""]
     reds = pick("red")

@@ -242,6 +242,10 @@ class SpeedMinutesTests(unittest.TestCase):
         t0 = datetime(2026, 11, 9, 23, 0, tzinfo=timezone.utc)
         every = lambda step, n: [t0 + timedelta(minutes=step * k) for k in range(n)]
         self.assertEqual(link_speed._minutes(every(7.5, 4), 30, 5), 30)
+        from datetime import timedelta as td                                 # live stamps 7-8 minutes apart
+        jitter = [t0, t0 + td(minutes=7), t0 + td(minutes=15), t0 + td(minutes=22)]
+        self.assertEqual(link_speed._minutes(jitter, 30, 5), 30)
+        self.assertEqual(link_speed._minutes(jitter[:2], 30, 5), 15)        # 2 of the 4 samples
         self.assertEqual(link_speed._minutes(every(5, 6), 30, 5), 30)
         self.assertEqual(link_speed._minutes(every(5, 6)[:3], 30, 5), 15)
         self.assertEqual(link_speed._minutes([t0], 30, 5), 5)

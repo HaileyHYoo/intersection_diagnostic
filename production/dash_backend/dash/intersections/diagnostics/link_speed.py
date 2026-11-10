@@ -85,7 +85,12 @@ def _minutes(stamps: list[datetime], period_minutes: int, default_step: float) -
     if not stamps:
         return 0
     gaps = [(b - a).total_seconds() / 60 for a, b in zip(stamps, stamps[1:]) if b > a]
-    step = median(gaps) if gaps else default_step
+    if gaps:
+        # The feed's interval as a whole fraction of the period (stamps 7-8 minutes apart are a 7.5-minute feed,
+        # 4 samples per 30 minutes), so stamp jitter does not read as missing minutes.
+        step = period_minutes / max(1, round(period_minutes / median(gaps)))
+    else:
+        step = default_step
     return int(min(period_minutes, round(len(stamps) * step)))
 
 
