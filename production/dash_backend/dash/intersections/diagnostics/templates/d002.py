@@ -391,6 +391,11 @@ def run(source, site: dict, period: Period, rules: dict, llm=None) -> dict:
     notes = []
     if not measured["mapping_size"]:
         notes.append("the site has no TomTom approach mapping")
+    elif not available and not error:
+        # Mapped, but nothing to rank (seen live: the fixed message with no reason). Name what is missing.
+        notes.append("no TomTom delay records (IntersectionTurnKpi) for the mapped approaches in this period"
+                     if not rows else
+                     "the TomTom delay records for this period have no delay value")
     partial = [a["approach"] for a in rows if a["delay_s"] is not None and not a["adequate"]]
     if partial:
         notes.append("delay observed in only part of the period: " + ", ".join(partial))

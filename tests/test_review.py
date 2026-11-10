@@ -303,3 +303,21 @@ class AuditTests(unittest.TestCase):
         rows = evidence_tables(site)[0]["rows"]
         self.assertEqual(rows[0][-1], "Not assessed: no current volume")
         self.assertEqual(rows[1], ["B Rd (link B)", "-", "-", "-", "0", "-", "Not assessed: no volume in any reference week"])
+
+
+class Q5UnavailableReasonTests(unittest.TestCase):
+    def test_mapped_site_without_delay_records_gives_a_reason(self):
+        """Live (10 Nov 2026): a mapped site with no TomTom delay showed the fixed message without a reason."""
+        from unittest import mock
+        from diagnostics import timewin
+        from diagnostics.settings import Settings
+        rules = Settings().rules
+        period = timewin.period_ending("2026-11-10T11:30", rules)
+        site = {"site": "1", "q1": {"approaches": [], "not_evaluated": []},
+                "q3": {"components": {"phase_service": {"approaches": []}}}}
+        empty = {"approaches": [], "mapping_size": 4, "site_control_delay_s": None, "queue_status": "available"}
+        with mock.patch.object(d002, "measure", return_value=empty):
+            r = d002.run(None, site, period, rules)
+        self.assertFalse(r["evidence"]["available"])
+        self.assertIn("no TomTom delay records (IntersectionTurnKpi)", r["evidence"]["coverage_note"])
+
