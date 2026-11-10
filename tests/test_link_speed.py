@@ -233,3 +233,17 @@ class ArmTests(unittest.TestCase):
         r = svc.diagnose(svc.screen(END)["run_id"], "4300")
         self.assertTrue(all(a["arm"] is None for a in r["link_speed"]["approaches"]))
         self.assertNotIn("Arm", r["report"]["sections"][2]["supplement"]["tables"][-1]["columns"])
+
+
+class SpeedMinutesTests(unittest.TestCase):
+    def test_minutes_follow_the_feed_interval(self):
+        """Live (10 Nov 2026): 4 samples in 30 minutes read "20 of 30" with an assumed 5-minute interval."""
+        from datetime import datetime, timedelta, timezone
+        t0 = datetime(2026, 11, 9, 23, 0, tzinfo=timezone.utc)
+        every = lambda step, n: [t0 + timedelta(minutes=step * k) for k in range(n)]
+        self.assertEqual(link_speed._minutes(every(7.5, 4), 30, 5), 30)
+        self.assertEqual(link_speed._minutes(every(5, 6), 30, 5), 30)
+        self.assertEqual(link_speed._minutes(every(5, 6)[:3], 30, 5), 15)
+        self.assertEqual(link_speed._minutes([t0], 30, 5), 5)
+        self.assertEqual(link_speed._minutes([], 30, 5), 0)
+

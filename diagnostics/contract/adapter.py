@@ -152,8 +152,7 @@ def site_model(site: dict, rules: dict) -> S.SiteScreeningResult:
                          is_abnormal=a["status"] == ABNORMAL, status=STATUS[a["status"]],
                          direction=S.DeviationDirection(a["direction"].lower()) if a["status"] == ABNORMAL else None)
             for a in site["q1"]["approaches"]])
-        notes += [f"Approach {a['street'] or a['link']} ({a['link']}) not evaluated: {a['reason']}"
-                  for a in site["q1"]["not_evaluated"]]
+        notes += [not_evaluated_note(a) for a in site["q1"]["not_evaluated"]]
     if site["q3"]:
         c = site["q3"]["components"]
         ps = c["phase_service"]
@@ -222,7 +221,7 @@ def site_from_model(m: S.SiteScreeningResult) -> dict:
                 "p_low": hc.p10, "p_high": hc.p90, "n_history": hc.n_history_obs, "pct_difference": hc.pct_diff,
                 "status": status, "direction": direction}
 
-    q1 = {"status": STATUS_BACK[m.q1.status], "not_evaluated": [], "approaches": [
+    q1 = {"status": STATUS_BACK[m.q1.status], "not_evaluated": not_evaluated_from_notes(m.notes), "approaches": [
         row(a.approach_id, a.approach_name, a.volume, STATUS_BACK[a.status], a.direction.value.upper() if a.direction else None)
         for a in m.q1.approaches]}
     ps = m.q3.phase_service
@@ -266,6 +265,27 @@ def template_ref(rules: dict, template: str) -> S.TemplateRef:
 
 def _f(x):
     return None if x is None else round(float(x), 3)
+
+
+NOT_EVALUATED = re.compile(r"^Approach (.+) not assessed \(Q1\): (.+)\. Link (\S+)\.$")
+
+
+def not_evaluated_note(a: dict) -> str:
+    """The Q1 approach left out of the screening (no volume in any reference week), as a site note. The contract's
+    Q1 lists evaluated approaches only, so the note carries it, and site_from_model reads it back for the report."""
+    return f"Approach {approach_label(a)} not assessed (Q1): {a['reason']}. Link {a['link']}."
+
+
+def not_evaluated_from_notes(notes: list[str]) -> list[dict]:
+    out = []
+    for n in notes or []:
+        m = NOT_EVALUATED.match(n)
+        if m:
+            name, reason, link = m.groups()
+            label = re.match(r"^(.*) \[([A-Z]{1,2})\]$", name)
+            out.append({"link": link, "label": name, "street": label.group(1) if label else name,
+                        "bound": label.group(2) if label else None, "reason": reason})
+    return out
 
 
 Q3C_LABEL = ("Phase service by approach (green share %: share of the cycle taken by the phases serving the approach, "

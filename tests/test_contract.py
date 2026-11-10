@@ -123,6 +123,18 @@ class ContractTests(unittest.TestCase):
         self.assertIn("- Reference: Tuesdays 08:00-08:30 in the 8 weeks", text)
         self.assertIn("veh/30 min", text)
 
+    def test_not_evaluated_approaches_survive_the_contract(self):
+        """SCATS 1037, 10 Nov 2026: Leicester and Barry Street dropped out of the report built from the contract."""
+        site = {"q1": {"not_evaluated": [{"link": "LEICV6W2W673", "street": "Leicester Street", "bound": "N",
+                                          "label": "Leicester Street [N]", "reason": "no volume data in the reference weeks"}]}}
+        note = adapter.not_evaluated_note(site["q1"]["not_evaluated"][0])
+        self.assertEqual(note, "Approach Leicester Street [N] not assessed (Q1): no volume data in the reference weeks. "
+                               "Link LEICV6W2W673.")
+        back = adapter.not_evaluated_from_notes(["other note", note])
+        self.assertEqual([(r["link"], r["street"], r["bound"]) for r in back], [("LEICV6W2W673", "Leicester Street", "N")])
+        from diagnostics.names import approach_label
+        self.assertEqual(approach_label(back[0]), "Leicester Street [N]")
+
     def test_store_round_trip_and_panel(self):
         run = S.ScreeningRun(run_id=self.result.run_id, status=S.RunStatus.COMPLETED, started_at=self.result.completed_at,
                              key=S.ScreeningCacheKey(region=self.result.region, period_end=self.result.period.end,

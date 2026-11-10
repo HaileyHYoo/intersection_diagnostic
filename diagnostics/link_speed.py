@@ -63,6 +63,32 @@ def _per_link(rows: list[dict], period: Period) -> dict[str, list[float]]:
     return out
 
 
+def _stamps(rows: list[dict], period: Period) -> dict[str, list[datetime]]:
+    """{link: sorted distinct stamps of positive samples in [start, end)}."""
+    start, end = to_utc(period.start), to_utc(period.end)
+    out = defaultdict(set)
+    for r in rows:
+        t = to_utc(r["time"] if isinstance(r["time"], datetime) else datetime.fromisoformat(str(r["time"])))
+        try:
+            positive = float(r["value"]) > 0
+        except (TypeError, ValueError):
+            continue
+        if positive and start <= t < end:
+            out[r["link"]].add(t)
+    return {link: sorted(v) for link, v in out.items()}
+
+
+def _minutes(stamps: list[datetime], period_minutes: int, default_step: float) -> int:
+    """Minutes of the period the samples cover: samples x their interval, the interval read from the stamps
+    themselves (median gap; the configured interval when there is a single sample). The live feed's interval
+    is not assumed: a 7.5-minute feed would otherwise read 20 of 30 minutes with every sample present."""
+    if not stamps:
+        return 0
+    gaps = [(b - a).total_seconds() / 60 for a, b in zip(stamps, stamps[1:]) if b > a]
+    step = median(gaps) if gaps else default_step
+    return int(min(period_minutes, round(len(stamps) * step)))
+
+
 def history_reference(source, links: list[str], period: Period, rules: dict) -> tuple[dict, dict, int]:
     """({link: median km/h}, {link: weeks with samples}, reference weeks read) from the same feed."""
     used, _ = reference_periods(period, rules)
@@ -89,10 +115,12 @@ def link_speed(source, site: dict, period: Period, schema: dict, region: str | N
         out["notes"].append("the site has no incoming (EGRESS) links")
         return out
     try:
-        current = _per_link(source.link_speeds(links, period.start, period.end), period)
+        rows_now = source.link_speeds(links, period.start, period.end)
+        current = _per_link(rows_now, period)
+        stamps = _stamps(rows_now, period)
     except Exception as exc:  # noqa: BLE001 - supplementary: the reason is shown, nothing else changes
         out["notes"].append(f"TomTom link speed could not be read ({type(exc).__name__}: {str(exc)[:120]})")
-        current = {}
+        current, stamps = {}, {}
     ref_feed = schema.get("influx", {}).get("sources", {}).get("link_speed_reference", {})
     reference = {}
     if ref_feed.get("enabled"):
@@ -127,7 +155,7 @@ def link_speed(source, site: dict, period: Period, schema: dict, region: str | N
                                   "arm": arms.get(a["link"]),
                                   "speed_kmh": None if speed is None else round(speed, 1),
                                   "samples": sum(1 for v in values if v > 0),
-                                  "minutes": min(period.minutes, step * sum(1 for v in values if v > 0)),
+                                  "minutes": _minutes(stamps.get(a["link"], []), period.minutes, step),
                                   "reference_kmh": None if ref is None else round(ref, 1),
                                   "reference_weeks": out.get("reference_weeks", {}).get(a["link"]),
                                   "status": "available" if speed is not None else "unavailable"})
