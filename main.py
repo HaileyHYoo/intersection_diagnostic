@@ -10,6 +10,7 @@
     python main.py baseline [--start 2026-10-30] [--days 7]   weekly baseline job (+ weekly baseline snapshot)
     python main.py archive --run ID                  write a run's screening JSON log if it is missing
     python main.py contract-check [--run ID]         validate a stored run against the production contract
+    python main.py contract-report --site 1037       the SiteReport the production page receives (JSON + page view)
     python main.py examples [--run ID | --end ...]   example outputs per category (Markdown + HTML) for review
     python main.py queue-probe --site 719 --end 2026-11-02T15:30   which TomTom queue-archive request works
     python main.py audit --end 2026-10-30T15:30      Q1-Q3 input audit: problem types with example intersections (read only)
@@ -288,6 +289,25 @@ def _arrival_probe(uuid, period, args):
     print("Send the saved file(s); they hold no API key.")
 
 
+def cmd_contract_report(args):
+    """The production contract's SiteReport for Red/Amber sites of a stored run, as JSON and as a page view."""
+    from diagnostics.local import contract_view
+    svc = make_service(args, fake=args.fake)
+    run_id = args.run or next((r["run_id"] for r in svc.store.list_runs(50) if r["status"] == "complete"), None)
+    if not run_id:
+        print("No complete screening run in the store; run `python main.py screen` first.")
+        return 1
+    for site in args.site:
+        try:
+            report = contract_view.site_report(svc, run_id, site)
+        except Exception as exc:  # noqa: BLE001 - e.g. a Normal or Grey site has no report
+            print(f"SCATS {site}: no SiteReport ({exc})")
+            continue
+        for path in contract_view.save(report, run_id, args.out_dir):
+            print("Saved:", path)
+    return 0
+
+
 def cmd_contract_check(args):
     """Every site of a stored run through the production contract's models and validators."""
     from collections import Counter
@@ -492,6 +512,14 @@ def main(argv=None) -> int:
     p.add_argument("--sites", type=int, default=48)
     p.add_argument("--out-dir", default=str(ROOT / "out"))
     p.set_defaults(func=cmd_examples)
+
+    p = sub.add_parser("contract-report", help="the production SiteReport for sites of a stored run (JSON + page view)")
+    p.add_argument("--site", nargs="+", required=True, help="Red or Amber SCATS site numbers")
+    p.add_argument("--run", help="run id (default: the latest complete run)")
+    p.add_argument("--fake", action="store_true", help="read the demo store")
+    p.add_argument("--sites", type=int, default=48)
+    p.add_argument("--out-dir", default=str(ROOT / "out"))
+    p.set_defaults(func=cmd_contract_report)
 
     p = sub.add_parser("contract-check", help="validate a stored run against the production contract")
     p.add_argument("--run", help="run id (default: the latest complete run)")

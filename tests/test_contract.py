@@ -115,6 +115,14 @@ class ContractTests(unittest.TestCase):
         self.assertTrue(text.startswith("Reference: Tuesdays 10:00-10:30 in the 8 weeks 2026-09-15 to 2026-11-03 "
                                         "(7 used; excluded: 2026-11-03, public holiday: Melbourne Cup)."))
 
+    def test_contract_report_view(self):
+        from diagnostics.local import contract_view
+        report = contract_view.site_report(self.svc, self.saved["run_id"], "4300")
+        text = contract_view.page(report)
+        self.assertIn("_diagnosis.q4.supporting_evidence[].statement_", text)
+        self.assertIn("- Reference: Tuesdays 08:00-08:30 in the 8 weeks", text)
+        self.assertIn("veh/30 min", text)
+
     def test_store_round_trip_and_panel(self):
         run = S.ScreeningRun(run_id=self.result.run_id, status=S.RunStatus.COMPLETED, started_at=self.result.completed_at,
                              key=S.ScreeningCacheKey(region=self.result.region, period_end=self.result.period.end,
