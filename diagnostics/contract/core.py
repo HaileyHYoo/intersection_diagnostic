@@ -187,7 +187,7 @@ def run_diagnosis(inp, source, settings: Settings | None = None, llm=None, audit
             "period": period.to_dict(), "config_version": settings.rules_version, "provenance": _reads(source, mark),
             "templates": {t["template_id"]: {**t, "registry": refs[t["template_id"]].model_dump()} for t in (r1, r2)}}))
     return S.DiagnosisResult(diagnosis_id=inp.diagnosis_id, screening_run_id=inp.screening_run_id, site_no=inp.site.site_no,
-                             period=inp.period, q4=adapter.q4_output(site, r1, settings.rules, inp.q4_template),
+                             period=inp.period, q4=adapter.q4_output(site, r1, settings.rules, inp.q4_template, period),
                              q5=adapter.q5_output(r2, period, settings.rules, inp.q5_template),
                              completed_at=datetime.now().astimezone(),
                              **adapter.optional(S.DiagnosisResult, config_version=settings.rules_version, audit_ref=audit_ref))

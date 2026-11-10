@@ -33,7 +33,7 @@ from datetime import datetime, timedelta
 
 from . import intersections_diagnostics_schemas as _bundled
 from ..stats import ABNORMAL, INSUFFICIENT, NORMAL
-from ..timewin import Period, period_ending
+from ..timewin import Period, period_ending, reference_text
 from ..templates.d001 import approach_label, decimals
 from ..templates.d002 import DEFAULT_NOTE
 
@@ -277,11 +277,14 @@ def _num(x, digits: int, unit: str = "") -> str:
 
 
 def _against(row: dict, unit: str = "", diff: str | None = None) -> str:
-    """"412.0; usual 463.0 (normal range 450.0-480.0); 11.0% lower" with the D001 decimals rule."""
+    """"412.0 veh/30 min; usual 463.0 veh/30 min (normal range 450.0-480.0 veh/30 min, 6 reference weeks); 11.0% lower",
+    with the D001 decimals rule and the unit after every value (methodology owner, Nov 2026)."""
     d = decimals(row)
     text = f"{_num(row.get('current'), d, unit)}; usual {_num(row.get('usual'), d, unit)}"
+    weeks = row.get("n_history")
     if row.get("p_low") is not None or row.get("p_high") is not None:
-        text += f" (normal range {_num(row.get('p_low'), d)}-{_num(row.get('p_high'), d, unit)})"
+        text += f" (normal range {_num(row.get('p_low'), d)}-{_num(row.get('p_high'), d, unit)}"
+        text += f", {weeks} reference weeks)" if weeks else ")"
     return text + (f"; {diff}" if diff else "")
 
 
@@ -302,11 +305,11 @@ def _position(row: dict, poorer: bool = False) -> str:
     return "within its normal range"
 
 
-def evidence_items(site: dict) -> list[S.EvidenceItem]:
+def evidence_items(site: dict, period: Period | None = None, rules: dict | None = None) -> list[S.EvidenceItem]:
     """Supporting evidence as statements tied to the source values (written by code, values copied). Every
     approach and measure is listed with its current value, usual value and normal range, so a page that shows
     only the statements still shows which approaches were assessed (methodology owner, Nov 2026)."""
-    items = []
+    items = [S.EvidenceItem(statement=reference_text(period, rules), source="Reference")] if period and rules else []
     values = lambda r: {"current": _f(r.get("current")), "reference": _f(r.get("usual")), "p10": _f(r.get("p_low")),
                         "p90": _f(r.get("p_high")), "pct_diff": _f(r.get("pct_difference"))}
     q1 = site["q1"]
@@ -315,7 +318,7 @@ def evidence_items(site: dict) -> list[S.EvidenceItem]:
             why = "no current volume" if a.get("current") is None else "fewer than 5 historical values"
             text = f"{approach_label(a)} volume: not assessed ({why})."
         else:
-            text = f"{approach_label(a)} volume (30 min): {_against(a, diff=_pct_diff(a))}; {_position(a)}."
+            text = f"{approach_label(a)} volume: {_against(a, ' veh/30 min', _pct_diff(a))}; {_position(a)}."
         items.append(S.EvidenceItem(statement=text, source="Q1", approach_id=a["link"], metric="volume", values=values(a)))
     for a in q1.get("not_evaluated", []):
         items.append(S.EvidenceItem(statement=f"{approach_label(a)} volume: not assessed (no volume in any reference week).",
@@ -323,7 +326,7 @@ def evidence_items(site: dict) -> list[S.EvidenceItem]:
     comps = site["q3"]["components"]
     for source, key, metric, name, unit, words in (
             ("Q3A", "cycle_length", "cycle_length_s", "Cycle length", " s", ("longer", "shorter")),
-            ("Q3B", "cycle_stability", "cycle_stability", "Cycle Stability", "", None)):
+            ("Q3B", "cycle_stability", "cycle_stability", "Cycle Stability (score 0-100, higher is more stable)", "", None)):
         c = comps[key]
         if c["status"] == INSUFFICIENT:
             text = f"{name}: not assessed ({c.get('reason') or 'insufficient data'})."
@@ -348,13 +351,14 @@ def evidence_items(site: dict) -> list[S.EvidenceItem]:
     return items
 
 
-def q4_output(site: dict, d001: dict, rules: dict, template: S.TemplateRef | None = None) -> S.Q4Output:
+def q4_output(site: dict, d001: dict, rules: dict, template: S.TemplateRef | None = None,
+              period: Period | None = None) -> S.Q4Output:
     comps = site["q3"]["components"]
     limitations = [f"{name} not assessed: {c.get('reason') or 'insufficient data'}"
                    for name, c in (("Cycle length", comps["cycle_length"]), ("Cycle Stability", comps["cycle_stability"]))
                    if c["status"] == INSUFFICIENT]
     return S.Q4Output(template=template or template_ref(rules, "D001"), diagnosis=d001["answer"]["diagnosis"],
-                      supporting_evidence=evidence_items(site), suggested_checks=d001["answer"]["suggested_checks"],
+                      supporting_evidence=evidence_items(site, period, rules), suggested_checks=d001["answer"]["suggested_checks"],
                       limitations=limitations,
                       **optional(S.Q4Output, generated_by=d001["generated_by"], llm_rejected=d001["rejected"]))
 

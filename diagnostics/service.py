@@ -29,7 +29,7 @@ from .report import assemble
 from .settings import Settings, config_snapshot
 from .store import SQLiteStore
 from .templates import d001, d002
-from .timewin import Period, latest_period, period_ending
+from .timewin import Period, latest_period, period_ending, reference_text
 from .vic_calendar import day_note
 
 log = logging.getLogger(__name__)
@@ -209,7 +209,8 @@ class DiagnosticsService:
         r1 = d001.run(s, p["period"], self.llm) if "D001" in templates else None
         r2 = d002.run(self.source, s, period, self.settings.rules, self.llm) if "D002" in templates else None
         link_speed = self._link_speed(run, s)
-        report = assemble(s, p["period"], r1, r2, link_speed)
+        report = assemble(s, p["period"], r1, r2, link_speed,
+                          reference_text(period, self.settings.rules))
         registry = self.settings.rules.get("contract", {}).get("template_ids", {})
         templates = {t["template_id"]: {**t, "registry": registry.get(t["template_id"])} for t in (r1, r2) if t}
         record = {"mode": "report", "run_id": run_id, "site": s["site"], "period": p["period"], "report": report,

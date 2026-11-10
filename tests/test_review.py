@@ -303,4 +303,4 @@ class AuditTests(unittest.TestCase):
                                       "phase_service": {"approaches": []}}}}
         rows = evidence_tables(site)[0]["rows"]
         self.assertEqual(rows[0][-1], "Not assessed: no current volume")
-        self.assertEqual(rows[1], ["B Rd (link B)", "-", "-", "-", "-", "Not assessed: no volume in any reference week"])
+        self.assertEqual(rows[1], ["B Rd (link B)", "-", "-", "-", "0", "-", "Not assessed: no volume in any reference week"])

@@ -36,23 +36,25 @@ def evidence_tables(site: dict) -> list[dict]:
     q1, q3 = site["q1"], site["q3"]
     # every EGRESS approach is listed, so the table shows which ones were actually assessed (methodology
     # owner, Nov 2026): an approach without volume in the reference weeks is "Not assessed", with the reason
-    traffic = {"title": "Approach volume (30 min)",
-               "columns": ["Approach", "Current", "Usual", "Normal range", "Difference", "Status"],
-               "rows": [[approach_label(a), *_values(a), _fmt(a["pct_difference"], "%"),
+    weeks = lambda r: "-" if r.get("n_history") is None else str(r["n_history"])
+    traffic = {"title": "Approach volume (veh/30 min)",
+               "columns": ["Approach", "Current", "Usual", "Normal range", "Weeks", "Difference", "Status"],
+               "rows": [[approach_label(a), *_values(a), weeks(a), _fmt(a["pct_difference"], "%"),
                          (a["direction"] or a["status"]).title() if a["status"] != "INSUFFICIENT DATA" else
                          ("Not assessed: no current volume" if a.get("current") is None
                           else "Not assessed: fewer than 5 historical values")]
                         for a in q1["approaches"]]
-                       + [[approach_label(a), "-", "-", "-", "-", "Not assessed: no volume in any reference week"]
+                       + [[approach_label(a), "-", "-", "-", "0", "-", "Not assessed: no volume in any reference week"]
                           for a in q1.get("not_evaluated", [])]}
     comps = q3["components"]
-    signal = {"title": "Signal operation", "columns": ["Measure", "Current", "Usual", "Normal range", "Status"],
-              "rows": [[name, *_values(c), c["status"].title()]
-                       for name, c in (("Cycle length (s)", comps["cycle_length"]), ("Cycle Stability", comps["cycle_stability"]))]}
+    signal = {"title": "Signal operation", "columns": ["Measure", "Current", "Usual", "Normal range", "Weeks", "Status"],
+              "rows": [[name, *_values(c), weeks(c), c["status"].title()]
+                       for name, c in (("Cycle length (s)", comps["cycle_length"]),
+                                       ("Cycle Stability (score 0-100, higher is more stable)", comps["cycle_stability"]))]}
     service = {"title": "Phase service by approach (green share %: share of the cycle taken by the phases serving "
                         "the approach, from phase durations; not measured signal-group green time)",
-               "columns": ["Approach", "Current", "Usual", "Normal range", "Difference (pp)", "Status"],
-               "rows": [[approach_label(a), *_values(a),
+               "columns": ["Approach", "Current", "Usual", "Normal range", "Weeks", "Difference (pp)", "Status"],
+               "rows": [[approach_label(a), *_values(a), weeks(a),
                          "-" if a.get("current") is None or a.get("usual") is None else f"{round(a['current'], 1) - round(a['usual'], 1):+.1f}",
                          (a["direction"] or a["status"]).title()] for a in comps["phase_service"]["approaches"]]}
     return [traffic, signal, service]
@@ -122,9 +124,12 @@ def evidence_summary(site: dict) -> tuple[str, list[str]]:
     return head, notes
 
 
-def assemble(site: dict, period: dict, d001: dict, d002: dict | None, link_speed: dict | None = None) -> dict:
+def assemble(site: dict, period: dict, d001: dict, d002: dict | None, link_speed: dict | None = None,
+             reference: str | None = None) -> dict:
     a1 = d001["answer"]
     head, notes = evidence_summary(site)
+    if reference:                                   # the reference dates and rule, under the tables' "Weeks" column
+        notes = [reference] + notes
     sections = [
         {"title": "1. Diagnosis", "text": a1["diagnosis"], "producer": "D001"},
         {"title": "2. Supporting Evidence", "text": head, "bullets": notes, "tables": evidence_tables(site),
