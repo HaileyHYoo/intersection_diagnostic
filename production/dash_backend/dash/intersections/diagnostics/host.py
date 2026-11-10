@@ -1,6 +1,6 @@
 """Host integration for the production backend.
 
-    from dash_backend.ai_brains.intersections.diagnostics.host import service_for_bot
+    from dash_backend.dash.intersections.diagnostics.host import service_for_bot
     svc = service_for_bot(bot)            # bot = the SCATSQaBot instance (its llm is reused)
     view = svc.screen()                   # layer activation / refresh: latest completed 30 minutes
     result = svc.diagnose(view["run_id"], "4397")   # map click

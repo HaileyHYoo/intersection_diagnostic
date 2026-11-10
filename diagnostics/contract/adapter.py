@@ -34,7 +34,7 @@ from datetime import datetime, timedelta
 from . import intersections_diagnostics_schemas as _bundled
 from ..stats import ABNORMAL, INSUFFICIENT, NORMAL
 from ..timewin import Period, period_ending
-from ..templates.d001 import approach_label
+from ..templates.d001 import approach_label, decimals
 from ..templates.d002 import DEFAULT_NOTE
 
 
@@ -268,36 +268,83 @@ def _f(x):
     return None if x is None else round(float(x), 3)
 
 
+Q3C_LABEL = ("Phase service by approach (green share %: share of the cycle taken by the phases serving the approach, "
+             "from phase durations; not measured signal-group green time).")
+
+
+def _num(x, digits: int, unit: str = "") -> str:
+    return "-" if x is None else f"{x:.{digits}f}{unit}"
+
+
+def _against(row: dict, unit: str = "", diff: str | None = None) -> str:
+    """"412.0; usual 463.0 (normal range 450.0-480.0); 11.0% lower" with the D001 decimals rule."""
+    d = decimals(row)
+    text = f"{_num(row.get('current'), d, unit)}; usual {_num(row.get('usual'), d, unit)}"
+    if row.get("p_low") is not None or row.get("p_high") is not None:
+        text += f" (normal range {_num(row.get('p_low'), d)}-{_num(row.get('p_high'), d, unit)})"
+    return text + (f"; {diff}" if diff else "")
+
+
+def _pct_diff(row: dict, words=("higher", "lower")) -> str | None:
+    p = row.get("pct_difference")
+    if p is None:
+        return None
+    return "no change" if round(p, 1) == 0 else f"{abs(p):.1f}% {words[0] if p > 0 else words[1]}"
+
+
+def _abnormal_first(rows: list[dict]) -> list[dict]:
+    return sorted(rows, key=lambda r: r["status"] != ABNORMAL)          # stable: otherwise the screening's order
+
+
+def _position(row: dict, poorer: bool = False) -> str:
+    if row["status"] == ABNORMAL:
+        return "poorer than usual, outside its normal range" if poorer else "outside its normal range"
+    return "within its normal range"
+
+
 def evidence_items(site: dict) -> list[S.EvidenceItem]:
-    """Supporting evidence as statements tied to the source values (written by code, values copied)."""
+    """Supporting evidence as statements tied to the source values (written by code, values copied). Every
+    approach and measure is listed with its current value, usual value and normal range, so a page that shows
+    only the statements still shows which approaches were assessed (methodology owner, Nov 2026)."""
     items = []
-    for a in site["q1"]["approaches"]:
-        if a["status"] == ABNORMAL:
-            items.append(S.EvidenceItem(
-                statement=f"{approach_label(a)} volume is {abs(a['pct_difference']):.1f}% "
-                          f"{'above' if a['pct_difference'] > 0 else 'below'} its reference and outside its normal range.",
-                source="Q1", approach_id=a["link"], metric="volume",
-                values={"current": _f(a["current"]), "reference": _f(a["usual"]), "p10": _f(a["p_low"]),
-                        "p90": _f(a["p_high"]), "pct_diff": _f(a["pct_difference"])}))
+    values = lambda r: {"current": _f(r.get("current")), "reference": _f(r.get("usual")), "p10": _f(r.get("p_low")),
+                        "p90": _f(r.get("p_high")), "pct_diff": _f(r.get("pct_difference"))}
+    q1 = site["q1"]
+    for a in _abnormal_first(q1["approaches"]):
+        if a["status"] == INSUFFICIENT:
+            why = "no current volume" if a.get("current") is None else "fewer than 5 historical values"
+            text = f"{approach_label(a)} volume: not assessed ({why})."
+        else:
+            text = f"{approach_label(a)} volume (30 min): {_against(a, diff=_pct_diff(a))}; {_position(a)}."
+        items.append(S.EvidenceItem(statement=text, source="Q1", approach_id=a["link"], metric="volume", values=values(a)))
+    for a in q1.get("not_evaluated", []):
+        items.append(S.EvidenceItem(statement=f"{approach_label(a)} volume: not assessed (no volume in any reference week).",
+                                    source="Q1", approach_id=a["link"], metric="volume"))
     comps = site["q3"]["components"]
-    for source, key, metric, name in (("Q3A", "cycle_length", "cycle_length_s", "Cycle length"),
-                                      ("Q3B", "cycle_stability", "cycle_stability", "Cycle Stability")):
+    for source, key, metric, name, unit, words in (
+            ("Q3A", "cycle_length", "cycle_length_s", "Cycle length", " s", ("longer", "shorter")),
+            ("Q3B", "cycle_stability", "cycle_stability", "Cycle Stability", "", None)):
         c = comps[key]
         if c["status"] == INSUFFICIENT:
-            text = f"{name} could not be assessed ({c.get('reason') or 'insufficient data'})."
+            text = f"{name}: not assessed ({c.get('reason') or 'insufficient data'})."
         else:
-            text = f"{name} is {c['status'].lower()} against its history" + (
-                " (poorer stability)." if key == "cycle_stability" and c["status"] == ABNORMAL else ".")
-        items.append(S.EvidenceItem(statement=text, source=source, metric=metric,
-                                    values={"current": _f(c["current"]), "reference": _f(c["usual"]), "p10": _f(c["p_low"]),
-                                            "p90": _f(c["p_high"]), "pct_diff": _f(c["pct_difference"])}))
-    for a in comps["phase_service"]["approaches"]:
-        if a["status"] == ABNORMAL:
-            side = "below its 10th" if a["direction"] == "LOW" else "above its 90th"
-            items.append(S.EvidenceItem(statement=f"Phase service to {approach_label(a)} is {side} percentile.",
-                                        source="Q3C", approach_id=a["link"], metric="phase_service",
-                                        values={"current": _f(a["current"]), "reference": _f(a["usual"]),
-                                                "p10": _f(a["p_low"]), "p90": _f(a["p_high"])}))
+            diff = _pct_diff(c, words) if words else None
+            text = f"{name}: {_against(c, unit, diff)}; {_position(c, poorer=key == 'cycle_stability')}."
+        items.append(S.EvidenceItem(statement=text, source=source, metric=metric, values=values(c)))
+    ps = comps["phase_service"]
+    if ps["approaches"]:
+        items.append(S.EvidenceItem(statement=Q3C_LABEL, source="Q3C", metric="phase_service"))
+    for a in _abnormal_first(ps["approaches"]):
+        if a["status"] == INSUFFICIENT:
+            text = f"{approach_label(a)} green share: not assessed ({a.get('reason') or 'fewer than 5 historical values'})."
+        else:
+            diff = None
+            if a.get("current") is not None and a.get("usual") is not None:
+                pp = round(a["current"], 1) - round(a["usual"], 1)
+                diff = "no change" if round(pp, 1) == 0 else f"{abs(pp):.1f} percentage points {'higher' if pp > 0 else 'lower'}"
+            text = f"{approach_label(a)} green share: {_against(a, '%', diff)}; {_position(a)}."
+        items.append(S.EvidenceItem(statement=text, source="Q3C", approach_id=a["link"], metric="phase_service",
+                                    values={k: v for k, v in values(a).items() if k != "pct_diff"}))
     return items
 
 
@@ -328,6 +375,11 @@ def q5_output(d002: dict, period: Period, rules: dict, template: S.TemplateRef |
                                           control_delay_s=a["control_delay_s"], multi_stop_rate=a["multi_stop_rate"],
                                           queue_length_m=a["queue_mean_m"] if a["queue_adequate"] else None,
                                           is_observed=a["adequate"]) for a in ev["approaches"]]
+    # A SCATS-identified approach with no TomTom approach at all is listed as not observed, so the page can name it
+    # (seen live: "PRINVH6GVH2H: Q3C abnormal_high" where Princess Street [S] had no TomTom row).
+    listed = {a.approach_id for a in approaches}
+    approaches += [S.TomTomApproachMetrics(approach_id=p["link"], approach_name=p.get("approach") or p["link"], is_observed=False)
+                   for p in ev["comparison"]["per_approach"] if p["link"] not in listed]
     movements = [S.TomTomMovementMetrics(approach_id=ident(a), movement=m["movement"], control_delay_s=m.get("control_delay_s"))
                  for a in ev["approaches"] for m in a["movements"]]
     comp = ev["comparison"]
@@ -354,6 +406,13 @@ def link_speed_report(speed: dict, site_no: str, period: S.AnalysisPeriod):
     if not speed["available"]:
         notes.insert(0, S.LINK_SPEED_UNAVAILABLE_MESSAGE)
     notes.append("Reference speed: " + speed["reference"])
+    # Why a usual speed is blank: the contract has no field for the number of reference weeks with samples.
+    no_ref = [f"{a['approach']} ({a['reference_weeks'] or 0} week{'' if a['reference_weeks'] == 1 else 's'} with samples)"
+              for a in speed["approaches"] if a["reference_kmh"] is None and "reference_weeks" in a
+              and speed["reference"].startswith(("median", "mean"))]
+    if no_ref:
+        notes.append("No reference speed (too few reference weeks with samples): " + ", ".join(no_ref))
+    # The approach label ("Street [bound]"), so two links of one street are told apart (seen live at SCATS 1037).
     return S.LinkSpeedReport(site_no=site_no, period=period, notes=notes, links=[
-        S.LinkSpeed(link_id=a["link"], street_name=a.get("street") or "", arm=a.get("arm"), speed_kmh=a["speed_kmh"],
+        S.LinkSpeed(link_id=a["link"], street_name=a.get("approach") or a.get("street") or "", arm=a.get("arm"), speed_kmh=a["speed_kmh"],
                     reference_speed_kmh=a["reference_kmh"]) for a in speed["approaches"]])

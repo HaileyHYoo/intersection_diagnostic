@@ -92,6 +92,22 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(q5.narrative, "TomTom confirmation unavailable for this intersection or analysis period. "
                                        "Reason: the site has no TomTom approach mapping.")
 
+    def test_scats_approach_without_tomtom_row_is_named(self):
+        """Seen live (9 Nov 2026): "PRINVH6GVH2H: Q3C abnormal_high" because Princess Street [S] had no TomTom row."""
+        from diagnostics.timewin import period_ending
+        row = {"link": "L1", "approach": "A St [N]", "tomtom_approach": "t1", "delay_s": 50.0, "control_delay_s": 40.0,
+               "multi_stop_rate": 0.2, "queue_mean_m": 30.0, "queue_adequate": True, "adequate": True, "movements": []}
+        comp = {"per_approach": [{"link": "L1", "approach": "A St [N]", "scats_findings": ["Q1 high"], "has_largest_delay": True,
+                                  "has_largest_queue": True, "agreement": "agreement"},
+                                 {"link": "L2", "approach": "B St [S]", "scats_findings": ["Q3C abnormal_high"],
+                                  "has_largest_delay": False, "has_largest_queue": None, "agreement": "insufficient coverage"}],
+                "greatest_delay": {"link": "L1"}, "longest_queue": {"link": "L1"}}
+        d002 = {"evidence": {"available": True, "approaches": [row], "comparison": comp, "missing_approach_links": ["L2"]},
+                "answer": {"road_user_impact": "x"}, "generated_by": "code", "rejected": None}
+        q5 = adapter.q5_output(d002, period_ending(END, self.settings.rules), self.settings.rules)
+        added = [a for a in q5.approaches if a.approach_id == "L2"]
+        self.assertEqual([(a.approach_name, a.is_observed, a.delay_s) for a in added], [("B St [S]", False, None)])
+
     def test_store_round_trip_and_panel(self):
         run = S.ScreeningRun(run_id=self.result.run_id, status=S.RunStatus.COMPLETED, started_at=self.result.completed_at,
                              key=S.ScreeningCacheKey(region=self.result.region, period_end=self.result.period.end,
@@ -213,7 +229,12 @@ class CoreTests(unittest.TestCase):
     def test_red_diagnosis(self):
         d = self.diagnose("4300")
         self.assertEqual(d.q4.template.template_id, "ID_Q4_SCATS_INTERPRETATION")
-        self.assertEqual([e.source for e in d.q4.supporting_evidence], ["Q1", "Q3A", "Q3B", "Q3C"])
+        ev = d.q4.supporting_evidence                     # every approach and measure, out-of-range first, with values
+        self.assertEqual([e.source for e in ev], ["Q1"] * 4 + ["Q3A", "Q3B"] + ["Q3C"] * 5)
+        self.assertTrue(ev[0].statement.endswith("outside its normal range.") and "usual" in ev[0].statement)
+        self.assertTrue(ev[1].statement.endswith("within its normal range."))
+        self.assertIn("from phase durations; not measured signal-group green time", ev[6].statement)
+        self.assertTrue(ev[7].statement.endswith("outside its normal range."))
         self.assertTrue(d.q5.available)
         self.assertEqual(d.q5.largest_delay_approach_id, "SWANN4300Q9")
         self.assertEqual(d.q5.scats_comparison[0].agreement, S.ScatsAgreement.AGREE)

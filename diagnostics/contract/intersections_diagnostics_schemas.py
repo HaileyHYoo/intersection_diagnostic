@@ -3,12 +3,13 @@
 Flow covered by this module (Dash callbacks are the backend):
 
     1. callback -> service       ScreeningRequest, SiteReportRequest
-    2. service -> core logic     ScreeningInput, DiagnosisInput
-    3. core logic -> service     ScreeningResult, DiagnosisResult
-    4. Platform data             LinkSpeedReport (existing TomTom link speeds, not core logic)
-    5. shared run store          ScreeningRun, SiteReport (Redis, shared across users)
-    6. audit records (S3)        ScreeningLog, SiteReport for Red sites, BaselineSnapshot
-    7. service -> dcc.Store      ScreeningPanelData, DisplaySettings
+    2. service -> core logic     ScreeningInput, SiteReportRequest + ScreeningRun (DiagnosisInput inside)
+    3. core logic -> service     ScreeningResult, SiteReport (DiagnosisResult, LinkSpeedReport)
+    4. shared run store          ScreeningRun, SiteReport (Redis, shared across users)
+    5. audit records (archive)   ScreeningLog, SiteReport for Red sites, BaselineSnapshot
+    6. service -> dcc.Store      ScreeningPanelData, DisplaySettings
+
+The core logic is dash_backend.dash.intersections.diagnostics (contract.core).
 
 Level 1 (network screening) runs Q2 -> Q1 + Q3 for every site in a region for one
 completed 30-minute period. Selecting an Amber site shows its saved Q1/Q3 evidence and
@@ -627,9 +628,14 @@ class ScreeningPanelData(BaseModel):
         default_factory=dict,
         description="All screened sites per category, Normal included; legend percentages come from this",
     )]
-    markers: Annotated[list[IntersectionMarker], Field(default_factory=list, description="Normal sites omitted")]
+    markers: Annotated[list[IntersectionMarker], Field(
+        default_factory=list,
+        description="Every drawn site, Normal first so it renders under the others; Detector Health Issues are listed instead",
+    )]
     detector_health_issues: Annotated[list[DetectorHealthIssue], Field(default_factory=list)]
     error: str | None = None
+    note: str | None = Field(default=None, description="E.g. a newer period still waiting for its data")
+    checking: bool = Field(default=False, description="The data check for the latest period is still reading")
 
     @classmethod
     def from_run(cls, run: ScreeningRun, *, from_cache: bool, next_period_end: datetime | None = None) -> "ScreeningPanelData":
@@ -643,7 +649,7 @@ class ScreeningPanelData(BaseModel):
             ref = SiteRef(site_no=site.site_no, name=site.name, coordinates=site.coordinates).model_dump()
             if site.category == SiteCategory.DETECTOR_HEALTH_ISSUE:
                 panel.detector_health_issues.append(DetectorHealthIssue(**ref, failed_detectors=site.q2.failed_detectors))
-            elif site.category != SiteCategory.NORMAL:
+            else:
                 approaches = [*(site.q1.approaches if site.q1 else []),
                               *(site.q3.phase_service.approaches if site.q3 and site.q3.phase_service else [])]
                 names = {a.approach_id: a.approach_name or a.approach_id for a in approaches}
@@ -653,6 +659,7 @@ class ScreeningPanelData(BaseModel):
                     abnormal_approaches=[names.get(a, a) for a in affected],
                     insufficient_data_reason=site.insufficient_data_reason,
                 ))
+        panel.markers.sort(key=lambda m: m.category != SiteCategory.NORMAL)
         return panel
 
     def to_store_record(self) -> dict:

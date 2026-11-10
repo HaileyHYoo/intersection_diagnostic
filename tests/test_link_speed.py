@@ -114,9 +114,15 @@ class LinkSpeedTests(unittest.TestCase):
         self.assertIsNone(amber.diagnosis)
         self.assertTrue(amber.link_speed.available)
         self.assertEqual(amber.link_speed.period, result.period)
-        self.assertEqual(amber.link_speed.links[0].street_name, "William Street")
+        self.assertEqual(amber.link_speed.links[0].street_name, "William Street [N]")    # with its bound (SCATS 1037)
         self.assertIn("Reference speed: median TomTom speed", amber.link_speed.notes[-1])
         self.assertIsNotNone(amber.link_speed.links[0].reference_speed_kmh)
+        speed = {"available": True, "notes": [], "reference": "median TomTom speed of ...", "approaches": [
+            {"link": "Q1", "approach": "Queensberry Street [W]", "street": "Queensberry Street", "arm": 4, "speed_kmh": 21.0,
+             "reference_kmh": None, "reference_weeks": 3}]}
+        report = adapter.link_speed_report(speed, "1037", amber.period)          # SCATS 1037, 10 Nov 2026: usual blank
+        self.assertEqual(report.notes[-1], "No reference speed (too few reference weeks with samples): "
+                                           "Queensberry Street [W] (3 weeks with samples)")
         with tempfile.TemporaryDirectory() as d:
             arch = archive.LocalArchive(d)
             red = core.run_site_report(request("4300"), run, source, s, archive=arch)

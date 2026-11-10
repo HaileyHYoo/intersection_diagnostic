@@ -3,7 +3,7 @@
     python tools/build_production.py           build production/ and check that it imports
     python tools/build_production.py --check   only verify that production/ matches the source
 
-The production team copies production/dash_backend/ai_brains/intersections/diagnostics/ into the backend
+The production team copies production/dash_backend/dash/intersections/diagnostics/ into the backend
 (see production/PRODUCTION_UPDATE.md). Local-only modules (diagnostics/local: synthetic network, map viewer,
 inspection) are left out. Do not edit production/ by hand.
 """
@@ -20,7 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE = ROOT / "diagnostics"
 OUT = ROOT / "production"
-TARGET = OUT / "dash_backend" / "ai_brains" / "intersections" / "diagnostics"
+TARGET = OUT / "dash_backend" / "dash" / "intersections" / "diagnostics"
 EXCLUDE_DIRS = {"local", "__pycache__"}
 DOCS = {"docs/PRODUCTION_UPDATE.md": "PRODUCTION_UPDATE.md",
         "docs/SCHEMA.md": "SCHEMA.md", "docs/DATA_MAPPING.md": "DATA_MAPPING.md", "requirements.txt": "requirements.txt", ".env.example": ".env.example"}
@@ -36,16 +36,16 @@ def digest(path: Path) -> str:
 
 
 def manifest() -> dict:
-    return {"package": "dash_backend.ai_brains.intersections.diagnostics",
+    return {"package": "dash_backend.dash.intersections.diagnostics",
             "files": {str(p.relative_to(SOURCE)): digest(p) for p in source_files()}}
 
 
 def check_imports() -> None:
     code = ("import sys; sys.path.insert(0, %r); "
-            "import dash_backend.ai_brains.intersections.diagnostics.host as h; "
-            "import dash_backend.ai_brains.intersections.diagnostics.templates as t; "
+            "import dash_backend.dash.intersections.diagnostics.host as h; "
+            "import dash_backend.dash.intersections.diagnostics.templates as t; "
             "assert set(t.catalog()) == {'D001', 'D002'}; "
-            "import dash_backend.ai_brains.intersections.diagnostics.contract.core as c; print('import ok')") % str(OUT)
+            "import dash_backend.dash.intersections.diagnostics.contract.core as c; print('import ok')") % str(OUT)
     subprocess.run([sys.executable, "-I", "-c", code], check=True, cwd=OUT)
     leaked = [p for p in TARGET.rglob("*.py") if "from .local" in p.read_text() or "from ..local" in p.read_text()]
     if leaked:
