@@ -227,9 +227,12 @@ def compare(measured: dict, flagged: dict[str, dict]) -> dict:
     for link, f in flagged.items():
         a = by_link.get(link)
         largest_by = {m: (bool(tops[m] and tops[m]["link"] == link) if seen(a, m) else None) for m in metrics}
-        observed = any(v is not None for v in largest_by.values())
-        largest_delay = any(largest_by.values()) if observed else None
+        delay_seen = any(v is not None for v in largest_by.values())
+        largest_delay = any(largest_by.values()) if delay_seen else None
         largest_queue = (bool(top_queue and top_queue["link"] == link) if a and a["queue_adequate"] else None) if queue_known else None
+        # Observed by delay or by queue: an approach whose queue was adequately observed but is not the longest
+        # disagrees, rather than lacking coverage (seen live, 10 Nov 2026: queue 30 of 30 minutes, delay 15 of 30).
+        observed = delay_seen or largest_queue is not None
         if largest_delay or largest_queue:
             verdict = AGREE
         elif observed:
@@ -373,7 +376,9 @@ draft's coverage statement (how much of the 30 minutes delay and queue cover). K
 labels exactly: "Largest values:", "By approach:", "Overall:", "Coverage:". TomTom shows road-user impact, never
 proof of cause. State the findings only: no interpretation such as "despite", "as expected" or reasons. Write plain
 English, not codes such as abnormal_high or Q3C. Name approaches as in the evidence ("approach" or
-"missing_approaches"), never by a bare link ID.
+"missing_approaches"), never by a bare link ID. Rank and cite delay and queue values only for adequately observed
+approaches (adequate / queue_adequate true): when the greatest delay is not established, say so and give no delay value
+for the approaches that are not adequately observed. State the caveat on historically abnormal delay once.
 Return JSON with keys: road_user_impact (string), agreement (copy the evidence value), coverage (string)."""
 
 

@@ -168,6 +168,8 @@ def inspect(source, settings: Settings, site: str, end=None, hours: float = 2.0)
             "per_link": {k: {"samples": sum(x > 0 for x in v), "harmonic_kmh": None if harmonic(v) is None else round(harmonic(v), 1)}
                          for k, v in sorted(per_link.items())},
             "links_without_speed": sorted(set(links) - set(per_link)),
+            # Stamps and series per link, to check the feed's interval (one record = how many minutes?)
+            "stamps": _speed_stamps(speed_rows, period, settings),
             "samples": [{k: str(v) for k, v in r.items()} for r in speed_rows[:3]]}
     report["checks"]["period_values"] = attempt("period_values", lambda: period_values(source, settings, site, period, approaches))
     return report
@@ -243,6 +245,10 @@ def summary(report: dict) -> str:
                  + (f"queue rows {q['rows']} over {len(q['approaches'])} approaches" if q else
                     t.get("queue_skipped") or "queue not read (see errors)"))
     s = report["checks"].get("link_speed")
+    if s and s.get("stamps"):
+        for link, info in s["stamps"].items():
+            lines.append(f"  link speed stamps {link}: {len(info['times'])} in the period, series {info['series']}: "
+                         + " ".join(info["times"]))
     if s:
         lines.append(f"  link speed (period): {s['rows']} samples, per link {{"
                      + ", ".join(f"{k}: {v['harmonic_kmh']} km/h ({v['samples']})" for k, v in s["per_link"].items())
@@ -400,3 +406,25 @@ def kpi_check_text(k: dict) -> str:
 
 def _short(v):
     return f"{v:.3f}".rstrip("0").rstrip(".") if isinstance(v, float) else v
+
+
+def _speed_stamps(rows: list[dict], period, settings) -> dict:
+    """{link: {times: local HH:MM:SS of the positive samples in [start, end), series: the distinct tag sets}}."""
+    from collections import defaultdict
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    from ..timewin import to_utc, tz_name
+    tz = ZoneInfo(tz_name(settings.rules))
+    skip = {"time", "field", "value", "link", "Region", "DetectorGroupId"}
+    start, end = to_utc(period.start), to_utc(period.end)
+    out = defaultdict(lambda: {"times": [], "series": set()})
+    for r in rows:
+        t = r["time"] if isinstance(r["time"], datetime) else datetime.fromisoformat(str(r["time"]))
+        t = to_utc(t)
+        if not start <= t < end:
+            continue
+        link = str(r.get("link") or r.get("DetectorGroupId"))
+        out[link]["times"].append(t.astimezone(tz).strftime("%H:%M:%S"))
+        out[link]["series"].add(tuple(sorted((k, str(v)) for k, v in r.items() if k not in skip)))
+    return {k: {"times": sorted(v["times"]), "series": [dict(x) for x in sorted(v["series"])]} for k, v in sorted(out.items())}
+

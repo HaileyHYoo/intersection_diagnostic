@@ -78,20 +78,15 @@ def _stamps(rows: list[dict], period: Period) -> dict[str, list[datetime]]:
     return {link: sorted(v) for link, v in out.items()}
 
 
-def _minutes(stamps: list[datetime], period_minutes: int, default_step: float) -> int:
-    """Minutes of the period the samples cover: samples x their interval, the interval read from the stamps
-    themselves (median gap; the configured interval when there is a single sample). The live feed's interval
-    is not assumed: a 7.5-minute feed would otherwise read 20 of 30 minutes with every sample present."""
+def _minutes(stamps: list[datetime], period_minutes: int, step: float) -> int:
+    """Minutes of the period with speed: each record stands for one interval of the feed (5 minutes,
+    schema link_speed.interval_minutes), counted once per interval slot, so two records in one slot (e.g. two
+    series of one link) are not counted twice and the result never exceeds the period."""
     if not stamps:
         return 0
-    gaps = [(b - a).total_seconds() / 60 for a, b in zip(stamps, stamps[1:]) if b > a]
-    if gaps:
-        # The feed's interval as a whole fraction of the period (stamps 7-8 minutes apart are a 7.5-minute feed,
-        # 4 samples per 30 minutes), so stamp jitter does not read as missing minutes.
-        step = period_minutes / max(1, round(period_minutes / median(gaps)))
-    else:
-        step = default_step
-    return int(min(period_minutes, round(len(stamps) * step)))
+    slot = step * 60
+    slots = {int(t.timestamp() // slot) for t in stamps}
+    return int(min(period_minutes, len(slots) * step))
 
 
 def history_reference(source, links: list[str], period: Period, rules: dict) -> tuple[dict, dict, int]:

@@ -317,7 +317,8 @@ def detector_notes(q2: dict, category: str) -> list[str]:
     if not q2.get("tolerated") or category == "detector_health":
         return []
     rows = {r["detector"]: r for r in q2["detectors"]}
-    parts = [f"detector {d} counted {rows[d]['count_60min']:.0f} vehicles" for d in q2["tolerated"]]
+    parts = [f"detector {d} counted {rows[d]['count_60min']:.0f} vehicle{'' if round(rows[d]['count_60min']) == 1 else 's'}"
+             for d in q2["tolerated"]]
     return [f"Screened with one detector below {q2['threshold']} vehicles in 60 minutes ({', '.join(parts)}); "
             "it may be a low-volume movement or a detector fault."]
 

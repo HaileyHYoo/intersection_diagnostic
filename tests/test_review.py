@@ -324,3 +324,21 @@ class Q5UnavailableReasonTests(unittest.TestCase):
         self.assertIn("Junction Analytics queue: unavailable - the site has no verified TomTom junction",
                       r["evidence"]["coverage_note"])
 
+
+class Q5QueueObservedTests(unittest.TestCase):
+    def test_queue_observed_without_longest_queue_disagrees(self):
+        """Live, 10 Nov 2026: queue 30 of 30 minutes but delay 15 of 30 read as "no adequate TomTom coverage"."""
+        row = lambda link, q: {"link": link, "approach": link, "quarters_observed": 1, "quarters_by": {},
+                               "control_delay_s": 5.0, "approach_delay_s": 5.0, "delay_s": 5.0, "adequate": False,
+                               "queue_adequate": True, "queue_mean_m": q}
+        measured = {"approaches": [row("HAWKE", 41.1), row("ERROL", 9.0)], "queue_status": "available",
+                    "delay_metric": "control_delay", "ranked_delays": ["control_delay", "approach_delay"]}
+        flagged = {"HAWKE": {"approach": "Hawke St [NE]", "findings": ["Q3C abnormal_low"]},
+                   "ERROL": {"approach": "Errol St [S]", "findings": ["Q1 high"]}}
+        comp = d002.compare(measured, flagged)
+        verdicts = {p["link"]: p["agreement"] for p in comp["per_approach"]}
+        self.assertEqual(verdicts, {"HAWKE": d002.AGREE, "ERROL": d002.DISAGREE})
+        self.assertEqual(comp["agreement"], d002.PARTIAL)
+        errol = next(p for p in comp["per_approach"] if p["link"] == "ERROL")
+        self.assertIn("does not have the longest queue", d002._per_approach_sentence(errol))
+

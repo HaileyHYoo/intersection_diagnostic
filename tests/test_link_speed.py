@@ -236,18 +236,13 @@ class ArmTests(unittest.TestCase):
 
 
 class SpeedMinutesTests(unittest.TestCase):
-    def test_minutes_follow_the_feed_interval(self):
-        """Live (10 Nov 2026): 4 samples in 30 minutes read "20 of 30" with an assumed 5-minute interval."""
+    def test_minutes_count_five_minute_slots(self):
+        """One record = 5 minutes, each 5-minute slot counted once (two series of one link are not 10 minutes)."""
         from datetime import datetime, timedelta, timezone
-        t0 = datetime(2026, 11, 9, 23, 0, tzinfo=timezone.utc)
+        t0 = datetime(2026, 11, 9, 23, 0, 30, tzinfo=timezone.utc)
         every = lambda step, n: [t0 + timedelta(minutes=step * k) for k in range(n)]
-        self.assertEqual(link_speed._minutes(every(7.5, 4), 30, 5), 30)
-        from datetime import timedelta as td                                 # live stamps 7-8 minutes apart
-        jitter = [t0, t0 + td(minutes=7), t0 + td(minutes=15), t0 + td(minutes=22)]
-        self.assertEqual(link_speed._minutes(jitter, 30, 5), 30)
-        self.assertEqual(link_speed._minutes(jitter[:2], 30, 5), 15)        # 2 of the 4 samples
-        self.assertEqual(link_speed._minutes(every(5, 6), 30, 5), 30)
-        self.assertEqual(link_speed._minutes(every(5, 6)[:3], 30, 5), 15)
-        self.assertEqual(link_speed._minutes([t0], 30, 5), 5)
+        self.assertEqual(link_speed._minutes(every(5, 6), 30, 5), 30)              # all six records
+        self.assertEqual(link_speed._minutes(every(5, 6)[:4], 30, 5), 20)          # four of six
+        doubled = every(5, 6) + [t + timedelta(minutes=2) for t in every(5, 6)[:1]]
+        self.assertEqual(link_speed._minutes(doubled, 30, 5), 30)                  # 7 records, 6 slots
         self.assertEqual(link_speed._minutes([], 30, 5), 0)
-
