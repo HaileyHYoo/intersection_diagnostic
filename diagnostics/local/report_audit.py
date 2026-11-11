@@ -7,6 +7,8 @@ For each period: the screening (reused when already stored), then every Red repo
 as on a click) and every Amber evidence page (Q1/Q3 tables + link speed). Written to out/report_audit/<batch>/:
 
     index.csv              one row per Red/Amber site and period: findings, Q5 result, automatic review flags
+    details.jsonl          the same sites in full (every approach, measure, TomTom value, link speed, D001 pattern
+                           and checks), for the statistical review
     summary.md             counts per period and category, Q5 verdicts, flag counts, LLM use
     <period>/red.md|html   every Red report of the period
     <period>/amber.md|html every Amber evidence page of the period
@@ -16,6 +18,7 @@ The flags only point at what deserves a look; they change nothing in the screeni
 from __future__ import annotations
 
 import csv
+import json
 import re
 from collections import Counter
 from datetime import datetime
@@ -144,12 +147,79 @@ def _row(label: str, p: dict, run_id: str, s: dict, d002: dict | None, speed: di
     }
 
 
+def _round(x, n=1):
+    return None if x is None else round(x, n)
+
+
+def _rows(rows: list[dict]) -> list[dict]:
+    from ..names import approach_label
+    keep = ("link", "status", "direction", "current", "usual", "p_low", "p_high", "n_history", "pct_difference")
+    return [{"approach": approach_label(a), **{k: (_round(a.get(k), 2) if isinstance(a.get(k), float) else a.get(k))
+                                              for k in keep}} for a in rows]
+
+
+def _measure_row(c: dict | None) -> dict | None:
+    if not c:
+        return None
+    return {k: (_round(c.get(k), 2) if isinstance(c.get(k), float) else c.get(k))
+            for k in ("status", "direction", "current", "usual", "p_low", "p_high", "n_history", "pct_difference")}
+
+
+def detail(label: str, p: dict, run_id: str, s: dict, r: dict | None, speed: dict | None) -> dict:
+    """One site in full, for the statistical review (details.jsonl): every approach, measure, TomTom value and
+    link speed, and for Red the D001 pattern and the code's checks (the deterministic ones, whatever the wording)."""
+    from ..templates import d001
+    q1, comps = s.get("q1") or {}, (s.get("q3") or {}).get("components") or {}
+    out = {"period": label, "period_local": p["period"]["local"], "run_id": run_id, "site": s["site"],
+           "name": s.get("name") or "", "category": s["category"],
+           "q2": {"tolerated": (s.get("q2") or {}).get("tolerated", []),
+                  "detectors": len((s.get("q2") or {}).get("detectors", []))},
+           "q1": {"status": q1.get("status"), "approaches": _rows(q1.get("approaches", [])),
+                  "not_evaluated": [a["link"] for a in q1.get("not_evaluated", [])]},
+           "q3": {"status": (s.get("q3") or {}).get("status"),
+                  "cycle_length": _measure_row(comps.get("cycle_length")),
+                  "cycle_stability": _measure_row(comps.get("cycle_stability")),
+                  "phase_service": _rows((comps.get("phase_service") or {}).get("approaches", []))},
+           "notes": s.get("notes", [])}
+    if speed:
+        out["link_speed"] = [{"approach": a["approach"], "speed_kmh": a.get("speed_kmh"), "reference_kmh": a.get("reference_kmh"),
+                              "minutes": a.get("minutes"), "reference_weeks": a.get("reference_weeks")}
+                             for a in speed.get("approaches", [])]
+    if r:
+        t = r.get("templates") or {}
+        one, two = t.get("D001") or {}, t.get("D002") or {}
+        ev1 = one.get("evidence") or {}
+        out["d001"] = {"same_approach": ev1.get("same_approach", []), "traffic_only": ev1.get("traffic_only_approaches", []),
+                       "signal_only": ev1.get("signal_only_approaches", []),
+                       "code_checks": d001.written(ev1)["suggested_checks"] if ev1 else [],
+                       "code_diagnosis": d001.written(ev1)["diagnosis"] if ev1 else "",
+                       "generated_by": one.get("generated_by"), "rejected": one.get("rejected")}
+        ev2 = two.get("evidence") or {}
+        comp = ev2.get("comparison") or {}
+        out["d002"] = {"available": ev2.get("available"), "queue": ev2.get("queue"),
+                       "agreement": comp.get("agreement"), "coverage_note": ev2.get("coverage_note"),
+                       "per_approach": [{k: x.get(k) for k in ("approach", "scats_findings", "agreement", "has_largest_delay",
+                                                               "has_largest_queue", "observed")}
+                                        for x in comp.get("per_approach", [])],
+                       "approaches": [{k: a.get(k) for k in ("approach", "link", "mapped", "adequate", "quarters_observed",
+                                                             "control_delay_s", "approach_delay_s", "multi_stop_rate",
+                                                             "queue_mean_m", "queue_max_m", "queue_minutes", "queue_adequate")}
+                                      for a in ev2.get("approaches", [])],
+                       "generated_by": two.get("generated_by"), "rejected": two.get("rejected")}
+    return out
+
+
+def _llm_failed(r: dict) -> bool:
+    return any("LLM call failed" in str(t.get("rejected") or "") for t in (r.get("templates") or {}).values())
+
+
 def run(svc, periods: list[tuple[str, str]], out_dir, amber_speed: bool = True, resume: bool = False,
         progress=print, rescreen: bool = False) -> Path:
     batch = Path(out_dir) / "report_audit" / datetime.now().strftime("%Y%m%d_%H%M")
     batch.mkdir(parents=True, exist_ok=True)
     index = batch / "index.csv"
     rows, counts, verdicts = [], {}, Counter()
+    details = (batch / "details.jsonl").open("w", encoding="utf-8")
     with index.open("w", newline="", encoding="utf-8-sig") as fh:            # utf-8-sig: opens cleanly in Excel
         writer = csv.DictWriter(fh, fieldnames=COLUMNS)
         writer.writeheader()
@@ -169,6 +239,8 @@ def run(svc, periods: list[tuple[str, str]], out_dir, amber_speed: bool = True, 
             for k, s in enumerate(reds, 1):
                 try:
                     r = svc.diagnose(run_id, s["site"], reuse=resume)
+                    if resume and svc.llm and _llm_failed(r):        # a saved report whose LLM call failed: redo it
+                        r = svc.diagnose(run_id, s["site"], reuse=False)
                 except Exception as exc:  # noqa: BLE001 - one site never stops the batch
                     red += [f"## SCATS {s['site']} - report failed: {type(exc).__name__}: {exc}", "", "---", ""]
                     continue
@@ -178,6 +250,7 @@ def run(svc, periods: list[tuple[str, str]], out_dir, amber_speed: bool = True, 
                 red += [f"- LLM answer not used (code wording shown) - {x}" for x in rejected] + ["", "---", ""]
                 d002 = (r.get("templates") or {}).get("D002")
                 row = _row(label, p, run_id, s, d002, r.get("link_speed"), r.get("templates") or {})
+                details.write(json.dumps(detail(label, p, run_id, s, r, r.get("link_speed")), default=str) + "\n")
                 writer.writerow(row)
                 rows.append(row)
                 verdicts[(label, row["q5_verdict"])] += 1
@@ -198,13 +271,18 @@ def run(svc, periods: list[tuple[str, str]], out_dir, amber_speed: bool = True, 
                         amber += [f"- SCATS {s['site']}: link speed failed ({type(exc).__name__})"]
                 amber += examples._evidence(s) + examples._speed(speed) + ["---", ""]
                 row = _row(label, p, run_id, s, None, speed, {})
+                details.write(json.dumps(detail(label, p, run_id, s, None, speed), default=str) + "\n")
                 writer.writerow(row)
                 rows.append(row)
                 if k % 50 == 0:
                     progress(f"  Amber {k}/{len(ambers)}")
                     fh.flush()
+            for s in p["sites"]:                               # every other site, for network-wide distributions
+                if s["category"] != RED and s["category"] not in AMBERS:
+                    details.write(json.dumps(detail(label, p, run_id, s, None, None), default=str) + "\n")
             (folder / "amber.md").write_text("\n".join(amber), encoding="utf-8")
             (folder / "amber.html").write_text(examples.to_html("\n".join(amber), f"{label} - Amber evidence"), encoding="utf-8")
+    details.close()
     (batch / "summary.md").write_text(summary(counts, rows, verdicts, svc), encoding="utf-8")
     return batch
 

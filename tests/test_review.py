@@ -366,6 +366,12 @@ class ReportAuditTests(unittest.TestCase):
             self.assertTrue((batch / "am_peak" / "red.md").read_text(encoding="utf-8").count("## ") > 0)
             self.assertIn("Q5 (Red) verdicts", (batch / "summary.md").read_text(encoding="utf-8"))
             self.assertNotIn("83.3125", (batch / "index.csv").read_text(encoding="utf-8-sig"))
+            import json
+            details = [json.loads(x) for x in (batch / "details.jsonl").read_text(encoding="utf-8").splitlines()]
+            self.assertEqual(len(details), 20)                                     # every site of the period
+            red = [d for d in details if d["category"] == "red"]
+            self.assertTrue(red and "code_checks" in red[0]["d001"] and "approaches" in red[0]["d002"])
+            self.assertNotIn("approach", red[0]["q3"]["cycle_length"])
 
 
 class FuturePeriodTests(unittest.TestCase):
