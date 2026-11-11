@@ -193,6 +193,7 @@ def detail(label: str, p: dict, run_id: str, s: dict, r: dict | None, speed: dic
                        "signal_only": ev1.get("signal_only_approaches", []),
                        "code_checks": d001.written(ev1)["suggested_checks"] if ev1 else [],
                        "code_diagnosis": d001.written(ev1)["diagnosis"] if ev1 else "",
+                       "answer": {k: (one.get("answer") or {}).get(k) for k in ("diagnosis", "suggested_checks")},
                        "generated_by": one.get("generated_by"), "rejected": one.get("rejected")}
         ev2 = two.get("evidence") or {}
         comp = ev2.get("comparison") or {}
@@ -205,8 +206,19 @@ def detail(label: str, p: dict, run_id: str, s: dict, r: dict | None, speed: dic
                                                              "control_delay_s", "approach_delay_s", "multi_stop_rate",
                                                              "queue_mean_m", "queue_max_m", "queue_minutes", "queue_adequate")}
                                       for a in ev2.get("approaches", [])],
+                       "answer": (two.get("answer") or {}).get("road_user_impact"),
+                       "code_answer": _d002_code(ev2),
                        "generated_by": two.get("generated_by"), "rejected": two.get("rejected")}
     return out
+
+
+def _d002_code(ev: dict) -> str | None:
+    """The code's D002 answer for the same evidence (the deterministic draft), to set beside the LLM wording."""
+    from ..templates import d002
+    try:
+        return d002.written(ev)["road_user_impact"] if ev else None
+    except Exception:  # noqa: BLE001 - review aid only
+        return None
 
 
 def _llm_failed(r: dict) -> bool:

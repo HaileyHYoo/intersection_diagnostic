@@ -371,6 +371,7 @@ class ReportAuditTests(unittest.TestCase):
             self.assertEqual(len(details), 20)                                     # every site of the period
             red = [d for d in details if d["category"] == "red"]
             self.assertTrue(red and "code_checks" in red[0]["d001"] and "approaches" in red[0]["d002"])
+            self.assertTrue(red[0]["d001"]["answer"]["diagnosis"] and red[0]["d002"]["code_answer"])
             self.assertNotIn("approach", red[0]["q3"]["cycle_length"])
 
 
