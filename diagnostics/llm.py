@@ -113,7 +113,8 @@ def _value(token: str) -> float | None:
         return None
 
 
-LINK_ID = re.compile(r"\blink ([A-Za-z0-9_-]+)")
+# A link ID is upper-case letters and digits (e.g. STNAVH6GVH3H); "link them" is English (seen live, PM 10 Nov 2026).
+LINK_ID = re.compile(r"\blink ([A-Z0-9][A-Z0-9_-]{4,})\b")
 WORD = re.compile(r"[A-Za-z0-9_-]+")
 
 

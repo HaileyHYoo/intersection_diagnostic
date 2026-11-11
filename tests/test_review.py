@@ -391,3 +391,11 @@ class FuturePeriodTests(unittest.TestCase):
             svc.screen("2026-11-10T17:30", now=now)
         self.assertIn("cannot be screened yet", str(ctx.exception))
 
+
+class LinkIdCheckTests(unittest.TestCase):
+    def test_english_after_link_is_not_a_link_id(self):
+        """PM 10 Nov 2026 (SCATS 4203): "link them" rejected an LLM answer as a made-up link ID."""
+        from diagnostics import llm
+        self.assertEqual(llm.LINK_ID.findall("phase calls that link them to the coordination plan"), [])
+        self.assertEqual(llm.LINK_ID.findall("Link STNAVH6GVH3H [S] (no street name) (link STNAVH6GVH3H)"), ["STNAVH6GVH3H"])
+
