@@ -18,9 +18,12 @@ improve.
 - **Red is mostly transient**: 313 sites are Red at least once; 268 in one period only, 3 in all four. Persistent Red
   sites show the same phase-service change in every period.
 - **TomTom data cover only 44 % of Red sites** (the TomTom mapping covers 41 % of the network).
-- **Site findings include network-wide effects.** Each approach is compared only with its own recent weeks, so a
-  network-wide rise (traffic +3 % to +7 %, likely the September school holidays in the reference weeks), small-volume
-  noise and a 5-week history all appear as site findings.
+- **Three method issues shape the results:**
+  - small volumes are flagged two to four times as often as large ones;
+  - each approach is compared only with its own recent weeks, so network-wide trends are not separated from site
+    changes: traffic reads 3–7 % higher than usual across the network, most likely because the reference weeks
+    include the September school holidays;
+  - most values rest on the 5-week minimum because whole reference days are missing.
 
 ### 1.1 Statistics by period
 
@@ -175,17 +178,17 @@ with checks rather than an explanation.
 | D | Reasonable; poorer stability is common (276 of 369) and its explanation is generic. |
 | E | Correct and honest ("its cause is not shown by the SCATS data"). |
 
-## 5. Suggested checks
+## 5. Suggested engineering checks
 
 ### 5.1 The checks and their frequency (369 Red reports)
 
-| Check | Written when | Reports |
-|---|---|---|
-| K1 Verify phase service on X against its demand: green time and phase calls cycle by cycle with the detector counts | traffic and phase-service findings on the same approach (A1, A2) | 225 |
-| K2 Verify whether the longer/shorter cycle was SCATS's adaptive response or a plan or coordination change: plan, subsystem cycle length, linking and offsets | abnormal cycle length (B) | 145 |
-| K3 Check phase service to X: phase calls, skipped or extended phases, demand on the competing phases | phase-service finding without a traffic finding (C) | 332 |
-| K4 Review cycle-by-cycle cycle lengths in Signal Performance to confirm the poorer stability | poorer stability (D) | 276 |
-| K5 Check for incidents, events, roadworks or diversions that could explain the unusual volume on X, and monitor whether it persists | traffic finding without a phase-service finding (E) | 344 |
+| Check | Wording in the report | Written when | Reports |
+|---|---|---|---|
+| Phase service against demand | Verify phase service on X against its demand: green time and phase calls cycle by cycle with the detector counts | traffic and phase-service findings on the same approach (A1, A2) | 225 |
+| Cycle change: adaptive or plan | Verify whether the longer/shorter cycle was SCATS's adaptive response or a plan or coordination change: plan, subsystem cycle length, linking and offsets | abnormal cycle length (B) | 145 |
+| Phase service on other approaches | Check phase service to X: phase calls, skipped or extended phases, demand on the competing phases | phase-service finding without a traffic finding (C) | 332 |
+| Cycle stability | Review cycle-by-cycle cycle lengths in Signal Performance to confirm the poorer stability | poorer stability (D) | 276 |
+| Incidents and events | Check for incidents, events, roadworks or diversions that could explain the unusual volume on X, and monitor whether it persists | traffic finding without a phase-service finding (E) | 344 |
 
 Checks per report: 2 (30), 3 (162), 4 (116), 5 (54), 6 (7).
 
@@ -195,15 +198,17 @@ Checks per report: 2 (30), 3 (162), 4 (116), 5 (54), 6 (7).
   linking), and stays within "review, verify, investigate". The order follows the strength of the evidence. The LLM
   keeps the checks: the same number in 368 of 369 reports, with no instruction to adjust or retime.
 - **What is missing or could be better:**
-  1. **Repeated checks.** K5 is written once per approach (up to four times in one report, e.g. SCATS 3072); one check
+  1. **Repeated checks.** The incidents-and-events check is written once per approach (up to four times in one report, e.g. SCATS 3072); one check
      naming the approaches would be clearer.
   2. **Mapping (usual green share of 100 % or usual value of 0).** Check the phase-to-approach (or link) assignment
      before any operational check.
-  3. **Detectors.** When a site was screened with one failing detector tolerated, K1's comparison "with the detector
-     counts" should name that detector.
-  4. **Persistence.** A finding repeated in other periods (e.g. SCATS 3101, 3191, 4445) deserves a stronger check than
-     "monitor whether it persists".
-  5. **Low volume.** A finding on an approach whose usual volume is below a minimum should be marked as low-volume.
+  3. **Detectors.** When the site was screened with one failing detector tolerated, the report should say that the
+     counted volume on that approach may be lower than the actual volume.
+  4. **Persistence.** Add an analysis of whether the same finding recurs in other periods (e.g. SCATS 3101, 3191,
+     4445); a recurring finding deserves more attention than a single one.
+  5. **Low volume.** Below a certain volume a few vehicles make a large percentage change. The test could be relaxed
+     for small approaches, for example by also requiring a minimum change in vehicles, or by judging the change against
+     what is expected for a count of that size.
 
 ## 6. TomTom against the SCATS diagnosis
 
@@ -217,11 +222,8 @@ Checks per report: 2 (30), 3 (162), 4 (116), 5 (54), 6 (7).
 | B2, B3 (cycle not explained by volume) | 1 | 6 | 1 | 0 | 21 |
 | C (phase service elsewhere) | 3 | 34 | 13 | 1 | 57 |
 
-At the 162 Red sites with TomTom data, an approach chosen at random among the observed ones would have the greatest
-control delay, the greatest approach delay or the longest queue 45 % of the time; the SCATS-identified approaches do
-so 47 % of the time, for every kind of finding (Q1 only 42 %, Q3C only 48 %, both 43 %). With three "largest"
-measures among about four observed approaches, "agreement" is close to what any approach would get: Q5 shows where
-road users wait most, but it does not confirm the SCATS finding.
+The agreement rate is similar for every type, about what a randomly chosen approach would score (45 %), so it does
+not distinguish the diagnoses.
 
 ## 7. Overall assessment and improvements
 
@@ -257,5 +259,5 @@ road users wait most, but it does not confirm the SCATS finding.
 2. Merge the incident checks of one report into one check naming the approaches.
 3. Group approaches with identical green-share values as one phase in the diagnosis and checks.
 4. Add a mapping check for Low findings on usual-100 % approaches and usual values of 0.
-5. Name a tolerated failing detector in K1.
+5. State that the counted volume may be low when one failing detector was tolerated.
 6. Mark low-volume findings in the diagnosis.
