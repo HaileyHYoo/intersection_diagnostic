@@ -4,12 +4,12 @@ Review of every screening result, Red report and Amber evidence page of four per
 diagnoses and the suggested engineering checks are reasonable, and where the method, the data and the wording can
 improve.
 
-| Period | Local time | Run | Red reports with LLM wording |
+| Period | Local time | Run | Reports (Red) |
 |---|---|---|---|
-| AM peak | Tue 10 Nov 2026 08:00–08:30 | `1c471700a1a7` | 83 of 83 |
-| Midday | Tue 10 Nov 2026 12:00–12:30 | `dd770710a459` | 113 of 114 |
-| PM peak | Tue 10 Nov 2026 17:00–17:30 | `67dc5adb0f4f` | 82 of 83 |
-| Weekend midday | Sun 8 Nov 2026 12:00–12:30 | `7f753b994c98` | 89 of 89 |
+| AM peak | Tue 10 Nov 2026 08:00–08:30 | `1c471700a1a7` | 83 |
+| Midday | Tue 10 Nov 2026 12:00–12:30 | `dd770710a459` | 114 |
+| PM peak | Tue 10 Nov 2026 17:00–17:30 | `67dc5adb0f4f` | 83 |
+| Weekend midday | Sun 8 Nov 2026 12:00–12:30 | `7f753b994c98` | 89 |
 
 ## 1. Summary
 
@@ -17,14 +17,10 @@ improve.
   (12–19 %). Of the assessed sites, 7–10 % are Red, 42–56 % Amber – traffic, 4–5 % Amber – signal and 33–48 % Normal.
 - **Red is mostly transient**: 313 sites are Red at least once; 268 in one period only, 3 in all four. Persistent Red
   sites show the same phase-service change in every period.
-- **TomTom confirmation is weak evidence.** It is available for 44 % of Red sites (TomTom mapping covers 41 % of the
-  network), and where available, a SCATS-identified approach "agrees" 47 % of the time – about what a randomly chosen
-  approach would score (45 %).
-- **Three method issues shape the results:**
-  - small volumes are flagged two to four times as often as large ones;
-  - traffic reads higher than usual network-wide (mean +3 % to +7 %), most likely because the reference weeks include
-    the September school holidays;
-  - most values rest on the 5-week minimum because whole reference days are missing.
+- **TomTom data cover only 44 % of Red sites** (the TomTom mapping covers 41 % of the network).
+- **Site findings include network-wide effects.** Each approach is compared only with its own recent weeks, so a
+  network-wide rise (traffic +3 % to +7 %, likely the September school holidays in the reference weeks), small-volume
+  noise and a 5-week history all appear as site findings.
 
 ### 1.1 Statistics by period
 
