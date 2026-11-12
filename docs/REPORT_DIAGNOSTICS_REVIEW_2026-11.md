@@ -4,6 +4,9 @@ Review of every screening result, Red report and Amber evidence page of four per
 diagnoses and the suggested engineering checks are reasonable, and where the method, the data and the wording can
 improve.
 
+The screening (Q2, then Q1 and Q3A/B/C) classifies every site. A click on a Red site adds the diagnosis of the SCATS
+evidence (Q4) and the TomTom check of road-user impact (Q5).
+
 | Period | Local time | Run | Reports (Red) |
 |---|---|---|---|
 | AM peak | Tue 10 Nov 2026 08:00–08:30 | `1c471700a1a7` | 83 |
@@ -210,7 +213,7 @@ Checks per report: 2 (30), 3 (162), 4 (116), 5 (54), 6 (7).
      for small approaches, for example by also requiring a minimum change in vehicles, or by judging the change against
      what is expected for a count of that size.
 
-## 6. TomTom against the SCATS diagnosis
+## 6. TomTom check (Q5) against the SCATS diagnosis
 
 **Site verdict by primary type** (Red sites):
 
@@ -222,8 +225,10 @@ Checks per report: 2 (30), 3 (162), 4 (116), 5 (54), 6 (7).
 | B2, B3 (cycle not explained by volume) | 1 | 6 | 1 | 0 | 21 |
 | C (phase service elsewhere) | 3 | 34 | 13 | 1 | 57 |
 
-The agreement rate is similar for every type, about what a randomly chosen approach would score (45 %), so it does
-not distinguish the diagnoses.
+The TomTom check (Q5) counts a SCATS-identified approach as agreeing when it has the greatest TomTom delay or the
+longest queue. Identified approaches meet this 47 % of the time, but any approach at the same sites would meet it 45 %
+of the time, because three "largest" measures are shared among about four approaches. Agreement therefore says little
+about whether TomTom supports the SCATS finding.
 
 ## 7. Overall assessment and improvements
 
@@ -232,19 +237,21 @@ not distinguish the diagnoses.
 - The **classification** follows the methodology exactly; the **diagnoses** are factual, hedged and complete; the
   **checks** are appropriate review steps in a sensible order.
 - The **weakest links** are the evidence behind the findings (small volumes, school holidays and missing days in the
-  history), the large share of generic C + D + E reports, and a TomTom confirmation that cannot discriminate.
+  history), the large share of generic C + D + E reports, and a TomTom check (Q5) whose "agreement" is too easy to
+  meet.
 
 ### 7.2 Method
 
-1. **School holidays in the history.** Exclude the Victorian school-holiday weeks from the reference weeks of weekday
-   periods (the history already excludes public holidays). Expected: fewer "higher than usual" findings, especially in
-   the AM peak. Validate with a run on Wed 2 Dec and Sat 5 Dec 2026, whose reference weeks contain no school or public
-   holiday, and with a sensitivity run on the November periods.
-2. **Minimum volume.** Do not flag an approach whose usual volume is below a minimum (e.g. 20–50 veh/30 min), or show
-   it as low-volume. Q1 flags small approaches two to four times as often as large ones.
-3. **History at its minimum.** Most values rest on 5 weeks. Keep the 5-week minimum for V1, and ask the data owner to
-   backfill the missing reference days for the next version.
-4. **Q5 confirmation.** Compare each approach's TomTom delay with its own history (as Q1 and Q3 do), or rank on one
+1. **School holidays in the history.** If the reference weeks include school-holiday weeks, their lower traffic is not
+   taken into account and the diagnosis may be less accurate (e.g. traffic reads higher than usual). Excluding
+   school-holiday weeks from the reference weeks of weekday periods should be considered (public holidays are
+   already excluded).
+2. **Small volumes.** Q1 flags small approaches two to four times as often as large ones. Judge the change according
+   to the volume, for example by also requiring a minimum change in vehicles, or by comparing the change with what is
+   expected for a count of that size.
+3. **History at its minimum.** Many values rest on the 5-week minimum; backfilling the missing reference days should be
+   considered.
+4. **TomTom check (Q5).** Compare each approach's TomTom delay with its own history (as Q1 and Q3 do), or rank on one
    primary measure with a margin, so that "agreement" means more than being among the top of three rankings.
 5. **Persistence.** Show how many of the recent periods a site was Red or Amber, and the repeated finding.
 
@@ -259,5 +266,5 @@ not distinguish the diagnoses.
 2. Merge the incident checks of one report into one check naming the approaches.
 3. Group approaches with identical green-share values as one phase in the diagnosis and checks.
 4. Add a mapping check for Low findings on usual-100 % approaches and usual values of 0.
-5. State that the counted volume may be low when one failing detector was tolerated.
-6. Mark low-volume findings in the diagnosis.
+5. Add to the wording that one failing detector was tolerated, so the counted volume on that approach may be lower
+   than the actual volume.
