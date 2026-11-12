@@ -225,11 +225,6 @@ Checks per report: 2 (30), 3 (162), 4 (116), 5 (54), 6 (7).
 | B2, B3 (cycle not explained by volume) | 1 | 6 | 1 | 0 | 21 |
 | C (phase service elsewhere) | 3 | 34 | 13 | 1 | 57 |
 
-The TomTom check (Q5) counts a SCATS-identified approach as agreeing when it has the greatest TomTom delay or the
-longest queue. Identified approaches meet this 47 % of the time, but any approach at the same sites would meet it 45 %
-of the time, because three "largest" measures are shared among about four approaches. Agreement therefore says little
-about whether TomTom supports the SCATS finding.
-
 ## 7. Overall assessment and improvements
 
 ### 7.1 Assessment
@@ -237,8 +232,7 @@ about whether TomTom supports the SCATS finding.
 - The **classification** follows the methodology exactly; the **diagnoses** are factual, hedged and complete; the
   **checks** are appropriate review steps in a sensible order.
 - The **weakest links** are the evidence behind the findings (small volumes, school holidays and missing days in the
-  history), the large share of generic C + D + E reports, and a TomTom check (Q5) whose "agreement" is too easy to
-  meet.
+  history) and the large share of generic C + D + E reports.
 
 ### 7.2 Method
 
@@ -251,9 +245,7 @@ about whether TomTom supports the SCATS finding.
    expected for a count of that size.
 3. **History at its minimum.** Many values rest on the 5-week minimum; backfilling the missing reference days should be
    considered.
-4. **TomTom check (Q5).** Compare each approach's TomTom delay with its own history (as Q1 and Q3 do), or rank on one
-   primary measure with a margin, so that "agreement" means more than being among the top of three rankings.
-5. **Persistence.** Show how many of the recent periods a site was Red or Amber, and the repeated finding.
+4. **Persistence.** Show how many of the recent periods a site was Red or Amber, and the repeated finding.
 
 ### 7.3 Data and mapping
 
