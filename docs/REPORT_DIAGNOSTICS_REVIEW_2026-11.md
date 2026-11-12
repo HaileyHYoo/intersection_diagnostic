@@ -249,8 +249,8 @@ Checks per report: 2 (30), 3 (162), 4 (116), 5 (54), 6 (7).
 
 ### 7.3 Data and mapping
 
-1. Missing reference days network-wide.
-2. Usual values of 0 and usual green shares of 100 % with Low findings: phase-to-approach and link assignment.
+1. Usual values of 0 and usual green shares of 100 % with Low findings: phase-to-approach and link assignment.
+2. The matching between TomTom links and SCATS links should also be reviewed.
 
 ### 7.4 Wording and checks
 
