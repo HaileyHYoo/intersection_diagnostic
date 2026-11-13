@@ -103,7 +103,8 @@ def q1_traffic(links: list[dict], current: dict[str, float], base: dict[str, dic
         (evaluated if env and env["n"] >= rule["approach_history_min_presence"] else skipped).append(a)
     rows = []
     for a in evaluated:
-        result = stats.two_sided(current.get(a["link"]), base[a["link"]], rule["min_pct_difference"])
+        result = stats.two_sided(current.get(a["link"]), base[a["link"]], rule["min_pct_difference"],
+                                 rule.get("min_count_noise_sd", 0))
         rows.append({"link": a["link"], "street": a.get("street"), "bound": bounds.get(a["link"]), **result})
     missing = [r for r in rows if r["status"] == INSUFFICIENT]
     flagged = [r for r in rows if r["status"] == ABNORMAL]

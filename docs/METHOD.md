@@ -42,6 +42,10 @@ Classifications are made by deterministic code. The LLM never decides a category
   - The year-end period, 24 Dec – 1 Jan
 
   The tables are in `vic_calendar.py` and cover 2024–2027. An excluded week is **not** replaced by an earlier week (`history.extend_beyond_weeks: false`). The same holds for a reference week whose data are missing: it is not replaced, so a period with fewer than 5 valid weeks is not assessable (**decision with the methodology owner, 3 Nov 2026**: keep as written).
+- **Switches for sensitivity runs (13 Nov 2026, all off by default; turning one on is a methodology change and gives a new baseline version).**
+  - `history.school_holidays: "match"` compares a school-term weekday only with term days and a school-holiday weekday only with school-holiday days (`vic_calendar.SCHOOL_TERMS`, 2024–2026; check against the published dates). Weekends are not affected. Default `"include"`.
+  - `history.extend_beyond_weeks: true` replaces a left-out week, or a week whose data are missing, by an earlier week, up to `history.max_lookback_weeks` (16) back; the baseline keeps, per series, the 8 most recent weeks with a value.
+  - `q1.min_count_noise_sd` (0 = off): a flagged volume difference must also be at least this many √usual vehicles (the Poisson standard deviation of a count). With 2, a small approach needs a larger relative change; approaches above about 400 veh/30 min are unaffected.
 - **Analysis day on an excluded day.** It is still screened, and the run carries a note.
 - **Minimum history.** At least **5** valid observations. Otherwise the measure is INSUFFICIENT DATA for that entity.
 - **Normal range and usual value.** The normal range is the **10th–90th percentile** (linear interpolation). The usual (reference) value is the **median** of the observations, as in the production contract (`reference_value`; `"mean"` is also supported).

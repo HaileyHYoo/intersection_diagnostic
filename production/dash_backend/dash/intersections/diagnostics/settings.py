@@ -23,6 +23,7 @@ from pathlib import Path
 
 PACKAGE_ROOT = Path(__file__).resolve().parent
 CONFIG_DIR = PACKAGE_ROOT / "config"
+NEW_HISTORY_DEFAULTS = {"max_lookback_weeks": 16, "school_holidays": "include"}
 
 
 def _read_json(path: Path) -> dict:
@@ -77,7 +78,8 @@ class Settings:
         """
         relevant = {
             "schema": self.schema.get("version"),
-            "history": self.rules["history"],
+            # switches added on 13 Nov 2026 count only when changed, so the default keeps the existing version
+            "history": {k: v for k, v in self.rules["history"].items() if NEW_HISTORY_DEFAULTS.get(k, object()) != v},
             "percentiles": self.rules["percentiles"],
             "reference_value": self.rules["reference_value"],
             "alignment": self.rules["alignment"],

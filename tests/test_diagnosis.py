@@ -260,3 +260,63 @@ class LLMGuardTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class D001PointsTests(unittest.TestCase):
+    """A1 phrase kept, one phase reported once, one incident check, mapping and detector caveats (12 Nov review)."""
+
+    @staticmethod
+    def site(service, traffic, tolerated=()):
+        def row(label, link, cur, usual, lo, hi, d):
+            return {"label": label, "link": link, "current": cur, "usual": usual, "p_low": lo, "p_high": hi,
+                    "direction": d, "status": "ABNORMAL", "pct_difference": 10.0}
+        normal = {"status": "NORMAL", "current": 90.0, "usual": 90.0, "p_low": 85.0, "p_high": 95.0,
+                  "pct_difference": 0.0, "direction": None}
+        return {"site": "1", "name": "x", "label": "Red",
+                "q2": {"threshold": 10, "tolerated": list(tolerated),
+                       "detectors": [{"detector": d, "count_60min": 3} for d in tolerated]},
+                "q1": {"status": "ABNORMAL", "approaches": [row(*t) for t in traffic]},
+                "q3": {"status": "ABNORMAL", "abnormal_count": 2, "components": {
+                    "cycle_length": normal, "cycle_stability": {**normal, "direction": None},
+                    "phase_service": {"status": "ABNORMAL", "approaches": [row(*s) for s in service]}}}}
+
+    def written(self, site):
+        from diagnostics.templates import d001
+        ev = d001.evidence(site, {"local": "p"})
+        return ev, d001.written(ev)
+
+    def test_identical_green_share_is_one_phase(self):
+        ev, w = self.written(self.site([("A St [N]", "a", 20.0, 40.0, 35.0, 45.0, "LOW"),
+                                        ("A St [S]", "b", 20.0, 40.0, 35.0, 45.0, "LOW")], []))
+        self.assertEqual(ev["phase_groups"], [["A St [N]", "A St [S]"]])
+        self.assertEqual(sum("Phase service" in x for x in w["supporting_evidence"]), 1)
+        self.assertEqual(sum(x.startswith("Check phase service") for x in w["suggested_checks"]), 1)
+        self.assertIn("A St [N] and A St [S] (one phase)", w["diagnosis"])
+
+    def test_one_incident_check_for_all_traffic_only_approaches(self):
+        _, w = self.written(self.site([], [("A St [N]", "a", 150.0, 100.0, 80.0, 120.0, "HIGH"),
+                                           ("B St [E]", "b", 150.0, 100.0, 80.0, 120.0, "HIGH")]))
+        incident = [x for x in w["suggested_checks"] if x.startswith("Check for incidents")]
+        self.assertEqual(len(incident), 1)
+        self.assertIn("A St [N] and B St [E]", incident[0])
+
+    def test_opposite_direction_phrase_must_be_kept(self):
+        from diagnostics.templates import d001
+        ev, w = self.written(self.site([("A St [N]", "a", 20.0, 40.0, 35.0, 45.0, "LOW")],
+                                       [("A St [N]", "a", 150.0, 100.0, 80.0, 120.0, "HIGH")]))
+        self.assertIn(d001.OPPOSITE, w["diagnosis"])
+        self.assertEqual(d001.kept_points(w, ev), [])
+        softened = {**w, "diagnosis": w["diagnosis"].replace(d001.OPPOSITE, "a possible mismatch")}
+        self.assertEqual(d001.kept_points(softened, ev), [f'drops "{d001.OPPOSITE}"'])
+
+    def test_usual_100_percent_green_is_a_mapping_check(self):
+        from diagnostics.templates import d001
+        ev, w = self.written(self.site([("A St [N]", "a", 57.2, 100.0, 100.0, 100.0, "LOW")], []))
+        self.assertTrue(w["suggested_checks"][0].startswith("Verify the phase-to-approach assignment of A St [N]"))
+        self.assertIn("mapping", w["diagnosis"])
+        self.assertEqual(d001.kept_points({"diagnosis": "x"}, ev), ["drops the mapping caveat"])
+
+    def test_tolerated_detector_may_under_count(self):
+        _, w = self.written(self.site([], [("A St [N]", "a", 150.0, 100.0, 80.0, 120.0, "HIGH")], tolerated=[7]))
+        self.assertIn("detector 7 counted fewer than 10 vehicles", w["diagnosis"])
+        self.assertTrue(any(x.startswith("Check detector 7 (3 vehicles") for x in w["suggested_checks"]))

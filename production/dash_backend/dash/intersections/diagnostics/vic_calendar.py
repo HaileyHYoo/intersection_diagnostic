@@ -45,6 +45,16 @@ YEAR_END_PERIODS = [
 
 COVERED_YEARS = (2024, 2027)
 
+# Victorian government school terms (first and last day of each term). A weekday outside a term is a school-holiday
+# day. Used only when rules history.school_holidays is "match". Check against the Department of Education's
+# published dates before use, and add each new year before it starts (a day outside the table is not classified).
+SCHOOL_TERMS = [
+    ("2024-01-29", "2024-03-28"), ("2024-04-15", "2024-06-28"), ("2024-07-15", "2024-09-20"), ("2024-10-07", "2024-12-20"),
+    ("2025-01-28", "2025-04-04"), ("2025-04-22", "2025-07-04"), ("2025-07-21", "2025-09-19"), ("2025-10-06", "2025-12-19"),
+    ("2026-01-27", "2026-04-02"), ("2026-04-20", "2026-06-26"), ("2026-07-13", "2026-09-18"), ("2026-10-05", "2026-12-18"),
+]
+SCHOOL_TERM_YEARS = (2024, 2026)
+
 
 def _iso(d: date) -> str:
     return d.isoformat()
@@ -52,6 +62,13 @@ def _iso(d: date) -> str:
 
 def is_year_end(d: date) -> bool:
     return any(a <= _iso(d) <= b for a, b in YEAR_END_PERIODS)
+
+
+def school_day_class(d: date) -> str | None:
+    """"term" or "school holidays" for a weekday (Mon-Fri); None for a weekend day or a day outside the table."""
+    if d.weekday() >= 5 or not SCHOOL_TERM_YEARS[0] <= d.year <= SCHOOL_TERM_YEARS[1]:
+        return None
+    return "term" if any(a <= _iso(d) <= b for a, b in SCHOOL_TERMS) else "school holidays"
 
 
 def exclusion_reason(d: date, exclude: dict) -> str | None:

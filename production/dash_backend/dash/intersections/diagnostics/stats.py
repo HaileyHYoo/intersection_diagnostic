@@ -57,7 +57,10 @@ def _insufficient(current, env) -> dict | None:
     return None
 
 
-def two_sided(current: float | None, env: dict, min_pct: float) -> dict:
+def two_sided(current: float | None, env: dict, min_pct: float, noise_sd: float = 0) -> dict:
+    """noise_sd > 0 (counts only, q1.min_count_noise_sd): the difference must also be at least noise_sd x sqrt(usual)
+    vehicles, the Poisson standard deviation of a count, so that a few vehicles on a small approach are not flagged.
+    0 (default) is the methodology as written."""
     missing = _insufficient(current, env)
     if missing:
         return missing
@@ -65,6 +68,8 @@ def two_sided(current: float | None, env: dict, min_pct: float) -> dict:
     outside = current < env["p_low"] or current > env["p_high"]
     # With a usual value of zero the percentage is undefined; the range test alone decides.
     big = diff is None or abs(diff) >= min_pct
+    if noise_sd:
+        big = big and abs(current - env["usual"]) >= noise_sd * max(env["usual"], 1) ** 0.5
     direction = "HIGH" if current > env["usual"] else "LOW"
     status = ABNORMAL if outside and big else NORMAL
     return _result(status, current, env, direction if status == ABNORMAL else None, diff)

@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from .vic_calendar import exclusion_reason
+from .vic_calendar import exclusion_reason, school_day_class
 
 UTC = timezone.utc
 
@@ -132,16 +132,31 @@ def period_at(day: date, slot: str, rules: dict) -> Period:
     return Period(start, start + timedelta(minutes=rules["period_minutes"]), tz_name(rules))
 
 
-def reference_periods(period: Period, rules: dict) -> tuple[list[Period], dict[str, str]]:
+def reference_periods(period: Period, rules: dict, candidates: bool = False) -> tuple[list[Period], dict[str, str]]:
     """Same weekday and slot in each of the previous N weeks, without the excluded days.
 
-    Returns (periods used, {date: reason} skipped). Excluded weeks are not replaced by earlier ones.
+    Returns (periods, {date: reason} skipped), most recent first. Two switches in rules.history, both off by default
+    (the methodology as written, decision of 3 Nov 2026):
+    - school_holidays "match": a school-term weekday is compared only with term days and a school-holiday weekday only
+      with school-holiday days; the other days are skipped ("include", the default, keeps every day).
+    - extend_beyond_weeks: a skipped week is replaced by an earlier one, up to max_lookback_weeks back. With
+      candidates=True every usable week up to that limit is returned, so that the baseline can also replace a week
+      whose data are missing (baseline.build keeps the N most recent weeks with a value, per series).
     """
     history = rules["history"]
+    weeks, extend = history["weeks"], history.get("extend_beyond_weeks", False)
+    limit = max(weeks, history.get("max_lookback_weeks", weeks)) if extend else weeks
+    own = school_day_class(period.day) if history.get("school_holidays", "include") == "match" else None
     used, skipped = [], {}
-    for k in range(1, history["weeks"] + 1):
+    for k in range(1, limit + 1):
+        if len(used) >= weeks and not candidates:
+            break
         day = period.day - timedelta(days=7 * k)
         reason = exclusion_reason(day, history.get("exclude", {}))
+        if not reason and own:
+            other = school_day_class(day)
+            if other and other != own:
+                reason = f"{other} (the analysis day is a {'school-holiday' if own == 'school holidays' else 'term'} day)"
         if reason:
             skipped[day.isoformat()] = reason
         else:
@@ -152,13 +167,22 @@ def reference_periods(period: Period, rules: dict) -> tuple[list[Period], dict[s
 def reference_span(period: Period, rules: dict) -> str:
     """"Tuesdays 10:00-10:30 in the 8 weeks 2026-09-15 to 2026-11-03 (7 used; excluded: 2026-11-03, public holiday:
     Melbourne Cup)": the reference weeks with their dates and every excluded day with its reason."""
-    weeks = rules["history"]["weeks"]
+    history = rules["history"]
+    weeks = history["weeks"]
     used, skipped = reference_periods(period, rules)
-    first = period.day - timedelta(days=7 * weeks)
-    last = period.day - timedelta(days=7)
     a, b = period.local_start, period.local_end
-    text = (f"{a.strftime('%A')}s {a.strftime('%H:%M')}-{b.strftime('%H:%M')} in the {weeks} weeks "
-            f"{first.isoformat()} to {last.isoformat()} ({len(used)} used")
+    head = f"{a.strftime('%A')}s {a.strftime('%H:%M')}-{b.strftime('%H:%M')}"
+    if history.get("extend_beyond_weeks", False):
+        first = used[-1].day if used else period.day - timedelta(days=7 * weeks)
+        text = (f"{head} in the {weeks} most recent usable weeks, {first.isoformat()} to "
+                f"{(period.day - timedelta(days=7)).isoformat()} ({len(used)} found; a left-out week or a week without "
+                f"data is replaced by an earlier one, up to {history.get('max_lookback_weeks', weeks)} weeks back")
+    else:
+        first = period.day - timedelta(days=7 * weeks)
+        last = period.day - timedelta(days=7)
+        text = f"{head} in the {weeks} weeks {first.isoformat()} to {last.isoformat()} ({len(used)} used"
+    if history.get("school_holidays", "include") == "match" and school_day_class(period.day):
+        text += f"; {school_day_class(period.day)} days only"
     if skipped:
         text += "; excluded: " + "; ".join(f"{d}, {why}" for d, why in skipped.items())
     return text + ")"

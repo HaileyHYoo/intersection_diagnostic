@@ -63,19 +63,31 @@ class BaselineBuilder:
 
     # ------------------------------------------------------------------ baselines
     def build(self, period: Period) -> dict:
-        refs, skipped = reference_periods(period, self.rules)
+        backfill = self.rules["history"].get("extend_beyond_weeks", False)
+        refs, skipped = reference_periods(period, self.rules, candidates=backfill)
         values = self.slot_values(refs)
-        ordered = [values[p.key] for p in refs]
+        ordered = [(p, values[p.key]) for p in refs]                # most recent first
+        weeks = self.rules["history"]["weeks"]
         volume, kpi, green = defaultdict(list), defaultdict(lambda: defaultdict(list)), defaultdict(lambda: defaultdict(list))
-        for v in ordered:
+        used = set()
+
+        def add(series: list, x, p: Period):
+            # backfill: per series, the N most recent weeks with a value (a week without data is replaced)
+            if x is not None and (not backfill or len(series) < weeks):
+                series.append(x)
+                used.add(p.key)
+
+        for p, v in ordered:
             for link, x in v["volume"].items():
-                volume[link].append(x)
+                add(volume[link], x, p)
             for site, fields in v["kpi"].items():
                 for field, x in fields.items():
-                    kpi[site][field].append(x)
+                    add(kpi[site][field], x, p)
             for site, links in v["green"].items():
                 for link, x in links.items():
-                    green[site][link].append(x)
+                    add(green[site][link], x, p)
+        if backfill:
+            refs = [p for p in refs if p.key in used] or refs[:weeks]
         env = lambda xs: {**stats.envelope(xs, self.rules), "values": [round(x, 3) for x in xs]}
         return {
             "version": self.version,
@@ -102,7 +114,8 @@ class BaselineBuilder:
         count = 0
         for day in days:
             periods = [period_at(day, slot, self.rules) for slot in slots]
-            refs = {r.key: r for p in periods for r in reference_periods(p, self.rules)[0]}
+            backfill = self.rules["history"].get("extend_beyond_weeks", False)
+            refs = {r.key: r for p in periods for r in reference_periods(p, self.rules, candidates=backfill)[0]}
             self.slot_values(list(refs.values()))           # one fetch per reference day
             for p in periods:
                 baseline = self.build(p)

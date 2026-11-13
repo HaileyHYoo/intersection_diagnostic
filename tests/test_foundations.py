@@ -202,3 +202,71 @@ class SettingsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SwitchTests(unittest.TestCase):
+    """School holidays, lookback backfill and the count noise floor: off by default (13 Nov 2026)."""
+
+    def test_defaults_keep_the_methodology_and_the_baseline_version(self):
+        self.assertEqual(RULES["history"]["school_holidays"], "include")
+        self.assertFalse(RULES["history"]["extend_beyond_weeks"])
+        self.assertEqual(RULES["q1"]["min_count_noise_sd"], 0)
+        self.assertEqual(Settings().baseline_version, "v1.1-f6389e86dc")
+        on = Settings(rules=load_rules(overrides={"history": {"school_holidays": "match"}}))
+        self.assertNotEqual(on.baseline_version, Settings().baseline_version)
+
+    def test_school_holiday_days_are_matched(self):
+        from diagnostics.vic_calendar import school_day_class
+        self.assertEqual(school_day_class(date(2026, 9, 22)), "school holidays")
+        self.assertEqual(school_day_class(date(2026, 11, 10)), "term")
+        self.assertIsNone(school_day_class(date(2026, 11, 8)))                      # Sunday
+        rules = load_rules(overrides={"history": {"school_holidays": "match"}})
+        p = timewin.period_at(date(2026, 11, 10), "08:00", rules)                  # term Tuesday
+        used, skipped = timewin.reference_periods(p, rules)
+        self.assertNotIn(date(2026, 9, 22), [u.day for u in used])
+        self.assertIn("2026-09-29", skipped)
+        self.assertIn("school holidays", skipped["2026-09-22"])
+        self.assertIn("term days only", timewin.reference_span(p, rules))
+        # the same day without the switch keeps the holiday weeks
+        self.assertIn(date(2026, 9, 22), [u.day for u in timewin.reference_periods(p, RULES)[0]])
+
+    def test_lookback_replaces_left_out_weeks(self):
+        rules = load_rules(overrides={"history": {"school_holidays": "match", "extend_beyond_weeks": True}})
+        p = timewin.period_at(date(2026, 11, 10), "08:00", rules)
+        used, _ = timewin.reference_periods(p, rules)
+        self.assertEqual(len(used), 8)                                             # 3 left out, 3 earlier weeks
+        self.assertEqual(used[-1].day, date(2026, 8, 25))
+        cands, _ = timewin.reference_periods(p, rules, candidates=True)
+        self.assertGreater(len(cands), 8)
+        self.assertLessEqual((p.day - cands[-1].day).days, 7 * rules["history"]["max_lookback_weeks"])
+
+    def test_backfill_replaces_a_week_without_data(self):
+        from diagnostics.baseline import BaselineBuilder
+
+        class Builder(BaselineBuilder):
+            def __init__(self, rules):
+                self.rules, self.version = rules, "t"
+
+            def slot_values(self, periods):
+                # weeks 2 and 3 have no data; every other week has volume 100 + its week number
+                out = {}
+                for k, q in enumerate(periods, 1):
+                    out[q.key] = {"volume": {} if k in (2, 3) else {"L": 100.0 + k}, "kpi": {}, "green": {}}
+                return out
+
+        off = timewin.period_at(date(2026, 11, 10), "08:00", RULES)
+        b = Builder(RULES).build(off)
+        self.assertEqual(b["volume"]["L"]["n"], 5)              # 7 calendar weeks, 2 without data, not replaced
+        rules = load_rules(overrides={"history": {"extend_beyond_weeks": True}})
+        b = Builder(rules).build(off)
+        self.assertEqual(b["volume"]["L"]["n"], 8)
+        self.assertEqual(b["volume"]["L"]["values"][-1], 110.0)                    # usable weeks 1, 4-10
+        self.assertEqual(len(b["reference_periods"]), 8)
+
+    def test_count_noise_floor(self):
+        env = {"n": 7, "usual": 9.0, "p_low": 6.0, "p_high": 11.0}
+        self.assertEqual(stats.two_sided(13.0, env, 10)["status"], stats.ABNORMAL)            # as written
+        self.assertEqual(stats.two_sided(13.0, env, 10, noise_sd=2)["status"], stats.NORMAL)  # 4 < 2 x 3
+        self.assertEqual(stats.two_sided(16.0, env, 10, noise_sd=2)["status"], stats.ABNORMAL)
+        big = {"n": 7, "usual": 900.0, "p_low": 850.0, "p_high": 950.0}
+        self.assertEqual(stats.two_sided(1000.0, big, 10, noise_sd=2)["status"], stats.ABNORMAL)

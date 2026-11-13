@@ -88,3 +88,12 @@ Replace `dash_backend/dash/intersections/diagnostics/` with this version. Only t
 | `templates/d001.py` | A cycle change with volume moving both ways is not read as a demand response | Section 1 |
 | `templates/d002.py` | "Coverage: SCATS-identified approaches: …" (no repeated "Coverage") | Section 3 |
 | `sources/tomtom_queue.py` | Only the historical queue archive is cached; the recent archive is read again on each call | Queue values later in the day |
+
+## 8. Update of 13 Nov 2026
+
+Replace the package again. Categories and the baseline version (`v1.1-f6389e86dc`) are unchanged.
+
+| File | Change | Seen on the page as |
+|---|---|---|
+| `templates/d001.py` | Approaches with identical green share are one phase ("A and B (one phase)"); one incident check for all traffic-only approaches; a usual green share of 100 % or a usual volume of 0 gives a mapping caveat and a first check; a tolerated detector gives an under-count caveat and a detector check; the LLM wording is rejected if it drops "the opposite of a demand response" or these caveats | Section 1 |
+| `config/rules.json`, `timewin.py`, `baseline.py`, `stats.py`, `vic_calendar.py` | Three switches for sensitivity runs, all off: `history.school_holidays`, `history.extend_beyond_weeks` (with `max_lookback_weeks`), `q1.min_count_noise_sd` | Nothing while off |

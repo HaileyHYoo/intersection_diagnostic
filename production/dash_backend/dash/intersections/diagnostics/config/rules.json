@@ -17,6 +17,8 @@
     "weeks": 8,
     "min_observations": 5,
     "extend_beyond_weeks": false,
+    "max_lookback_weeks": 16,
+    "school_holidays": "include",
     "exclude": {"public_holidays": true, "dst_change_days": true, "year_end": true}
   },
   "percentiles": {"low": 0.10, "high": 0.90},
@@ -32,6 +34,7 @@
   },
   "q1": {
     "min_pct_difference": 10,
+    "min_count_noise_sd": 0,
     "approach_history_min_presence": 1,
     "grey_if_any_approach_missing": true
   },

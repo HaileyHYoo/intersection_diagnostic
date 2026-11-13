@@ -56,6 +56,8 @@ def evidence(site: dict, period: dict) -> dict:
 
     t_links, s_links = {a["link"] for a in traffic}, {a["link"] for a in service}
     labels = {a["link"]: a["approach"] for a in traffic + service}
+    q2 = site.get("q2") or {}
+    counts = {r["detector"]: r.get("count_60min") for r in q2.get("detectors") or []}
     return {
         "site": site["site"], "intersection": site.get("name"), "period": period["local"],
         "classification": site["label"],
@@ -70,7 +72,31 @@ def evidence(site: dict, period: dict) -> dict:
         "same_approach": sorted(labels[k] for k in t_links & s_links),
         "traffic_only_approaches": sorted(labels[k] for k in t_links - s_links),
         "signal_only_approaches": sorted(labels[k] for k in s_links - t_links),
+        "phase_groups": phase_groups(service),
+        "mapping_checks": mapping_checks(traffic, service),
+        "tolerated_detectors": [{"detector": d, "count_60min": r1(counts.get(d)), "threshold": q2.get("threshold")}
+                                for d in q2.get("tolerated") or []],
     }
+
+
+def phase_groups(service: list[dict]) -> list[list[str]]:
+    """Abnormal phase-service approaches served by the same phase: identical current, usual and range (seen at 15 %
+    of the sites; reported once instead of once per approach)."""
+    groups: dict[tuple, list[str]] = {}
+    for a in service:
+        key = (a["current_green_share_pct"], a["usual_green_share_pct"], tuple(a["normal_range"]), a["direction"])
+        groups.setdefault(key, []).append(a["approach"])
+    return [g for g in groups.values()]
+
+
+def mapping_checks(traffic: list[dict], service: list[dict]) -> list[dict]:
+    """Usual values that point to the phase-to-approach or link assignment rather than to operation: a usual green
+    share of 100 % (the approach is never stopped) or a usual volume of 0."""
+    out = [{"approach": a["approach"], "measure": "green share", "usual": a["usual_green_share_pct"]}
+           for a in service if a["usual_green_share_pct"] is not None and a["usual_green_share_pct"] >= 100]
+    out += [{"approach": a["approach"], "measure": "volume", "usual": a["usual_volume"]}
+            for a in traffic if a["usual_volume"] is not None and a["usual_volume"] == 0]
+    return out
 
 
 def position(c: dict) -> str | None:
@@ -111,6 +137,19 @@ def contradictions(answer: dict, ev: dict) -> list[str]:
     return problems
 
 
+def kept_points(answer: dict, ev: dict) -> list[str]:
+    """Points of the draft the LLM must keep (seen live: 9 of 81 LLM answers softened the opposite-direction finding)."""
+    text = (answer.get("diagnosis") or "").lower()
+    problems = []
+    if opposite_approaches(ev) and OPPOSITE not in text:
+        problems.append(f'drops "{OPPOSITE}"')
+    if ev.get("mapping_checks") and "mapping" not in text:
+        problems.append("drops the mapping caveat")
+    if ev.get("tolerated_detectors") and "under-count" not in text:
+        problems.append("drops the detector caveat")
+    return problems
+
+
 def _pct(x):
     return f"{abs(x):.1f}% {'above' if x > 0 else 'below'}"
 
@@ -124,12 +163,32 @@ ADAPTIVE = ("SCATS adapts cycle length and phase service to demand and coordinat
 MORE_LESS = {"HIGH": ("higher", "longer", "more green"), "LOW": ("lower", "shorter", "less green")}
 
 
+OPPOSITE = "the opposite of a demand response"
+
+
+def service_groups(ev: dict) -> list[tuple[list[str], str]]:
+    """(approach labels, direction) per phase: approaches with identical phase-service values are one phase."""
+    direction = {a["approach"]: a["direction"] for a in ev["signal"]["phase_service"]["abnormal_approaches"]}
+    return [(g, direction[g[0]]) for g in ev.get("phase_groups") or [[k] for k in direction]]
+
+
+def group_name(labels: list[str]) -> str:
+    return _and(labels) + (" (one phase)" if len(labels) > 1 else "")
+
+
+def opposite_approaches(ev: dict) -> list[str]:
+    """Approaches whose phase service moved the other way from their volume (diagnosis type A1)."""
+    traffic = {a["approach"]: a["direction"] for a in ev["traffic"]["abnormal_approaches"]}
+    return [a["approach"] for a in ev["signal"]["phase_service"]["abnormal_approaches"]
+            if traffic.get(a["approach"]) not in (None, a["direction"])]
+
+
 def findings(ev: dict) -> tuple[str, str]:
     """(what the data show, possible explanations) - the second is labelled as possible, never as a finding."""
     t, s = ev["traffic"], ev["signal"]
-    cl, cs, ps = s["cycle_length_s"], s["cycle_stability"], s["phase_service"]
+    cl, cs = s["cycle_length_s"], s["cycle_stability"]
     traffic = {a["approach"]: a["direction"] for a in t["abnormal_approaches"]}
-    service = {a["approach"]: a["direction"] for a in ps["abnormal_approaches"]}
+    groups = service_groups(ev)
 
     shown = []
     if traffic:
@@ -140,16 +199,21 @@ def findings(ev: dict) -> tuple[str, str]:
         signal.append(f"cycle length ({MORE_LESS[cl['direction']][1]} than usual)")
     if cs["status"] == ABNORMAL:
         signal.append("Cycle Stability (poorer than usual)")
-    signal += [f"phase service to {k} ({MORE_LESS[d][2]} than usual)" for k, d in service.items()]
+    signal += [f"phase service to {group_name(g)} ({MORE_LESS[d][2]} than usual)" for g, d in groups]
     if signal:
         shown.append("Signal operation differs from history in " + _and(signal) + ".")
     if ev["same_approach"]:
         shown.append(f"The traffic and phase-service findings are on the same approach ({_and(ev['same_approach'])}); "
                      "this is an association, not proof that one caused the other.")
-    elif service and traffic:
+    elif groups and traffic:
         shown.append("The phase-service finding is on a different approach from the traffic finding.")
 
     maybe = []
+    for m in ev.get("mapping_checks") or []:
+        what = ("a usual green share of 100% (never stopped)" if m["measure"] == "green share"
+                else "a usual volume of 0")
+        maybe.append(f"{what} on {m['approach']} points to the phase-to-approach or link assignment, so this finding "
+                     "may reflect the mapping rather than operation")
     if cl["status"] == ABNORMAL:
         longer = cl["direction"] == "HIGH"
         matching = [k for k, d in traffic.items() if d == cl["direction"]]
@@ -167,20 +231,24 @@ def findings(ev: dict) -> tuple[str, str]:
             maybe.append(f"the {'longer' if longer else 'shorter'} cycle is not matched by "
                          f"{'higher' if longer else 'lower'} volume on the screened approaches, so a plan or "
                          "coordination change is a possible explanation")
-    for k, d in service.items():
-        own = traffic.get(k)
-        if own == d:
+    for g, d in groups:
+        same = [k for k in g if traffic.get(k) == d]
+        opp = [k for k in g if traffic.get(k) not in (None, d)]
+        none = [k for k in g if k not in traffic]
+        if opp:
+            maybe.append(f"{MORE_LESS[d][2]} to {_and(opp)} while {'its' if len(opp) == 1 else 'their'} volume is "
+                         f"{MORE_LESS[traffic[opp[0]]][0]} is {OPPOSITE}, so it is the finding most worth verifying")
+        if same:
             # Both readings: SCATS counts the vehicles served at the stop line, so the counted volume also
             # follows the green given (SCATS 774: 16.8% green against a usual 84.1%, volume 16.7% below usual).
-            maybe.append(f"{MORE_LESS[d][2]} to {k} with {MORE_LESS[own][0]} volume may be SCATS following its demand, "
-                         f"or the counted volume may be {MORE_LESS[own][0]} because of the green given (detectors count "
+            own = MORE_LESS[traffic[same[0]]][0]
+            maybe.append(f"{MORE_LESS[d][2]} to {_and(same)} with {own} volume may be SCATS following its demand, "
+                         f"or the counted volume may be {own} because of the green given (detectors count "
                          "the vehicles served)")
-        elif own:
-            maybe.append(f"{MORE_LESS[d][2]} to {k} while its volume is {MORE_LESS[own][0]} is the opposite of a "
-                         "demand response, so it is the finding most worth verifying")
-        else:
-            maybe.append(f"{MORE_LESS[d][2]} to {k} without a volume change on it may follow demand on competing "
-                         "phases or the coordination plan")
+        if none:
+            maybe.append(f"{MORE_LESS[d][2]} to {group_name(none)} without a volume change on "
+                         f"{'it' if len(none) == 1 else 'them'} may follow demand on competing phases or the "
+                         "coordination plan")
     if cs["status"] == ABNORMAL:
         maybe.append("poorer stability means the cycle length varied more than usual, which can happen while SCATS "
                      "adapts to changing demand")
@@ -188,6 +256,9 @@ def findings(ev: dict) -> tuple[str, str]:
     if only:
         maybe.append(f"the volume change on {_and(only)} has no phase-service finding on the same approach, so its "
                      "cause is not shown by the SCATS data")
+    for d in ev.get("tolerated_detectors") or []:
+        maybe.append(f"detector {d['detector']} counted fewer than {d['threshold']} vehicles in 60 minutes (tolerated "
+                     "by the detector check), so the volume of the approach it serves may be under-counted")
     explained = (ADAPTIVE + " " + "; ".join(m[0].upper() + m[1:] for m in maybe[:1]) + "".join("; " + m for m in maybe[1:])
                  + ".") if maybe else ADAPTIVE
     return " ".join(shown), explained
@@ -218,15 +289,22 @@ def written(ev: dict) -> dict:
         usual = f"{m['usual']:.{d}f}{unit}" if m["usual"] is not None else "not available"
         why = f" ({m['position']}; {m['why_normal']})" if m.get("why_normal") else ""
         support.append(f"{name}: {m['current']:.{d}f}{unit} against a usual {usual}{rng} - {m['status'].lower()}{why}.")
-    for a in ps["abnormal_approaches"]:
+    rows = {a["approach"]: a for a in ps["abnormal_approaches"]}
+    for g, _ in service_groups(ev):
+        a = rows[g[0]]
         lo, hi = a["normal_range"]
         side = "below" if a["direction"] == "LOW" else "above"
-        support.append(f"Phase service {a['approach']}: green share {a['current_green_share_pct']:.1f}% against a usual "
+        support.append(f"Phase service {group_name(g)}: green share {a['current_green_share_pct']:.1f}% against a usual "
                        f"{a['usual_green_share_pct']:.1f}% (normal range {lo:.1f}-{hi:.1f}%) - {side} its normal range.")
 
     traffic = {a["approach"]: a["direction"] for a in t["abnormal_approaches"]}
     service = {a["approach"]: a["direction"] for a in ps["abnormal_approaches"]}
     checks = []
+    # 0. a usual value that points to the mapping: settle it before reading the finding as operation
+    for m in ev.get("mapping_checks") or []:
+        checks.append(f"Verify the {'phase-to-approach' if m['measure'] == 'green share' else 'detector and link'} "
+                      f"assignment of {m['approach']}: its usual {m['measure']} is "
+                      f"{'100%' if m['measure'] == 'green share' else '0'}.")
     # 1. a phase-service change on an approach whose traffic moved the other way, then the same approach otherwise
     same = sorted(ev["same_approach"], key=lambda k: service.get(k) == traffic.get(k))
     for label in same:
@@ -237,18 +315,26 @@ def written(ev: dict) -> dict:
         checks.append(f"Verify whether the {MORE_LESS[cl['direction']][1]} cycle was SCATS's adaptive response or a "
                       "plan or coordination change: check the plan, the subsystem cycle length and the coordination "
                       "(linking and offsets) in force for the period.")
-    # 3. phase service on approaches without a traffic finding
-    for label in ev["signal_only_approaches"]:
-        checks.append(f"Check phase service to {label}: phase calls, skipped or extended phases, and demand on the "
-                      "competing phases.")
+    # 3. phase service on approaches without a traffic finding, once per phase
+    signal_only = set(ev["signal_only_approaches"])
+    for g, _ in service_groups(ev):
+        labels = [k for k in g if k in signal_only]
+        if labels:
+            checks.append(f"Check phase service to {group_name(labels)}: phase calls, skipped or extended phases, and "
+                          "demand on the competing phases.")
     # 4. stability
     if cs["status"] == ABNORMAL:
         checks.append("Review cycle-by-cycle cycle lengths in Signal Performance for the period to confirm the poorer "
                       "stability and whether it follows changing demand.")
-    # 5. traffic without a signal finding on the same approach
-    for label in ev["traffic_only_approaches"]:
-        checks.append(f"Check for incidents, events, roadworks or diversions that could explain the unusual volume on "
-                      f"{label}, and monitor whether it persists.")
+    # 5. traffic without a signal finding on the same approach: one check for all of them
+    if ev["traffic_only_approaches"]:
+        checks.append("Check for incidents, events, roadworks or diversions that could explain the unusual volume on "
+                      f"{_and(ev['traffic_only_approaches'])}, and monitor whether it persists.")
+    # 6. a detector tolerated by the detector check
+    for d in ev.get("tolerated_detectors") or []:
+        count = f" ({d['count_60min']:.0f} vehicles in 60 minutes)" if d["count_60min"] is not None else ""
+        checks.append(f"Check detector {d['detector']}{count}: a fault would under-count the volume of the approach "
+                      "it serves.")
     return {"diagnosis": diagnosis, "supporting_evidence": support, "suggested_checks": checks}
 
 
@@ -273,6 +359,8 @@ Use only the evidence JSON and the draft answer. Rules:
 - Name every abnormal approach exactly as written in the evidence (e.g. "Swanston Street [N]").
 - For cycle length and cycle stability, state the position given in the evidence ("position"); never call a value
   within its normal range unless the position says so. If "why_normal" is given, use it to explain a normal status.
+- If the draft says a finding is "the opposite of a demand response", keep these exact words for it.
+- If the draft says a finding may reflect the mapping, or that a detector may under-count, keep that point.
 - Write plain English: do not copy field names or codes such as HIGH, LOW, POORER, abnormal_high or Q3C; say
   "above its normal range", "below its normal range", "poorer than usual".
 Return JSON with keys: diagnosis (string), supporting_evidence (list of strings), suggested_checks (list of strings)."""
@@ -286,7 +374,7 @@ def run(site: dict, period: dict, llm=None) -> dict:
     named = [a["approach"] for a in ev["traffic"]["abnormal_approaches"] + ev["signal"]["phase_service"]["abnormal_approaches"]]
     worded = llm_mod.word(llm, SYSTEM, user, ["diagnosis", "supporting_evidence", "suggested_checks"], ev, draft,
                           required={"diagnosis": named + D001_LABELS, "supporting_evidence": named},
-                          validate=lambda answer: contradictions(answer, ev))
+                          validate=lambda answer: contradictions(answer, ev) + kept_points(answer, ev))
     worded["answer"]["diagnosis"] = lines(worded["answer"]["diagnosis"], D001_LABELS)
     return {"template_id": TEMPLATE, "template_version": spec["version"], "question": spec["question"],
             "evidence": ev, **worded}
