@@ -104,3 +104,19 @@ When the rules or schema version change, baselines and runs are recalculated aut
 python tools/build_production.py          # build production/ and check the imports
 python tools/build_production.py --check  # check that it matches the source
 ```
+
+
+## Ranking of Red and Amber sites (screening only, no LLM)
+
+```bash
+python main.py rank --end "AM peak=2026-11-10T08:30" "Weekend midday=2026-11-08T12:30"
+```
+
+The command screens each period and the same slot in the previous 4 weeks (stored runs are reused), then ranks the sites
+within Red and within each Amber category. It writes `out/rank/<time>/summary.html` and `<period>/ranked.html|csv`.
+Options:
+- `--no-persistence`: faster; the previous weeks are not screened.
+- `--top 50`: list more sites per category.
+- `--rescreen`: screen again instead of reusing stored runs.
+
+The rule is in `docs/RANKING_AND_SWITCHES_2026-11.md`, section 4.

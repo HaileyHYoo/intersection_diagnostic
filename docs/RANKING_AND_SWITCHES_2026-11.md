@@ -46,30 +46,47 @@ approaches rarer than large ones (over-correction). A fixed minimum (e.g. 50 veh
 small approaches. Cost of 2√usual: the Q1 finding disappears at 76 Red and 606 Amber – traffic site-periods.
 **Recommendation:** propose 2 to the methodology owner, after a sensitivity run.
 
-## 4. Ranking within Red and within Amber (proposal)
+## 4. Ranking within Red and within Amber (implemented for local review, 16 Nov 2026)
 
-Order sites within a category; never move a site between categories. Score = severity × impact × confidence ×
-persistence, shown with its reasons.
+`diagnostics/rank.py`, parameters in `rules.json` `rank`. Sites are ordered within Red, Amber – traffic and Amber –
+signal; a rank never moves a site between categories. Not called by production yet.
 
-- **Severity:** for each abnormal finding, a robust z-score: |current − usual| / spread, with spread =
-  (90th − 10th percentile) / 2.563 (the normal-equivalent standard deviation of that range) and, for volumes, at least
-  √usual (Poisson floor). Capped at 5 each; the three largest combined as √(Σz²).
-- **Impact:** log10(1 + site volume in veh/h), so a busy intersection ranks above a quiet one with the same severity
-  without volume dominating.
-- **Diagnosis type:** × 1.25 when a phase-service change runs opposite to its volume (the most actionable type).
-- **Confidence:** × 0.8 for the 5-week minimum history, × 0.8 for a tolerated detector.
-- **Persistence:** × (1 + 0.25 × (k − 1)) for Red in k of the recent comparable runs (section 5).
-- **Mapping-suspect sites** (usual green 100 %, usual 0) are listed apart, not ranked.
+**score = severity × impact × type × confidence × persistence**
 
-Basis: network screening in the Highway Safety Manual (AASHTO 2010, part B ch. 4) ranks sites by a performance measure
-corrected for regression to the mean (Empirical Bayes, Hauer 1997). Here the robust z-score plays the role of the
-excess over expected, the Poisson floor accounts for random variation of counts, and persistence counters regression to
-the mean: a site that is unusual once is often normal next time; one that is unusual repeatedly is not.
+| Component | Definition | Why |
+|---|---|---|
+| Severity | Per abnormal finding a robust z-score, abs(current − usual) / spread; spread = (90th − 10th percentile) / 2.563, never below a floor (volume √usual veh, cycle length 2 s, Cycle Stability 1 point, green share 1 pp); each z capped at 5; the three largest combined as √(Σz²) | Puts the four measures on one scale (how unusual against the site's own history); the Poisson floor stops small counts and very narrow ranges from producing huge z; the cap and the top 3 stop one extreme value or many small findings from dominating |
+| Impact | log10(1 + site veh/h) / log10(1 001): 1.0 at 1,000 veh/h, 0.67 at 100 veh/h | Busier intersections first, without volume deciding alone |
+| Type | × 1.25 when phase service moves opposite to the volume on the same approach | The most actionable diagnosis type |
+| Confidence | × 0.8 when a finding rests on the 5-week minimum; × 0.8 with a tolerated detector | Less certain usual values or counts |
+| Persistence | × (1 + 0.25 k), k = previous 4 same-weekday, same-slot periods with the same category (Red; Red or Amber for Amber) | Counters regression to the mean |
 
-Prototype on the review data (Red, mapping-suspect set aside): the top of the list is 3101 Bluff Road / Highett Road
-(Red in 4 of 4 periods), 4640 Balcombe Road / Charman Road (3 of 4), 4864 Bay Road / Reserve Road; half of the top 20
-have an opposite-direction finding; 1 of 40 has under 200 veh/h. Contract: a `rank` and `rank_reasons` per site
-(coordinate with the production team) or a sort in the panel.
+Approaches with identical green-share values are one phase and count once. Sites with a usual green share of 100 % or
+a usual volume of 0 behind a finding are listed apart (mapping-suspect), unranked.
+
+Basis: network screening in the Highway Safety Manual (AASHTO 2010, part B, ch. 4) ranks sites by a performance
+measure corrected for regression to the mean (Empirical Bayes; Hauer 1997). Here the robust z-score is the excess over
+the site's own expected range, the Poisson floor accounts for random variation of counts, and persistence counters
+regression to the mean.
+
+Check on the four review periods (from the audit data):
+- z reaches the cap for 3–5 % of the findings (cycle length 11–22 %).
+- Red severity has a 10th–90th percentile of about 3.3–7.0, so the order is not set by volume alone.
+- The top of the list is led by sites with large changes on busy approaches, often with an opposite-direction finding.
+
+Local review (screening only, no LLM):
+
+```bash
+python main.py rank --end "AM peak=2026-11-10T08:30" "Midday=2026-11-10T12:30" "PM peak=2026-11-10T17:30" "Weekend midday=2026-11-08T12:30"
+```
+
+This writes `out/rank/<time>/summary.md|html`, with the categories, the rule and checks of the ranking:
+- component correlations;
+- the make-up of the top 20;
+- the overlap with a naive order.
+
+Per period it also writes `ranked.csv` (every site) and `ranked.md|html` (the top 20 per category and the
+mapping-suspect list). The previous 4 weeks are screened for persistence; `--no-persistence` skips them.
 
 ## 5. Persistence (proposal)
 
@@ -87,6 +104,6 @@ Run offline on archived Red sites and reviewed before any production use.
 
 ## 7. Suggested order
 
-1. Now: section 1 (done) and the ranking prototype in `audit-reports`.
+1. Now: section 1 (done); review the ranking with `python main.py rank` (section 4).
 2. Sensitivity runs of the three switches on the four review periods; results to the methodology owner for decisions.
 3. Persistence once four weeks of screening logs exist; then the insights pilot.

@@ -12,6 +12,7 @@
     python main.py contract-check [--run ID]         validate a stored run against the production contract
     python main.py contract-report --site 1037       the SiteReport the production page receives (JSON + page view)
     python main.py audit-reports --end "AM peak=2026-11-10T08:30" ...   every Red/Amber report of several periods
+    python main.py rank --end "AM peak=2026-11-10T08:30" ...   screening only and the ranking of Red / Amber sites
     python main.py examples [--run ID | --end ...]   example outputs per category (Markdown + HTML) for review
     python main.py queue-probe --site 719 --end 2026-11-02T15:30   which TomTom queue-archive request works
     python main.py audit --end 2026-10-30T15:30      Q1-Q3 input audit: problem types with example intersections (read only)
@@ -301,6 +302,17 @@ def cmd_audit_reports(args):
     return 0
 
 
+def cmd_rank(args):
+    """Screening only (no LLM) and the ranking within Red and Amber, for review."""
+    from diagnostics.local import rank_run, report_audit
+    args.no_llm = True
+    svc = make_service(args, fake=args.fake)
+    batch = rank_run.run(svc, report_audit.parse_periods(args.end), args.out_dir, top=args.top,
+                         persistence=not args.no_persistence, rescreen=args.rescreen)
+    print("Saved:", batch)
+    return 0
+
+
 def cmd_contract_report(args):
     """The production contract's SiteReport for Red/Amber sites of a stored run, as JSON and as a page view."""
     from diagnostics.local import contract_view
@@ -535,6 +547,18 @@ def main(argv=None) -> int:
     p.add_argument("--sites", type=int, default=48)
     p.add_argument("--out-dir", default=str(ROOT / "out"))
     p.set_defaults(func=cmd_audit_reports)
+
+    p = sub.add_parser("rank", help="screening only (no LLM) and the ranking of Red / Amber sites, for review")
+    p.add_argument("--end", nargs="+", required=True,
+                   help='period ends, optionally labelled: "AM peak=2026-11-10T08:30" "Weekend midday=2026-11-08T12:30"')
+    p.add_argument("--top", type=int, default=20, help="sites listed per category (all are in ranked.csv)")
+    p.add_argument("--no-persistence", action="store_true",
+                   help="do not screen the previous 4 weeks (faster; persistence factor 1)")
+    p.add_argument("--rescreen", action="store_true", help="screen again instead of reusing stored runs")
+    p.add_argument("--fake", action="store_true", help="use the demo store")
+    p.add_argument("--sites", type=int, default=48)
+    p.add_argument("--out-dir", default=str(ROOT / "out"))
+    p.set_defaults(func=cmd_rank)
 
     p = sub.add_parser("contract-report", help="the production SiteReport for sites of a stored run (JSON + page view)")
     p.add_argument("--site", nargs="+", required=True, help="Red or Amber SCATS site numbers")

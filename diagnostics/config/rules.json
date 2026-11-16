@@ -91,5 +91,19 @@
     "normal": [],
     "grey": [],
     "detector_health": []
+  },
+  "rank": {
+    "note": "Order within Red and within each Amber category only; never changes a category (13-16 Nov 2026, proposal for the methodology owner).",
+    "range_to_sd": 2.563,
+    "spread_floor": {"volume": "sqrt_usual", "cycle_length": 2.0, "cycle_stability": 1.0, "phase_service": 1.0},
+    "z_cap": 5,
+    "top_findings": 3,
+    "impact_reference_veh_h": 1000,
+    "opposite_direction_factor": 1.25,
+    "minimum_history_weeks": 5,
+    "minimum_history_factor": 0.8,
+    "tolerated_detector_factor": 0.8,
+    "persistence_weeks": 4,
+    "persistence_step": 0.25
   }
 }
