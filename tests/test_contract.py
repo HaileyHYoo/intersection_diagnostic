@@ -261,7 +261,11 @@ class CoreTests(unittest.TestCase):
         d = self.diagnose("4300")
         self.assertEqual(d.q4.template.template_id, "ID_Q4_SCATS_INTERPRETATION")
         ev = d.q4.supporting_evidence                     # every approach and measure, out-of-range first, with values
-        self.assertEqual([e.source for e in ev], ["Reference"] + ["Q1"] * 4 + ["Q3A", "Q3B"] + ["Q3C"] * 5)
+        base = ["Reference"] + ["Q1"] * 4 + ["Q3A", "Q3B"] + ["Q3C"] * 5
+        self.assertEqual([e.source for e in ev][:len(base)], base)
+        # then the quarter-hour view read on click (17 Nov 2026)
+        self.assertTrue(all("by quarter-hour" in e.statement for e in ev[len(base):]))
+        self.assertIn(d001_note(), d.q4.limitations)
         self.assertTrue(ev[0].statement.startswith("Reference: Tuesdays 08:00-08:30 in the 8 weeks 2026-09-01 to 2026-10-20 (8 used)"))
         self.assertTrue(ev[1].statement.endswith("outside its normal range."))
         self.assertIn("veh/30 min; usual", ev[1].statement)                       # units after every value
@@ -289,3 +293,8 @@ class CoreTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def d001_note():
+    from diagnostics.templates.d001 import METHOD_NOTE
+    return METHOD_NOTE

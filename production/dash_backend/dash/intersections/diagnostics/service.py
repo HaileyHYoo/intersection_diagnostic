@@ -28,6 +28,7 @@ from .baseline import BaselineBuilder
 from .report import assemble
 from .settings import Settings, config_snapshot
 from .store import SQLiteStore
+from .detail import safe_detail
 from .templates import d001, d002
 from .timewin import Period, latest_period, period_ending, reference_text, to_utc
 from .vic_calendar import day_note
@@ -212,7 +213,8 @@ class DiagnosticsService:
         p = run["payload"]
         period = period_ending(p["period"]["end"], self.settings.rules)
         mark = len(getattr(self.source, "provenance", []))
-        r1 = d001.run(s, p["period"], self.llm) if "D001" in templates else None
+        detail = safe_detail(self.source, self.settings, s, period) if "D001" in templates else None
+        r1 = d001.run(s, p["period"], self.llm, detail, self.settings.schema) if "D001" in templates else None
         r2 = d002.run(self.source, s, period, self.settings.rules, self.llm) if "D002" in templates else None
         link_speed = self._link_speed(run, s)
         report = assemble(s, p["period"], r1, r2, link_speed,

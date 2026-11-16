@@ -7,7 +7,12 @@ from __future__ import annotations
 
 import re
 
-D001_LABELS = ["What the data show:", "Possible explanations (not demonstrated by these data):"]
+D001_LABELS = ["What the data show:", "Most likely reading", "Other readings:"]      # the second carries the strength
+
+
+def d001_labels(strength: str) -> list[str]:
+    """The three D001 labels; the second names the strength of evidence of the main reading (17 Nov 2026)."""
+    return ["What the data show:", f"Most likely reading (evidence: {strength}):", "Other readings:"]
 D002_LABELS = ["Largest values:", "By approach:", "Overall:", "Coverage:"]
 
 

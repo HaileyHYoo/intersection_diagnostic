@@ -314,7 +314,7 @@ class D001PointsTests(unittest.TestCase):
         ev, w = self.written(self.site([("A St [N]", "a", 57.2, 100.0, 100.0, 100.0, "LOW")], []))
         self.assertTrue(w["suggested_checks"][0].startswith("Verify the phase-to-approach assignment of A St [N]"))
         self.assertIn("mapping", w["diagnosis"])
-        self.assertEqual(d001.kept_points({"diagnosis": "x"}, ev), ["drops the mapping caveat"])
+        self.assertIn("drops the mapping caveat", d001.kept_points({"diagnosis": "x"}, ev))
 
     def test_tolerated_detector_may_under_count(self):
         _, w = self.written(self.site([], [("A St [N]", "a", 150.0, 100.0, 80.0, 120.0, "HIGH")], tolerated=[7]))

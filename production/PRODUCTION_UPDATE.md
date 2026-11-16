@@ -97,3 +97,14 @@ Replace the package again. Categories and the baseline version (`v1.1-f6389e86dc
 |---|---|---|
 | `templates/d001.py` | Approaches with identical green share are one phase ("A and B (one phase)"); one incident check for all traffic-only approaches; a usual green share of 100 % or a usual volume of 0 gives a mapping caveat and a first check; a tolerated detector gives an under-count caveat and a detector check; the LLM wording is rejected if it drops "the opposite of a demand response" or these caveats | Section 1 |
 | `config/rules.json`, `timewin.py`, `baseline.py`, `stats.py`, `vic_calendar.py` | Three switches for sensitivity runs, all off: `history.school_holidays`, `history.extend_beyond_weeks` (with `max_lookback_weeks`), `q1.min_count_noise_sd` | Nothing while off |
+
+## 9. Update of 17 Nov 2026: diagnosis upgrade
+
+Replace the package again. No contract or page change; categories and the baseline version are unchanged.
+Details and an example: `docs/DIAGNOSIS_UPGRADE_2026-11.md` (repository).
+
+| File | Change | Seen on the page as |
+|---|---|---|
+| `detail.py` (new), `service.py`, `contract/core.py` | On a Red click, the two quarter-hour KPI records (all fields) and the two 15-minute link volumes of the period are read for the diagnosis (3 small queries) | – |
+| `templates/readings.py` (new), `templates/d001.py`, `layout.py` | `q4.diagnosis` has three labelled lines: "What the data show:", "Most likely reading (evidence: Strong/Moderate/Weak):", "Other readings:"; checks are targeted to the most likely reading | Section 1, section 4 |
+| `contract/adapter.py` | `q4.supporting_evidence` adds the quarter-hour values and the phase shares; `q4.limitations` carries the note "SCATS adapts ..." that was repeated in every diagnosis | Section 2; please show `q4.limitations` under section 1 if the page does not yet |

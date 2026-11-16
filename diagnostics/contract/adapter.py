@@ -371,14 +371,41 @@ def evidence_items(site: dict, period: Period | None = None, rules: dict | None 
     return items
 
 
+def detail_items(ev: dict) -> list[S.EvidenceItem]:
+    """The quarter-hour view and the phase shares read on click (17 Nov 2026), as evidence statements."""
+    from ..templates import readings
+    view, items = ev.get("quarter_view"), []
+    if view and len(view["quarters"]) == 2:
+        q = view["quarters"]
+        for key, name, unit in (("cycle_length_s", "Cycle length", " s"), ("cycle_cv_pct", "Cycle variation", "%"),
+                                ("cycle_stability", "Cycle Stability", "")):
+            v = view.get(key) or []
+            if len(v) == 2 and None not in v:
+                items.append(S.EvidenceItem(statement=f"{name} by quarter-hour: {q[0]} {v[0]:.1f}{unit}, {q[1]} {v[1]:.1f}{unit}.",
+                                            source="Q3", metric=key, values={"q1": _f(v[0]), "q2": _f(v[1])}))
+        flagged = {a["approach"] for a in (ev.get("traffic") or {}).get("abnormal_approaches", [])}
+        for label, v in view["volume"].items():
+            if label in flagged and None not in v:
+                items.append(S.EvidenceItem(statement=f"{label} volume by quarter-hour: {q[0]} {v[0]:.0f}, {q[1]} {v[1]:.0f} veh/15 min.",
+                                            source="Q1", metric="volume", values={"q1": _f(v[0]), "q2": _f(v[1])}))
+    for text, sh in zip(readings.shift_sentences(ev.get("phase_shifts") or [], view), ev.get("phase_shifts") or []):
+        items.append(S.EvidenceItem(statement=text, source="Q3C", metric="phase_service",
+                                    values={"current": _f(sh["current"]), "reference": _f(sh["usual"]),
+                                            "other_current": _f(sh["other_current"]), "other_reference": _f(sh["other_usual"])}))
+    return items
+
+
 def q4_output(site: dict, d001: dict, rules: dict, template: S.TemplateRef | None = None,
               period: Period | None = None) -> S.Q4Output:
     comps = site["q3"]["components"]
     limitations = [f"{name} not assessed: {c.get('reason') or 'insufficient data'}"
                    for name, c in (("Cycle length", comps["cycle_length"]), ("Cycle Stability", comps["cycle_stability"]))
                    if c["status"] == INSUFFICIENT]
+    if d001.get("method_note"):
+        limitations.append(d001["method_note"])
     return S.Q4Output(template=template or template_ref(rules, "D001"), diagnosis=d001["answer"]["diagnosis"],
-                      supporting_evidence=evidence_items(site, period, rules), suggested_checks=d001["answer"]["suggested_checks"],
+                      supporting_evidence=evidence_items(site, period, rules) + detail_items(d001.get("evidence") or {}),
+                      suggested_checks=d001["answer"]["suggested_checks"],
                       limitations=limitations,
                       **optional(S.Q4Output, generated_by=d001["generated_by"], llm_rejected=d001["rejected"]))
 

@@ -1,0 +1,100 @@
+{
+  "site": "3055",
+  "period": "Tue 10 Nov 2026 08:00-08:30 (Australia/Melbourne)",
+  "neo4j_egress": [
+    {
+      "link": "BELL59C659CF",
+      "street": "Bell Street"
+    },
+    {
+      "link": "BELL5C83599F",
+      "street": "Bell Street"
+    }
+  ],
+  "periods": [
+    {
+      "period": "Tue 10 Nov 2026 08:00-08:30 (Australia/Melbourne)",
+      "role": "analysis",
+      "kpi": {
+        "08:22:08": {
+          "AvgCycle": 120.0,
+          "CycleCvPct": 0.0,
+          "CycleStability": 100.0,
+          "DemandPressure": 50.56360708534622,
+          "GreenGapBusiest": 14.512950833395337,
+          "ISI": 93.0,
+          "RiskBusiest": 60.966606667087845,
+          "TotalVolume": 621.0
+        },
+        "08:37:08": {
+          "AvgCycle": 123.22222222222223,
+          "CycleCvPct": 4.965976488012394,
+          "CycleStability": 75.17011755993803,
+          "DemandPressure": 52.28758169934641,
+          "GreenGapBusiest": 47.71241830065359,
+          "ISI": 105.0,
+          "RiskBusiest": 74.77124183006536,
+          "TotalVolume": 612.0
+        }
+      },
+      "approaches": {
+        "BELL59C659CF [E]": {
+          "08:22:08": {
+            "DemandShare": 50.56360708534622,
+            "GreenShare": 65.07655791874156,
+            "HasGreen": 1.0,
+            "Phases": "A,C",
+            "SignedGap": -14.512950833395337,
+            "Volume": 314.0
+          },
+          "08:37:08": {
+            "DemandShare": 47.712418300653596,
+            "GreenShare": 57.52060629529237,
+            "HasGreen": 1.0,
+            "Phases": "A,C",
+            "SignedGap": -9.808187994638772,
+            "Volume": 292.0
+          }
+        },
+        "BELL5C83599F [W]": {
+          "08:22:08": {
+            "DemandShare": 49.43639291465378,
+            "GreenShare": 100.0,
+            "HasGreen": 1.0,
+            "Phases": "A,B,C,D",
+            "SignedGap": -50.56360708534622,
+            "Volume": 307.0
+          },
+          "08:37:08": {
+            "DemandShare": 52.28758169934641,
+            "GreenShare": 100.0,
+            "HasGreen": 1.0,
+            "Phases": "A,B,C,D",
+            "SignedGap": -47.71241830065359,
+            "Volume": 320.0
+          }
+        }
+      },
+      "sum_of_GreenShare_over_approaches": {
+        "08:22:08": 165.1,
+        "08:37:08": 157.5
+      }
+    }
+  ],
+  "link_volume_15min": {
+    "BELL59C659CF": {
+      "07:30": 283.0,
+      "07:45": 306.0,
+      "08:00": 298.0,
+      "08:15": 355.0,
+      "08:30": 290.0
+    },
+    "BELL5C83599F": {
+      "07:30": 355.0,
+      "07:45": 376.0,
+      "08:00": 351.0,
+      "08:15": 292.0,
+      "08:30": 341.0
+    }
+  }
+}

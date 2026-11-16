@@ -89,8 +89,8 @@ def speed_part(link_speed: dict | None) -> tuple[list[str], list[dict]]:
 
 
 ABNORMAL_CELLS = {"High", "Low", "Abnormal", "Poorer"}
-LABELS = ["What the data show:", "Possible explanations (not demonstrated by these data):",
-          "Largest values:", "By approach:", "Overall:", "Coverage:"]
+LABELS = ["What the data show:", *[f"Most likely reading (evidence: {x}):" for x in ("Strong", "Moderate", "Weak")],
+          "Other readings:", "Largest values:", "By approach:", "Overall:", "Coverage:"]
 
 
 def evidence_summary(site: dict) -> tuple[str, list[str]]:
@@ -131,7 +131,8 @@ def assemble(site: dict, period: dict, d001: dict, d002: dict | None, link_speed
     if reference:                                   # the reference dates and rule, under the tables' "Weeks" column
         notes = [reference] + notes
     sections = [
-        {"title": "1. Diagnosis", "text": a1["diagnosis"], "producer": "D001"},
+        {"title": "1. Diagnosis", "text": a1["diagnosis"], "producer": "D001",
+         **({"bullets": ["Note: " + d001["method_note"]]} if d001.get("method_note") else {})},
         {"title": "2. Supporting Evidence", "text": head, "bullets": notes, "tables": evidence_tables(site),
          "producer": "D001"},
     ]

@@ -36,6 +36,7 @@ from .. import screening
 from ..baseline import BaselineBuilder
 from ..settings import Settings, config_snapshot, load_rules
 from ..store import SQLiteStore
+from ..detail import safe_detail
 from ..templates import d001, d002
 from . import adapter
 
@@ -176,7 +177,7 @@ def run_diagnosis(inp, source, settings: Settings | None = None, llm=None, audit
     period = adapter.period_from_model(inp.period, settings.rules)
     site = adapter.site_from_model(inp.evidence)
     mark = len(getattr(source, "provenance", []))
-    r1 = d001.run(site, period.to_dict(), llm)
+    r1 = d001.run(site, period.to_dict(), llm, safe_detail(source, settings, site, period), settings.schema)
     r2 = d002.run(source, site, period, settings.rules, llm)
     refs = {"D001": inp.q4_template, "D002": inp.q5_template}
     audit_ref = None
