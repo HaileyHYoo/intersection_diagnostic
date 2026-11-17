@@ -62,7 +62,7 @@ class ReadingsTests(unittest.TestCase):
     def test_readings_table(self):
         table = {r["key"]: r for r in self.ev["readings"]}
         self.assertEqual(self.ev["readings"][0]["key"], "other_phases")       # B,D gained, serving no assessed approach
-        self.assertEqual(table["other_phases"]["strength"], "Moderate")     # 5-week history caps Strong
+        self.assertEqual(table["other_phases"]["strength"], "Moderate")     # B,D gained + opposite direction = 4
         self.assertNotIn("demand", table)                                   # only evidence against it
         self.assertEqual(table["plan"]["strength"], "Weak")                 # the first quarter ran the usual cycle
 
@@ -198,9 +198,9 @@ class SubsystemStatusTests(unittest.TestCase):
         ctx = subsystems.context("4864", lambda no: None)
         ctx["status"] = status_of("4864")
         ev = d001.evidence(s.SITE, {"local": "p"}, s.DETAIL, None, ctx)
-        self.assertEqual(ev["readings"][0]["key"], "demand")
+        demand = next(r for r in ev["readings"] if r["key"] == "demand")
         self.assertIn("the active cycle followed the required cycle, which SCATS sets from saturation, between 70 and 90 s",
-                      " ".join(ev["readings"][0]["for"]))
+                      " ".join(demand["for"]))
         w = d001.written(ev)
         self.assertIn("(critical site 4864)", w["diagnosis"])
         self.assertIn("active cycle 70-90 s, following the required cycle", w["diagnosis"])
@@ -292,3 +292,29 @@ class CloseEvidenceTests(unittest.TestCase):
         self.assertIn(f"The evidence is close: {ev['readings'][1]['name']} is about as well supported", main)
         first = d001.written(ev)["diagnosis"].split("\n")[0]
         self.assertLess(len(first), 1300)
+
+
+class WeightTests(unittest.TestCase):
+    """Calibration on the AM peak of 10 Nov 2026: discriminating points weigh 2, restated findings 1."""
+
+    def test_weights(self):
+        self.assertEqual(readings.weight("phases B and D gained 13.8 percentage points and serve none of the assessed"), 2)
+        self.assertEqual(readings.weight("volume is higher on 3 approaches"), 1)
+        self.assertEqual(readings.weight("the volume change on X has no phase-service finding"), 1)
+
+    def test_3055_with_subsystem_is_strong_and_4864_is_close(self):
+        from tests import site_4864 as s
+        ctx = subsystems.context("3055", lambda no: None)
+        ctx["status"] = status_of("3055")
+        top = d001.evidence(SITE, {"local": "p"}, detail(), None, ctx)["readings"][0]
+        self.assertEqual((top["key"], top["strength"], top["score"]), ("other_phases", "Strong", 6))
+        ctx = subsystems.context("4864", lambda no: None)
+        ctx["status"] = {**status_of("4864"), "usual": {"ds_median": 84.0, "cl_mean": 74.9, "cl_sd": 4.8,
+                                                        "ds_at_least_100_share": 0.4}}
+        table = d001.evidence(s.SITE, {"local": "p"}, s.DETAIL, None, ctx)["readings"]
+        self.assertEqual([(r["key"], r["strength"]) for r in table[:2]], [("data", "Moderate"), ("other_phases", "Moderate")])
+        self.assertEqual(next(r for r in table if r["key"] == "event")["strength"], "Weak")
+
+    def test_negated_cause_and_undercount_spelling_are_accepted(self):
+        self.assertEqual(d001.causal({"diagnosis": "This is an association and does not prove that one caused the other."}), [])
+        self.assertEqual(d001.causal({"diagnosis": "The longer cycle caused the queue."}), ['states a cause ("caused")'])

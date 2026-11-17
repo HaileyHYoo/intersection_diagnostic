@@ -2,16 +2,15 @@
 and against each (17 Nov 2026).
 
 The table is a differential diagnosis: a fixed catalogue of readings, each scored from the site's own data. It ranks
-the readings by the evidence available; it does not prove a cause. Strength of evidence (not a probability):
-
-    Strong    two or more points for, none against, and no data limitation
-    Moderate  one point for and none against, or two or more for and one against, or Strong with a data limitation
-              (history at the 5-week minimum, a tolerated detector)
-    Weak      anything else with at least one point for
+the readings by the evidence available; it does not prove a cause. Strength of evidence (not a probability) comes
+from a score: points that discriminate between readings weigh 2, points that restate a screening finding weigh 1,
+points against are subtracted (see weight() and readings()).
 
 A reading with no point for is left out.
 """
 from __future__ import annotations
+
+import re
 
 from ..stats import ABNORMAL
 
@@ -358,8 +357,26 @@ def shift_sentences(shifts: list[dict], view: dict | None) -> list[str]:
 
 
 # ---------------------------------------------------------------------------------------------- readings
+# Points that discriminate between readings weigh 2; points that restate a screening finding (true at most Red sites)
+# weigh 1. Calibrated on the AM peak of 10 Nov 2026 (83 Red sites): with counts alone every leading reading was
+# Moderate and the first two readings were close at 73% of the sites.
+SPECIFIC = re.compile("|".join([
+    r"percentage points and serves?", r"% of the cycle against a usual", OPPOSITE, r"subsystem's active cycle stayed at",
+    r"degree of saturation was higher than usual", r"\(usually \d+% of records\)", r"followed the required cycle",
+    r"above the required cycle", r"fit no single split", r"same cycle as", r"cycle change is shared by",
+    r"kept its usual cycle", r"ran the usual cycle", r"stayed at its usual level", r"changed between the quarter-hours",
+    r"usual green share of 100%", r"usual volume of 0", r"is concentrated in", r"did not change \("]))
+
+
+def weight(point: str) -> int:
+    return 2 if SPECIFIC.search(point) else 1
+
+
 def readings(ev: dict) -> list[dict]:
-    """The hypothesis table, most supported first: [{key, name, for, against, strength}]."""
+    """The hypothesis table, most supported first: [{key, name, for, against, strength, score}].
+
+    score = weighted points for - weighted points against (weight()); Strong: score 5 or more, nothing against and no
+    tolerated detector; Moderate: score 3 or more, or 2 with nothing against; Weak: the rest."""
     t, s = ev["traffic"], ev["signal"]
     cl, cs = s["cycle_length_s"], s["cycle_stability"]
     traffic = {a["approach"]: a["direction"] for a in t["abnormal_approaches"]}
@@ -537,21 +554,22 @@ def readings(ev: dict) -> list[dict]:
     for label in (view or {}).get("phases_changed", []):
         pro["data"].append(f"the phases serving {label} changed between the quarter-hours")
 
-    limited = bool(ev.get("tolerated_detectors")) or (ev.get("min_history") or 99) <= 5
+    tolerated = bool(ev.get("tolerated_detectors"))
     out = []
     for key, name in CATALOGUE.items():
         p, c = pro[key], con[key]
         if not p:
             continue
-        if len(p) >= 2 and not c:
-            strength = "Moderate" if limited else "Strong"
-        elif (len(p) >= 1 and not c) or (len(p) >= 2 and len(c) == 1):
+        sc = sum(weight(x) for x in p) - sum(weight(x) for x in c)
+        if sc >= 5 and not c and not tolerated:
+            strength = "Strong"
+        elif sc >= 3 or (sc >= 2 and not c):
             strength = "Moderate"
         else:
             strength = "Weak"
-        out.append({"key": key, "name": name, "for": p, "against": c, "strength": strength})
+        out.append({"key": key, "name": name, "for": p, "against": c, "strength": strength, "score": sc})
     order = list(CATALOGUE)
-    out.sort(key=lambda r: (STRENGTHS.index(r["strength"]), -(len(r["for"]) - len(r["against"])), order.index(r["key"])))
+    out.sort(key=lambda r: (STRENGTHS.index(r["strength"]), -r["score"], order.index(r["key"])))
     return out
 
 
@@ -566,8 +584,7 @@ def reading_lines(table: list[dict]) -> tuple[str, str, str]:
         main += ", although " + "; ".join(top["against"])
     if len(table) > 1:
         second = table[1]
-        margin = (len(top["for"]) - len(top["against"])) - (len(second["for"]) - len(second["against"]))
-        if second["strength"] == top["strength"] and margin <= 1:
+        if second["strength"] == top["strength"] and top.get("score", 0) - second.get("score", 0) <= 1:
             main += f". The evidence is close: {second['name']} is about as well supported"
     others = []
     for r in table[1:]:

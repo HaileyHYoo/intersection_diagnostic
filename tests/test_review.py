@@ -33,9 +33,9 @@ class Q4WordingTests(unittest.TestCase):
         self.assertIn("Traffic differs from history on A St [N] (higher volume than usual).", a["diagnosis"])
         self.assertIn("cycle length (longer than usual)", a["diagnosis"])
         self.assertNotIn(d001.ADAPTIVE, a["diagnosis"])                # said once per report (method note)
-        self.assertIn("\nMost likely reading (evidence: Moderate): A response to demand: a longer cycle with higher "
+        self.assertIn("\nMost likely reading (evidence: Weak): A response to demand: a longer cycle with higher "
                       "volume on A St [N].", a["diagnosis"])
-        self.assertIn("\nOther readings: A subsystem decision (cycle, plan or coordination) (moderate; for: the usually "
+        self.assertIn("\nOther readings: A subsystem decision (cycle, plan or coordination) (weak; for: the usually "
                       "fixed cycle varied",
                       a["diagnosis"])
         self.assertTrue(a["diagnosis"].startswith("What the data show: Traffic differs"))
@@ -46,8 +46,9 @@ class Q4WordingTests(unittest.TestCase):
 
     def test_cycle_change_without_matching_demand(self):
         ev = evidence(traffic=[("A St [N]", "LOW")], cycle=measure(ABNORMAL, "HIGH", 130.0), traffic_only=["A St [N]"])
-        self.assertIn("Most likely reading (evidence: Moderate): A subsystem decision (cycle, plan or coordination): "
-                      "the longer cycle is not matched by higher volume.", d001.written(ev)["diagnosis"])
+        # one point that restates the finding: Weak, and close to the other reading (weights, 18 Nov 2026)
+        self.assertIn("Most likely reading (evidence: Weak): A subsystem decision (cycle, plan or coordination): "
+                      "the longer cycle is not matched by higher volume. The evidence is close", d001.written(ev)["diagnosis"])
 
     def test_cycle_change_with_volume_moving_both_ways(self):
         """SCATS 1037, 10 Nov 2026: shorter cycle, volume lower on [W] but higher on [E]."""

@@ -39,9 +39,9 @@
     "subsystems.py": "e4c15beefaa982e9a5d845561d250c6dc430c47a6393715fc737851984d3945c",
     "templates/__init__.py": "878f67d235883ef44246e5b6a41d03985d6641496bbea59100618f81929a2670",
     "templates/catalog.json": "ae55405c8a8801b2205cc6033903e1bc3d6b8afcfc7e1ca5791fe4eaea52dafe",
-    "templates/d001.py": "e120994c41a597958534f0994a220a5b43e93b3ba315dfc2211c7ea489fa8282",
+    "templates/d001.py": "878a0c6c85414ffcb4dd2bf0ca864f907a20b498839744f82cb62900d1fb8b66",
     "templates/d002.py": "3a027697fd65768bdd80f3bc6c0e45871fc9909a929062541ee7a50d7b3d39b1",
-    "templates/readings.py": "bfd53d0b117fa6c27c8e21bf53948931dedb577bfde3ffb6def3545ea84a9240",
+    "templates/readings.py": "17a369a4b5c2b432daa2f8cc5e46c138e36a80778215139e11747f3121e59fed",
     "timewin.py": "22c0522b2d475afdbe79b9fcbbde879d235aea2bb7b02ad040a7a93eddfbe416",
     "tomtom_map.py": "25d7f1ba29d9e117b5948dc37a882594038c78b8ba2b6a95099b288ac952d8f8",
     "vic_calendar.py": "484d6d1d28f8c44c5295b975f5a3587990d90081bbba64e7fc0f15ec91785ed5"

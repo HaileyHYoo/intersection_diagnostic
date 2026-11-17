@@ -85,6 +85,21 @@ On the samples (10 Nov, 08:00-08:30):
 (`scats_split_plan`, `site_phase`, `site_signal_group`, `intersection_cycle_time`, `link_green_percentage`,
 `congestion`, `hazard`) and the site's records in the period.
 
+## Update of 18 Nov 2026 (3): calibration on the AM peak (83 Red sites)
+
+First batch run of the new diagnosis (`audit-reports`, Tue 10 Nov 08:00-08:30):
+
+| Measure | Result | Change made |
+|---|---|---|
+| Leading reading strength | 83 of 83 Moderate (71 would have been Strong, but every Red site rests on the 5-week minimum history, which capped Strong) | The history cap is removed (the number of weeks stays in the evidence); a tolerated detector still caps Strong |
+| First two readings close | 61 of 83 (73%) | Points are weighted: those that discriminate between readings (phase shares, opposite direction, subsystem cycle against required cycle, saturation against usual, mixed splits, timing) weigh 2; those restating a screening finding (e.g. "volume is higher on 3 approaches", true at most Red sites) weigh 1. Strength from the score: Strong 5 or more with nothing against; Moderate 3 or more, or 2 with nothing against; Weak otherwise |
+| Data read | quarter-hour data 100%, subsystem state 100%, phase shares solved 61% (mixed splits 11) | - |
+| LLM wording used | 75 of 83 (90%) | The 8 rejections were wording only: a negated cause ("does not prove that one caused the other", 6) and "undercount" spelled without a hyphen (2); both are now accepted |
+
+On the samples: 3055 becomes Strong (score 6: phases B and D gained, opposite direction, constant subsystem cycle while
+the site's cycles varied); at 4864 a data or mapping issue and a local controller response lead, close, and unusual
+demand drops to Weak (its points restate the findings and the usual saturation counts against it).
+
 ## Not used yet
 
 - `DemandShare`, `SignedGap` and the PerfApproach `Volume`: the PerfApproach volume differs from the link volume used by

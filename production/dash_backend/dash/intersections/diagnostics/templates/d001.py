@@ -168,7 +168,7 @@ def kept_points(answer: dict, ev: dict) -> list[str]:
         problems.append(f'drops "{OPPOSITE}"')
     if ev.get("mapping_checks") and "mapping" not in text:
         problems.append("drops the mapping caveat")
-    if ev.get("tolerated_detectors") and "under-count" not in text:
+    if ev.get("tolerated_detectors") and not re.search(r"under-?count", text):
         problems.append("drops the detector caveat")
     table = ev.get("readings") or []
     if table:
@@ -506,6 +506,10 @@ CAUSAL = re.compile(r"\b(caused|causes|because of|due to|proves?|proven)\b", re.
 
 def causal(answer: dict) -> list[str]:
     """The readings are ranked, not proven: causal wording is rejected (the draft never uses it)."""
-    text = re.sub(r"not proof that one caused the other", "", answer.get("diagnosis") or "", flags=re.I)
-    hit = CAUSAL.search(text)
-    return [f'states a cause ("{hit.group(0)}")'] if hit else []
+    text = answer.get("diagnosis") or ""
+    for hit in CAUSAL.finditer(text):
+        # a negated claim ("not proof that one caused the other", "does not prove") is the caveat, not a cause
+        if re.search(r"\b(not|no|never|without|cannot)\b", text[max(0, hit.start() - 40):hit.start()], re.I):
+            continue
+        return [f'states a cause ("{hit.group(0)}")']
+    return []

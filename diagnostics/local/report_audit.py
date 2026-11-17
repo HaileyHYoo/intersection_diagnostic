@@ -197,7 +197,8 @@ def detail(label: str, p: dict, run_id: str, s: dict, r: dict | None, speed: dic
                        "generated_by": one.get("generated_by"), "rejected": one.get("rejected"),
                        # readings (17-18 Nov 2026): the ranked table, the inputs it had, the control context
                        "readings": [{"key": x["key"], "strength": x["strength"], "for": len(x["for"]),
-                                     "against": len(x["against"])} for x in ev1.get("readings") or []],
+                                     "against": len(x["against"]), "score": x.get("score")}
+                                    for x in ev1.get("readings") or []],
                        "quarter_view": bool(ev1.get("quarter_view")),
                        "phase_shares": ("mixed" if any(x.get("usual") is None for x in ev1.get("phase_shares") or [])
                                         else len(ev1.get("phase_shares") or [])),
@@ -332,8 +333,9 @@ def readings_summary(reds: list[dict]) -> str:
         close = 0
         for x in ds:
             r = x.get("readings") or []
-            if len(r) > 1 and r[0]["strength"] == r[1]["strength"] and \
-                    (r[0]["for"] - r[0]["against"]) - (r[1]["for"] - r[1]["against"]) <= 1:
+            gap = ((r[0]["score"] - r[1]["score"]) if len(r) > 1 and r[0].get("score") is not None
+                   else (r[0]["for"] - r[0]["against"]) - (r[1]["for"] - r[1]["against"]) if len(r) > 1 else 99)
+            if len(r) > 1 and r[0]["strength"] == r[1]["strength"] and gap <= 1:
                 close += 1
         n = len(ds)
         pct = lambda k: f"{k} ({k / n:.0%})"
