@@ -1,0 +1,222 @@
+{
+ "site": "3055",
+ "period": "Tue 10 Nov 2026 08:00-08:30 (Australia/Melbourne)",
+ "membership": {
+  "region": "PRS",
+  "region_no": 19,
+  "subsystem": 21,
+  "members": [
+   "3055"
+  ]
+ },
+ "records": {
+  "2026-11-09 21:00:06+00:00": {
+   "tags": {
+    "CriticalSite": "3055",
+    "Region": "AU-VIC-Melbourne",
+    "RegionNo": "19",
+    "SubsystemNo": "21"
+   },
+   "fields": {
+    "ActiveCycleLength": 120.0,
+    "DegreeOfSaturation": 58.0,
+    "RequiredCycleLength": 107.0
+   }
+  },
+  "2026-11-09 21:02:06+00:00": {
+   "tags": {
+    "CriticalSite": "3055",
+    "Region": "AU-VIC-Melbourne",
+    "RegionNo": "19",
+    "SubsystemNo": "21"
+   },
+   "fields": {
+    "ActiveCycleLength": 120.0,
+    "DegreeOfSaturation": 56.0,
+    "RequiredCycleLength": 104.0
+   }
+  },
+  "2026-11-09 21:04:06+00:00": {
+   "tags": {
+    "CriticalSite": "3055",
+    "Region": "AU-VIC-Melbourne",
+    "RegionNo": "19",
+    "SubsystemNo": "21"
+   },
+   "fields": {
+    "ActiveCycleLength": 120.0,
+    "DegreeOfSaturation": 70.0,
+    "RequiredCycleLength": 105.0
+   }
+  },
+  "2026-11-09 21:06:06+00:00": {
+   "tags": {
+    "CriticalSite": "3055",
+    "Region": "AU-VIC-Melbourne",
+    "RegionNo": "19",
+    "SubsystemNo": "21"
+   },
+   "fields": {
+    "ActiveCycleLength": 120.0,
+    "DegreeOfSaturation": 46.0,
+    "RequiredCycleLength": 104.0
+   }
+  },
+  "2026-11-09 21:08:06+00:00": {
+   "tags": {
+    "CriticalSite": "3055",
+    "Region": "AU-VIC-Melbourne",
+    "RegionNo": "19",
+    "SubsystemNo": "21"
+   },
+   "fields": {
+    "ActiveCycleLength": 120.0,
+    "DegreeOfSaturation": 78.0,
+    "RequiredCycleLength": 106.0
+   }
+  },
+  "2026-11-09 21:10:06+00:00": {
+   "tags": {
+    "CriticalSite": "3055",
+    "Region": "AU-VIC-Melbourne",
+    "RegionNo": "19",
+    "SubsystemNo": "21"
+   },
+   "fields": {
+    "ActiveCycleLength": 120.0,
+    "DegreeOfSaturation": 77.0,
+    "RequiredCycleLength": 107.0
+   }
+  },
+  "2026-11-09 21:12:06+00:00": {
+   "tags": {
+    "CriticalSite": "3055",
+    "Region": "AU-VIC-Melbourne",
+    "RegionNo": "19",
+    "SubsystemNo": "21"
+   },
+   "fields": {
+    "ActiveCycleLength": 120.0,
+    "DegreeOfSaturation": 72.0,
+    "RequiredCycleLength": 107.0
+   }
+  },
+  "2026-11-09 21:14:06+00:00": {
+   "tags": {
+    "CriticalSite": "3055",
+    "Region": "AU-VIC-Melbourne",
+    "RegionNo": "19",
+    "SubsystemNo": "21"
+   },
+   "fields": {
+    "ActiveCycleLength": 120.0,
+    "DegreeOfSaturation": 61.0,
+    "RequiredCycleLength": 106.0
+   }
+  },
+  "2026-11-09 21:16:06+00:00": {
+   "tags": {
+    "CriticalSite": "3055",
+    "Region": "AU-VIC-Melbourne",
+    "RegionNo": "19",
+    "SubsystemNo": "21"
+   },
+   "fields": {
+    "ActiveCycleLength": 120.0,
+    "DegreeOfSaturation": 93.0,
+    "RequiredCycleLength": 109.0
+   }
+  },
+  "2026-11-09 21:18:06+00:00": {
+   "tags": {
+    "CriticalSite": "3055",
+    "Region": "AU-VIC-Melbourne",
+    "RegionNo": "19",
+    "SubsystemNo": "21"
+   },
+   "fields": {
+    "ActiveCycleLength": 120.0,
+    "DegreeOfSaturation": 82.0,
+    "RequiredCycleLength": 110.0
+   }
+  },
+  "2026-11-09 21:20:06+00:00": {
+   "tags": {
+    "CriticalSite": "3055",
+    "Region": "AU-VIC-Melbourne",
+    "RegionNo": "19",
+    "SubsystemNo": "21"
+   },
+   "fields": {
+    "ActiveCycleLength": 120.0,
+    "DegreeOfSaturation": 91.0,
+    "RequiredCycleLength": 111.0
+   }
+  },
+  "2026-11-09 21:22:06+00:00": {
+   "tags": {
+    "CriticalSite": "3055",
+    "Region": "AU-VIC-Melbourne",
+    "RegionNo": "19",
+    "SubsystemNo": "21"
+   },
+   "fields": {
+    "ActiveCycleLength": 120.0,
+    "DegreeOfSaturation": 94.0,
+    "RequiredCycleLength": 112.0
+   }
+  },
+  "2026-11-09 21:24:06+00:00": {
+   "tags": {
+    "CriticalSite": "3055",
+    "Region": "AU-VIC-Melbourne",
+    "RegionNo": "19",
+    "SubsystemNo": "21"
+   },
+   "fields": {
+    "ActiveCycleLength": 120.0,
+    "DegreeOfSaturation": 100.0,
+    "RequiredCycleLength": 116.0
+   }
+  },
+  "2026-11-09 21:26:06+00:00": {
+   "tags": {
+    "CriticalSite": "3055",
+    "Region": "AU-VIC-Melbourne",
+    "RegionNo": "19",
+    "SubsystemNo": "21"
+   },
+   "fields": {
+    "ActiveCycleLength": 120.0,
+    "DegreeOfSaturation": 105.0,
+    "RequiredCycleLength": 121.0
+   }
+  },
+  "2026-11-09 21:28:06+00:00": {
+   "tags": {
+    "CriticalSite": "3055",
+    "Region": "AU-VIC-Melbourne",
+    "RegionNo": "19",
+    "SubsystemNo": "21"
+   },
+   "fields": {
+    "ActiveCycleLength": 120.0,
+    "DegreeOfSaturation": 86.0,
+    "RequiredCycleLength": 118.0
+   }
+  },
+  "2026-11-09 21:30:06+00:00": {
+   "tags": {
+    "CriticalSite": "3055",
+    "Region": "AU-VIC-Melbourne",
+    "RegionNo": "19",
+    "SubsystemNo": "21"
+   },
+   "fields": {
+    "ActiveCycleLength": 120.0,
+    "DegreeOfSaturation": 80.0,
+    "RequiredCycleLength": 113.0
+   }
+  }
+ }
+}

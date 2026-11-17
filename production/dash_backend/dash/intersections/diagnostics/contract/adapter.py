@@ -408,6 +408,14 @@ def detail_items(ev: dict) -> list[S.EvidenceItem]:
     ctx = ev.get("control")
     if ctx:
         items.append(S.EvidenceItem(statement=readings.control_sentence(ctx), source="Control", metric="subsystem"))
+        st = ctx.get("status")
+        if st:
+            n = st["now"]
+            items.append(S.EvidenceItem(statement=readings.status_sentence(ctx, (view or {}).get("quarters")),
+                                        source="Control", metric="subsystem_status",
+                                        values={"ds_median": _f(n["ds_median"]), "ds_max": _f(n["ds_max"]),
+                                                "ds_usual_median": _f(st["usual"].get("ds_median")),
+                                                "active_cycle_mean": _f(n["cl_mean"]), "required_cycle_mean": _f(n["rl_mean"])}))
     return items
 
 

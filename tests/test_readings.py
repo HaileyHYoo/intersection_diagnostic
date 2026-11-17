@@ -157,3 +157,47 @@ class EvidencePositionTests(unittest.TestCase):
         self.assertEqual(_position({**cycle, "current": 120.5}), "within its normal range")
         stab = {"status": "NORMAL", "current": 95.5, "p_low": 62.5, "p_high": 80.3}
         self.assertIn("more stable than usual", _position(stab, poorer=True))
+
+
+def status_of(site):
+    """subsystem_status of 10 Nov 2026 08:00-08:30 (subsystem-check output) as status_context returns it."""
+    from datetime import datetime
+    from diagnostics.settings import load_rules
+    from diagnostics.timewin import period_ending
+    d = json.loads((Path(__file__).parent / "data" / f"subsystem_check_{site}.json").read_text(encoding="utf-8"))
+    rows = [{"time": datetime.fromisoformat(t), "critical": e["tags"]["CriticalSite"], **e["fields"]}
+            for t, e in d["records"].items()]
+    return {"now": subsystems._summary(rows, period_ending("2026-11-10T08:30", load_rules())), "usual": {}, "weeks": 0}
+
+
+class SubsystemStatusTests(unittest.TestCase):
+    def test_summary(self):
+        n = status_of("3055")["now"]
+        self.assertEqual((n["critical_site"], n["records"], n["cl_mean"], n["cl_sd"], n["cl_above_rl"]),
+                         ("3055", 16, 120.0, 0.0, 14))
+        self.assertEqual([q["ds_median"] for q in n["by_quarter"]], [65.5, 93.0])
+        m = status_of("4864")["now"]
+        self.assertEqual((m["critical_site"], m["ds_at_least_100"], m["cl_min"], m["cl_max"]), ("4864", 10, 70.0, 90.0))
+
+    def test_3055_held_cycle_and_local_variation(self):
+        ctx = subsystems.context("3055", lambda no: None)
+        ctx["status"] = status_of("3055")
+        ev = d001.evidence(SITE, {"local": "p"}, detail(), None, ctx)
+        top = ev["readings"][0]
+        self.assertEqual(top["key"], "other_phases")
+        self.assertIn("the subsystem's active cycle stayed at 120.0 s while the site's measured cycles varied", " ".join(top["for"]))
+        plan = next(r for r in ev["readings"] if r["key"] == "plan")
+        self.assertIn("held by a plan, coordination or a configured minimum", " ".join(plan["for"]))
+        self.assertIn("active cycle constant at 120.0 s", d001.written(ev)["diagnosis"])
+
+    def test_4864_cycle_follows_saturation(self):
+        from tests import site_4864 as s
+        ctx = subsystems.context("4864", lambda no: None)
+        ctx["status"] = status_of("4864")
+        ev = d001.evidence(s.SITE, {"local": "p"}, s.DETAIL, None, ctx)
+        self.assertEqual(ev["readings"][0]["key"], "demand")
+        self.assertIn("the active cycle followed the required cycle, which SCATS sets from saturation, between 70 and 90 s",
+                      " ".join(ev["readings"][0]["for"]))
+        w = d001.written(ev)
+        self.assertIn("(critical site 4864)", w["diagnosis"])
+        self.assertEqual(d001.kept_points(w, ev), [])

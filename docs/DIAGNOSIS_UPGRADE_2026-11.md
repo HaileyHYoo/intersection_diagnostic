@@ -62,6 +62,29 @@ Results on the two sample sites (code wording):
 - 4864 (subsystem with 2318): a subsystem decision, Moderate; the reference weeks ran different splits and the
   site runs the same cycle as its neighbour. The first check is the subsystem's saturation, cycle and plans.
 
+## Update of 18 Nov 2026 (2): subsystem state
+
+`subsystem_status` (bucket `scats`) holds per subsystem, about every cycle: `DegreeOfSaturation`,
+`RequiredCycleLength`, `ActiveCycleLength`, and the tag `CriticalSite` (checked with `subsystem-check` on 3055, 4864
+and 2318). On a Red click the diagnosis now reads them for the period and the reference weeks (one small query per
+week) and states: the critical site, the saturation (median, maximum, records at 100 or more, by quarter-hour, against
+the usual median), and how the active cycle compared with the required cycle.
+
+| Evidence | Counts for |
+|---|---|
+| Saturation 10 or more above its usual median, or at 100 or more in 3 or more records | a response to demand |
+| The active cycle within 2 s of the required cycle in most records while it moved (and stability is poorer) | a response to demand (the subsystem adapting); against a subsystem plan decision |
+| The active cycle at least 3 s above the required cycle in half the records or more | a subsystem decision (held by a plan, coordination or a configured minimum) |
+| A constant subsystem cycle while the site's measured cycles varied | a local controller response; against a subsystem decision |
+
+On the samples (10 Nov, 08:00-08:30):
+- 3055: the subsystem cycle stayed at 120 s, above a required cycle of 110 s on average, while the site's own cycles varied from 08:15 and saturation rose from 66 to 93; read as a local controller response.
+- 4864 (critical site of MEN-22): saturation at 100 or more in 10 of 25 records and the active cycle following the required cycle between 70 and 90 s; read as a response to demand, which also accounts for the poorer stability.
+
+`python main.py measure-check --site ... --end ...` lists the tag and field keys of SCATS measurements not yet used
+(`scats_split_plan`, `site_phase`, `site_signal_group`, `intersection_cycle_time`, `link_green_percentage`,
+`congestion`, `hazard`) and the site's records in the period.
+
 ## Not used yet
 
 - `DemandShare`, `SignedGap` and the PerfApproach `Volume`: the PerfApproach volume differs from the link volume used by
@@ -69,6 +92,6 @@ Results on the two sample sites (code wording):
 - `ISI`, `RiskBusiest`: definitions to be confirmed.
 - Usual cycle variation and usual phase shares by quarter-hour (would need the reference weeks on click).
 - The rank's mapping-suspect list still uses the usual 100 % rule: the screening does not read `Phases`.
-- Subsystem measures (degree of saturation, required and active cycle length, plan numbers, critical site, marriage
-  state) and strategic-approach DS: to be added once `subsystem-check` shows which are stored. The site-subsystem map is
-  static (no marriages, no critical site).
+- Split and link plan numbers, marriage state and strategic-approach DS are not in `subsystem_status`;
+  `scats_split_plan` and `site_phase` may hold the plans and phases (`measure-check`). The site-subsystem map is static
+  (no marriages).

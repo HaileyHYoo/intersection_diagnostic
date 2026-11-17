@@ -92,6 +92,78 @@ def shared_cycle(ctx: dict | None, own: dict) -> dict:
     return out
 
 
+STATUS_FIELDS = ("DegreeOfSaturation", "RequiredCycleLength", "ActiveCycleLength")
+
+
+def _status_rows(source, settings, m: dict, period) -> list[dict]:
+    feed = dict(settings.schema["influx"]["fallbacks"]["cycle_length"])
+    feed["filters"] = {feed["region_no_tag"]: str(m["region_no"]), feed["subsystem_no_tag"]: str(m["subsystem"])}
+    rows = source._query("subsystem_status", period.start, period.end, fields=list(STATUS_FIELDS), feed=feed)
+    out = {}
+    for r in rows:
+        e = out.setdefault(str(r["time"]), {"time": r["time"], "critical": r.get("CriticalSite")})
+        e[r["field"]] = r["value"]
+    return [e for e in out.values() if all(isinstance(e.get(f), (int, float)) for f in STATUS_FIELDS)]
+
+
+def _summary(rows: list[dict], period) -> dict | None:
+    """DS, required (RL) and active cycle (CL) of the subsystem over the period and by quarter-hour."""
+    from statistics import median, pstdev
+    from .timewin import to_utc
+    if not rows:
+        return None
+    r1 = lambda x: None if x is None else round(float(x), 1)
+
+    def block(rs):
+        if not rs:
+            return None
+        ds = [r["DegreeOfSaturation"] for r in rs]
+        cl = [r["ActiveCycleLength"] for r in rs]
+        rl = [r["RequiredCycleLength"] for r in rs]
+        return {"records": len(rs), "ds_median": r1(median(ds)), "ds_max": r1(max(ds)),
+                "ds_at_least_100": sum(d >= 100 for d in ds), "rl_mean": r1(sum(rl) / len(rl)),
+                "cl_mean": r1(sum(cl) / len(cl)), "cl_min": r1(min(cl)), "cl_max": r1(max(cl)), "cl_sd": r1(pstdev(cl)),
+                "cl_above_rl": sum(c >= q + 3 for c, q in zip(cl, rl)), "cl_with_rl": sum(abs(c - q) <= 2 for c, q in zip(cl, rl))}
+    start = to_utc(period.start)
+    quarters = [[], []]
+    for r in rows:
+        k = int((to_utc(r["time"]) - start).total_seconds() // 900)
+        if 0 <= k < 2:
+            quarters[k].append(r)
+    crit = next((r["critical"] for r in rows if r.get("critical")), None)
+    return {**block(rows), "critical_site": ids.site(crit) if crit else None, "by_quarter": [block(q) for q in quarters]}
+
+
+def status_context(source, settings, site: str, period, reference: bool = True) -> dict | None:
+    """The subsystem's DS, required and active cycle in the period ("now") and the median of the same values in the
+    reference weeks ("usual"), from subsystem_status (one small query per week). None when not readable."""
+    from statistics import median
+    from .timewin import reference_periods
+    m = membership(site)
+    if not m or not hasattr(source, "_query"):
+        return None
+    try:
+        now = _summary(_status_rows(source, settings, m, period), period)
+    except Exception:  # noqa: BLE001 - supplementary only
+        return None
+    if not now:
+        return None
+    usual, weeks = {}, 0
+    if reference:
+        refs = []
+        for p in reference_periods(period, settings.rules)[0]:
+            try:
+                s = _summary(_status_rows(source, settings, m, p), p)
+            except Exception:  # noqa: BLE001
+                s = None
+            if s:
+                refs.append(s)
+        weeks = len(refs)
+        if weeks >= settings.rules["history"]["min_observations"]:
+            usual = {k: round(median(r[k] for r in refs), 1) for k in ("ds_median", "ds_max", "cl_mean", "rl_mean", "cl_sd")}
+    return {"now": now, "usual": usual, "weeks": weeks}
+
+
 def status_probe(source, settings, site: str, period) -> dict:
     """Every field and tag of the subsystem_status records of the site's subsystem in the period (to see which
     subsystem measures are stored: DS, required and active cycle length, plan numbers, critical site ...), and the
@@ -111,7 +183,8 @@ def status_probe(source, settings, site: str, period) -> dict:
         except Exception as exc:  # noqa: BLE001
             out["records"] = f"{type(exc).__name__}: {exc}"
     influx = getattr(source, "influx", None)
-    for bucket in sorted({f["bucket"] for f in settings.schema["influx"]["sources"].values()} | {feed["bucket"]}):
+    buckets = {f.get("bucket") for f in settings.schema["influx"]["sources"].values()} | {feed["bucket"]}
+    for bucket in sorted(b for b in buckets if b):
         try:
             rows = influx.rows(f'import "influxdata/influxdb/schema"\nschema.measurements(bucket: "{bucket}")')
             out["measurements"][bucket] = sorted(str(r["value"]) for r in rows)

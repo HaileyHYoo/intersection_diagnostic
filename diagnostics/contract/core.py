@@ -182,6 +182,8 @@ def run_diagnosis(inp, source, settings: Settings | None = None, llm=None, audit
     site = adapter.site_from_model(inp.evidence)
     mark = len(getattr(source, "provenance", []))
     control = control or subsystems.context(site["site"], lambda no: None)
+    if control:
+        control["status"] = subsystems.status_context(source, settings, site["site"], period)
     r1 = d001.run(site, period.to_dict(), llm, safe_detail(source, settings, site, period), settings.schema, control)
     r2 = d002.run(source, site, period, settings.rules, llm)
     refs = {"D001": inp.q4_template, "D002": inp.q5_template}

@@ -264,6 +264,8 @@ def findings(ev: dict) -> tuple[str, str, str, str]:
         shown += rd_mod.shift_sentences(ev.get("phase_shifts") or [], ev.get("quarter_view"))
     if rd_mod.control_sentence(ev.get("control")):
         shown.append(rd_mod.control_sentence(ev.get("control")))
+    if rd_mod.status_sentence(ev.get("control"), quarters):
+        shown.append(rd_mod.status_sentence(ev.get("control"), quarters))
     if "readings" not in ev:                            # evidence built without evidence() (tests, old records)
         ev["phase_shifts"] = rd_mod.phase_shifts(ev, ev.get("quarter_view"))
         ev["phase_shares"] = rd_mod.phase_shares(ev, ev.get("quarter_view"))

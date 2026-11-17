@@ -117,4 +117,5 @@ Replace the package again. No contract or page change.
 |---|---|---|
 | `subsystems.py` (new), `contract/core.py`, `service.py` | The diagnosis receives the site's subsystem and the same-run results of the other sites of the subsystem (no new query) | Section 1: a "Control:" sentence |
 | `templates/readings.py` | Readings by control level (subsystem decision, local controller response, demand, unusual demand, data); phase shares solved from the approaches' phases | Section 1, section 4 |
-| `contract/adapter.py` | `q4.supporting_evidence` adds a phase-share item and a `Control` item | Section 2 |
+| `contract/adapter.py` | `q4.supporting_evidence` adds a phase-share item and `Control` items (subsystem, and its saturation, required and active cycle) | Section 2 |
+| `subsystems.py` | On a Red click, reads `scats/subsystem_status` (DS, required and active cycle, critical site) for the period and the reference weeks: about 8 small queries | Section 1 |

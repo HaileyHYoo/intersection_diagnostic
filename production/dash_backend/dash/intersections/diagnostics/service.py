@@ -217,6 +217,8 @@ class DiagnosticsService:
         detail = safe_detail(self.source, self.settings, s, period) if "D001" in templates else None
         sites = {x["site"]: x for x in p["sites"]}
         control = subsystems.context(s["site"], sites.get) if "D001" in templates else None
+        if control:
+            control["status"] = subsystems.status_context(self.source, self.settings, s["site"], period)
         r1 = d001.run(s, p["period"], self.llm, detail, self.settings.schema, control) if "D001" in templates else None
         r2 = d002.run(self.source, s, period, self.settings.rules, self.llm) if "D002" in templates else None
         link_speed = self._link_speed(run, s)

@@ -259,6 +259,9 @@ def control_sentence(ctx: dict | None) -> str | None:
     if not ctx:
         return None
     name = f"subsystem {ctx['subsystem']} of Region {ctx['region']}"
+    crit = ((ctx.get("status") or {}).get("now") or {}).get("critical_site")
+    if crit and not ctx["single_site"]:
+        name += f" (critical site {crit})"
     if ctx["single_site"]:
         return f"Control: the site is the only site of {name}, so its cycle is set from its own measurements."
     parts = []
@@ -270,6 +273,30 @@ def control_sentence(ctx: dict | None) -> str | None:
             .replace("normal", "Normal").replace("grey", "Grey").replace("detector - health", "Detector Health")
         parts.append(f"{o['site']}" + (f" {o['name']}" if o.get("name") else "") + f" ({label}{cyc})")
     return f"Control: {name}, shared with {_and(parts)}; SCATS sets the cycle length and plan per subsystem."
+
+
+def status_sentence(ctx: dict | None, quarters: list[str] | None = None) -> str | None:
+    """The subsystem's degree of saturation (DS), required cycle (RL) and active cycle (CL) in the period."""
+    st = (ctx or {}).get("status")
+    if not st:
+        return None
+    n, u = st["now"], st["usual"]
+    crit = f", critical site {n['critical_site']}" if n.get("critical_site") else ""
+    usual = f" (usual median {u['ds_median']:.0f})" if u.get("ds_median") is not None else ""
+    inner = [] if n["cl_min"] == n["cl_max"] else [f"mean {n['cl_mean']:.1f} s"]
+    if u.get("cl_mean") is not None:
+        inner.append(f"usual {u['cl_mean']:.1f} s")
+    cycle = (f"active cycle constant at {n['cl_mean']:.1f} s" if n["cl_min"] == n["cl_max"]
+             else f"active cycle {n['cl_min']:.0f}-{n['cl_max']:.0f} s") + (f" ({', '.join(inner)})" if inner else "")
+    text = (f"Subsystem {ctx['region']}-{ctx['subsystem']}{crit}: degree of saturation median {n['ds_median']:.0f}"
+            f"{usual}, up to {n['ds_max']:.0f}, at 100 or more in {n['ds_at_least_100']} of {n['records']} records; "
+            f"{cycle} against a required cycle of mean {n['rl_mean']:.1f} s; the active cycle was within 2 s of the "
+            f"required cycle in {n['cl_with_rl']} records and at least 3 s above it in {n['cl_above_rl']}.")
+    q = n.get("by_quarter") or []
+    if quarters and len(q) == 2 and all(q):
+        text += (f" Saturation median by quarter-hour: {quarters[0]} {q[0]['ds_median']:.0f}, {quarters[1]} "
+                 f"{q[1]['ds_median']:.0f}.")
+    return text
 
 
 def timing_sentences(view: dict | None, ev: dict) -> list[str]:
@@ -411,6 +438,32 @@ def readings(ev: dict) -> list[dict]:
         if ctx["single_site"] and cl["status"] == ABNORMAL and cl.get("direction") and \
                 any(d == cl["direction"] for d in traffic.values()):
             pro["demand"].append(f"it is the only site of {name}, so its cycle follows its own measurements")
+    # subsystem state (subsystem_status: DS, required and active cycle)
+    st = (ctx or {}).get("status")
+    if st:
+        n, u = st["now"], st["usual"]
+        if u.get("ds_median") is not None and n["ds_median"] >= u["ds_median"] + 10:
+            pro["demand"].append(f"the subsystem degree of saturation was higher than usual (median {n['ds_median']:.0f} "
+                                 f"against {u['ds_median']:.0f})")
+        elif n["ds_at_least_100"] >= 3:
+            pro["demand"].append(f"the subsystem degree of saturation reached 100 or more in {n['ds_at_least_100']} of "
+                                 f"{n['records']} records")
+        follows = n["cl_with_rl"] >= 0.6 * n["records"]
+        if (cl["status"] == ABNORMAL or cs["status"] == ABNORMAL) and follows and n["cl_sd"] >= 3:
+            why = (f"the active cycle followed the required cycle, which SCATS sets from saturation, between "
+                   f"{n['cl_min']:.0f} and {n['cl_max']:.0f} s")
+            pro["demand"].append(why + (", which accounts for the poorer stability" if cs["status"] == ABNORMAL else ""))
+            con["plan"].append(why)
+        if n["cl_above_rl"] >= 0.5 * n["records"]:
+            pro["plan"].append(f"the active cycle ({n['cl_mean']:.1f} s) stayed at least 3 s above the required cycle "
+                               f"(mean {n['rl_mean']:.1f} s) in {n['cl_above_rl']} of {n['records']} records, so it was "
+                               "held by a plan, coordination or a configured minimum rather than by saturation")
+        cv = [v for v in ((view or {}).get("cycle_cv_pct") or []) if v is not None]
+        if cv and max(cv) > 2 and n["cl_sd"] <= 1:
+            pro["other_phases"].append(f"the subsystem's active cycle stayed at {n['cl_mean']:.1f} s while the site's "
+                                       f"measured cycles varied (cycle variation up to {max(cv):.1f}%), so the variation "
+                                       "arose at the site")
+            con["plan"].append(f"the subsystem's active cycle did not change ({n['cl_mean']:.1f} s)")
     # plan or coordination change (a cycle change matched by volume is read as demand above)
     if cl["status"] == ABNORMAL and not traffic:
         pro["plan"].append(f"cycle length {cl.get('current')} s against a usual {cl.get('usual')} s with no volume change")

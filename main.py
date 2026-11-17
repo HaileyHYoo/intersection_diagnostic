@@ -20,6 +20,7 @@
     python main.py export-run --run ID               the run's screening log and baseline snapshot as plain JSON files
     python main.py kpi-check --site 707 --end 2026-10-30T15:30 [--references 3]   every stored PerfKpi/PerfApproach field
     python main.py subsystem-check --site 4864 --end 2026-11-10T08:30   subsystem_status fields and SCATS measurements
+    python main.py measure-check --site 4864 --end 2026-11-10T08:30     unused SCATS measurements: keys and the site's records
     python main.py site-history --site 4397 --from 2026-10-01 --to 2026-10-31   categories over screened periods
     python main.py watch                             (later extension) screen every new period as it completes
     python main.py backfill --from ... --to ...      (later extension) screen past periods one by one
@@ -435,6 +436,23 @@ def cmd_subsystem_check(args):
         print("Saved:", path)
 
 
+def cmd_measure_check(args):
+    from diagnostics.local import measure_check
+    from diagnostics.settings import Settings
+    from diagnostics.sources.live import LiveSource
+    from diagnostics.timewin import latest_period, period_ending
+    settings = Settings()
+    period = period_ending(args.end, settings.rules) if args.end else latest_period(settings.rules)
+    source = LiveSource(settings)
+    for site in args.site:
+        c = measure_check.check(source, settings, site, period)
+        print(measure_check.text(c))
+        path = Path(args.out_dir) / f"measure_check_{c['site']}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(c, indent=2, default=str), encoding="utf-8")
+        print("Saved:", path)
+
+
 def cmd_kpi_check(args):
     from diagnostics.local import inspect_data
     from diagnostics.settings import Settings
@@ -623,6 +641,12 @@ def main(argv=None) -> int:
     p.add_argument("--end", help="period end (default: the latest completed period)")
     p.add_argument("--out-dir", default=str(ROOT / "out"))
     p.set_defaults(func=cmd_subsystem_check)
+
+    p = sub.add_parser("measure-check", help="unused SCATS measurements: tag/field keys and a site's records")
+    p.add_argument("--site", nargs="+", required=True)
+    p.add_argument("--end", help="period end (default: the latest completed period)")
+    p.add_argument("--out-dir", default=str(ROOT / "out"))
+    p.set_defaults(func=cmd_measure_check)
 
     p = sub.add_parser("kpi-check", help="every stored IntersectionPerfKpi / IntersectionPerfApproach field for a site")
     p.add_argument("--site", required=True)

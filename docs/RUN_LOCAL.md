@@ -130,3 +130,10 @@ python main.py subsystem-check --site 3055 4864 --end 2026-11-10T08:30
 
 Prints every stored `subsystem_status` field for each site's subsystem in the period and the measurements of the
 SCATS buckets; saves `out/subsystem_check_<site>.json`.
+
+```bash
+python main.py measure-check --site 4864 --end 2026-11-10T08:30
+```
+
+Lists the tag and field keys of SCATS measurements not yet used and the site's records in the period; saves
+`out/measure_check_<site>.json`.
