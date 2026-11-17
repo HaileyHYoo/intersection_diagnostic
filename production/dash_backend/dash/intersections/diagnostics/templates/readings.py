@@ -546,8 +546,9 @@ def reading_lines(table: list[dict]) -> tuple[str, str, str]:
         main += ", although " + "; ".join(top["against"])
     others = []
     for r in table[1:]:
-        parts = [f"for: {'; '.join(r['for'])}"] + ([f"against: {'; '.join(r['against'])}"] if r["against"] else [])
-        others.append(f"{r['name']} ({r['strength'].lower()}; {'; '.join(parts)})")
+        # one clause each: the main point against, or the main point for (the full lists are in the evidence)
+        why = f"against: {r['against'][0]}" if r["against"] else f"for: {r['for'][0]}"
+        others.append(f"{r['name']} ({r['strength'].lower()}; {why})")
     return top["strength"], main + ".", ("; ".join(others) + ".") if others else "no other reading is supported by these data."
 
 

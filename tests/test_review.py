@@ -56,7 +56,7 @@ class Q4WordingTests(unittest.TestCase):
         a = d001.written(ev)
         self.assertIn("A subsystem decision (cycle, plan or coordination): volume is lower on Q St [W] but higher on Q St [E], so the "
                       "shorter cycle is not clearly a response to demand.", a["diagnosis"])
-        self.assertIn("a response to demand (weak; for: ", a["diagnosis"])
+        self.assertIn("a response to demand (weak; against: volume is lower", a["diagnosis"])
         self.assertIn("against: volume is lower", a["diagnosis"])
         self.assertNotIn("shortening the cycle", a["diagnosis"])
         self.assertEqual(llm_problems(a), [])
