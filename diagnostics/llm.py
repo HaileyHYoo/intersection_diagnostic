@@ -165,6 +165,6 @@ def word(llm, system: str, user: str, keys: list[str], evidence: dict, fallback:
     problems = check(answer, keys, allowed_numbers(evidence, fallback), required, reference)
     if not problems and validate is not None:
         problems = validate(answer)                     # template-specific factual checks
-    if problems:
-        return {"answer": fallback, "generated_by": "code", "rejected": "; ".join(problems)}
+    if problems:                                        # the raw answer is kept for review (audit record)
+        return {"answer": fallback, "generated_by": "code", "rejected": "; ".join(problems), "llm_raw": str(raw)[:6000]}
     return {"answer": {k: answer[k] for k in keys}, "generated_by": f"llm:{getattr(llm, 'model', '')}", "rejected": None}

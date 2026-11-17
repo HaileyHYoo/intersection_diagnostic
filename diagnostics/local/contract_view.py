@@ -34,7 +34,8 @@ def wording(svc, report) -> dict:
     if not audits:
         return {}
     templates = audits[-1].get("templates", {})            # get_audits returns the payload's keys at top level
-    return {k: {"generated_by": t.get("generated_by"), "rejected": t.get("rejected")} for k, t in templates.items()}
+    return {k: {"generated_by": t.get("generated_by"), "rejected": t.get("rejected"),
+                **({"llm_raw": t["llm_raw"]} if t.get("llm_raw") else {})} for k, t in templates.items()}
 
 
 def page(report) -> str:

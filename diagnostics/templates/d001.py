@@ -387,8 +387,8 @@ def written(ev: dict) -> dict:
 SYSTEM = """You write the SCATS diagnostic interpretation for one intersection flagged Red by deterministic screening.
 Use only the evidence JSON and the draft answer. The evidence has a table of readings ("readings"), ranked by the
 code with a strength of evidence; the first one is the most likely reading. Rules:
-- diagnosis: three lines, starting exactly with the draft's labels: "What the data show:", "Most likely reading
-  (evidence: <strength>):" with the strength written in the draft, and "Other readings:".
+- The diagnosis is returned in three parts, without their labels (the code adds them): what_the_data_show,
+  most_likely_reading (starting with the name of the first reading, e.g. "Green given to ..."), other_readings.
   * What the data show: the findings, then when they happen (quarter-hours) and which phases gained or lost green,
     when the draft gives them. Lead with the most important finding.
   * Most likely reading: name the first reading exactly as written in the table (e.g. "green given to other
@@ -418,7 +418,8 @@ code with a strength of evidence; the first one is the most likely reading. Rule
   groups as "phases A and C", not "phases A,C".
 - Write plain English: no field names or codes such as HIGH, LOW, POORER, abnormal_high, Q3C or other_phases, and do
   not mention "the table", "the evidence JSON" or "the draft".
-Return JSON with keys: diagnosis (string), supporting_evidence (list of strings), suggested_checks (list of strings)."""
+Return JSON with keys: what_the_data_show (string), most_likely_reading (string), other_readings (string),
+supporting_evidence (list of strings), suggested_checks (list of strings)."""
 
 
 def run(site: dict, period: dict, llm=None, detail: dict | None = None, schema: dict | None = None,
@@ -429,12 +430,14 @@ def run(site: dict, period: dict, llm=None, detail: dict | None = None, schema: 
     ev = evidence(site, period, detail, schema, control)
     draft = written(ev)
     labels = d001_labels((ev["readings"][0]["strength"]) if ev["readings"] else "Weak")
-    user = json.dumps({"question": spec["question"], "evidence": ev, "draft_answer": draft}, ensure_ascii=False)
+    parts = split_parts(draft["diagnosis"], labels)
+    shown = {**{k: v for k, v in draft.items() if k != "diagnosis"}, **parts}
+    user = json.dumps({"question": spec["question"], "evidence": ev, "draft_answer": shown}, ensure_ascii=False)
     named = [a["approach"] for a in ev["traffic"]["abnormal_approaches"] + ev["signal"]["phase_service"]["abnormal_approaches"]]
     worded = llm_mod.word(llm, SYSTEM, user, ["diagnosis", "supporting_evidence", "suggested_checks"], ev, draft,
                           required={"diagnosis": named + labels, "supporting_evidence": named},
                           validate=lambda answer: contradictions(answer, ev) + kept_points(answer, ev) + causal(answer),
-                          prepare=lambda answer: normalise_labels(answer, labels))
+                          prepare=lambda answer: assemble_parts(answer, labels))
     worded["answer"]["diagnosis"] = lines(worded["answer"]["diagnosis"], labels)
     return {"template_id": TEMPLATE, "template_version": spec["version"], "question": spec["question"],
             "evidence": ev, "method_note": METHOD_NOTE, **worded}
@@ -444,6 +447,34 @@ MAIN_LABEL = re.compile(r"most\s+likely\s+reading\s*(?:\(\s*(?:strength\s+of\s+)
                         r"(strong|moderate|weak)(?:\s+evidence)?\s*\))?\s*[:\-–]", re.I)
 OTHER_LABEL = re.compile(r"other\s+readings\s*[:\-–]", re.I)
 DATA_LABEL = re.compile(r"what\s+the\s+data\s+show\s*[:\-–]", re.I)
+
+
+PARTS = ("what_the_data_show", "most_likely_reading", "other_readings")
+
+
+def split_parts(diagnosis: str, labels: list[str]) -> dict:
+    """The code's diagnosis as the three parts the LLM rewrites (without labels)."""
+    text = lines(diagnosis, labels)
+    out, keys = {}, dict(zip(labels, PARTS))
+    for line in text.split("\n"):
+        for label, key in keys.items():
+            if line.startswith(label):
+                out[key] = line[len(label):].strip()
+    return out
+
+
+def assemble_parts(answer: dict, labels: list[str]) -> dict:
+    """The LLM's three parts joined under the code's labels (no label for the LLM to misspell; seen live at SCATS
+    4864, where answers were rejected for their labels only). An answer with a single 'diagnosis' is normalised."""
+    if all(isinstance(answer.get(k), str) and answer[k].strip() for k in PARTS):
+        clean = {}
+        for k, label, pattern in zip(PARTS, labels, (DATA_LABEL, MAIN_LABEL, OTHER_LABEL)):
+            v = answer[k].strip()
+            m = pattern.match(v)                        # a label written anyway at the start is dropped
+            clean[k] = v[m.end():].strip() if m else v
+        answer = {**answer, "diagnosis": "\n".join(f"{label} {clean[k]}" for k, label in zip(PARTS, labels))}
+        return answer
+    return normalise_labels(answer, labels)
 
 
 def normalise_labels(answer: dict, labels: list[str]) -> dict:

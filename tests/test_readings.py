@@ -231,7 +231,7 @@ class LabelNormalisationTests(unittest.TestCase):
         text = "What the data show: x\nMost likely reading (evidence: Strong): y\nOther readings: z"
         self.assertEqual(d001.normalise_labels({"diagnosis": text}, d001_labels("Moderate"))["diagnosis"], text)
 
-    def test_llm_answer_with_variant_labels_is_accepted(self):
+    def test_llm_answer_in_parts_is_accepted(self):
         import json as _json
         from diagnostics.templates.d001 import run
 
@@ -240,9 +240,38 @@ class LabelNormalisationTests(unittest.TestCase):
 
             def complete(self, system, user):
                 draft = _json.loads(user)["draft_answer"]
-                d = draft["diagnosis"].replace("Most likely reading (evidence: Moderate):",
-                                               "most likely reading (Moderate):").replace("Other readings:", "Other readings -")
-                return _json.dumps({**draft, "diagnosis": d})
+                # parts returned, one with a label written anyway: the code's labels are used
+                return _json.dumps({**draft, "most_likely_reading": "Most likely reading (Moderate): "
+                                                                    + draft["most_likely_reading"]})
         r = run(SITE, {"local": "p"}, LLM(), detail(), None, subsystems.context("3055", lambda no: None))
         self.assertEqual((r["generated_by"], r["rejected"]), ("llm:stub", None))
-        self.assertIn("\nMost likely reading (evidence: Moderate): ", r["answer"]["diagnosis"])
+        self.assertIn("\nMost likely reading (evidence: Moderate): A local controller response", r["answer"]["diagnosis"])
+        self.assertEqual(r["answer"]["diagnosis"].count("Most likely reading"), 1)
+
+    def test_legacy_single_diagnosis_with_variant_labels_is_accepted(self):
+        import json as _json
+        from diagnostics.templates.d001 import run
+
+        class LLM:
+            model = "stub"
+
+            def complete(self, system, user):
+                d = _json.loads(user)["draft_answer"]
+                text = (f"What the data show: {d['what_the_data_show']}\nmost likely reading (Moderate): "
+                        f"{d['most_likely_reading']}\nOther readings - {d['other_readings']}")
+                return _json.dumps({"diagnosis": text, "supporting_evidence": d["supporting_evidence"],
+                                    "suggested_checks": d["suggested_checks"]})
+        r = run(SITE, {"local": "p"}, LLM(), detail(), None, subsystems.context("3055", lambda no: None))
+        self.assertEqual((r["generated_by"], r["rejected"]), ("llm:stub", None))
+
+    def test_a_rejected_answer_is_kept_for_review(self):
+        from diagnostics.templates.d001 import run
+
+        class LLM:
+            model = "stub"
+
+            def complete(self, system, user):
+                return '{"diagnosis": "nothing useful"}'
+        r = run(SITE, {"local": "p"}, LLM(), detail(), None, None)
+        self.assertEqual(r["generated_by"], "code")
+        self.assertEqual(r["llm_raw"], '{"diagnosis": "nothing useful"}')
