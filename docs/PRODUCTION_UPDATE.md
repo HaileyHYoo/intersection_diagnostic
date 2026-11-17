@@ -119,3 +119,7 @@ Replace the package again. No contract or page change.
 | `templates/readings.py` | Readings by control level (subsystem decision, local controller response, demand, unusual demand, data); phase shares solved from the approaches' phases | Section 1, section 4 |
 | `contract/adapter.py` | `q4.supporting_evidence` adds a phase-share item and `Control` items (subsystem, and its saturation, required and active cycle) | Section 2 |
 | `subsystems.py` | On a Red click, reads `scats/subsystem_status` (DS, required and active cycle, critical site) for the period and the reference weeks: about 8 small queries | Section 1 |
+| `templates/readings.py`, `templates/d001.py` | Readings calibrated on the 83 Red sites of the AM peak of 10 Nov 2026 (weighted points, no 5-week cap); the LLM returns the three diagnosis parts and the code adds the labels | Section 1 |
+
+Unchanged by these updates: the screening, the categories, the baseline version (`v1.1-f6389e86dc`) and the
+methodology switches, which stay off (`history.extend_beyond_weeks`, `history.school_holidays`, `q1.min_count_noise_sd`).
