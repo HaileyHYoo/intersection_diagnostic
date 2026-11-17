@@ -80,7 +80,7 @@ def download(url: str, params: dict, timeout: float = 120) -> bytes:
         detail = ""
         if code is not None and hasattr(exc, "read"):
             try:                                                 # TomTom explains a rejection in the body
-                body = exc.read()[:300].decode("utf-8", "replace")
+                body = exc.read()[:300].decode("utf-8", "replace")  # pylint: disable=no-member  # HTTPError
                 detail = ": " + " ".join(body.replace(query.get("key", "\0"), "***").split())[:200] if body.strip() else ""
             except Exception:  # noqa: BLE001
                 detail = ""
