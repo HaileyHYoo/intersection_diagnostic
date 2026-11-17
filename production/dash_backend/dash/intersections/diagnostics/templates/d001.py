@@ -396,7 +396,8 @@ code with a strength of evidence; the first one is the most likely reading. Rule
     volume rose in the first quarter-hour, then the cycle varied and the green moved in the second). Mention its
     points "against" if any. Be direct: "is most consistent with", "points to". Never state a cause as proven and
     never use "caused", "because of", "due to" or "proves".
-  * Other readings: each other reading of the table, with why it is weaker (its points against, or its few points).
+  * Other readings: each other reading, in one short clause, with why it is weaker (its main point against, or
+    that it rests on few points); do not repeat every point.
 - Do not add a reading that is not in the table, change the order or the strength, or add causes that are not in the
   evidence or the draft.
 - supporting_evidence: the measurements only (current, usual, normal range, difference, quarter-hour values, phase
@@ -413,6 +414,8 @@ code with a strength of evidence; the first one is the most likely reading. Rule
   within its normal range unless the position says so.
 - Keep the exact words "the opposite of a demand response" where the draft uses them; keep a mapping caveat and a
   detector under-count caveat where the draft has them.
+- Write every volume with its unit (veh/30 min or vehicles per 15 minutes), times in s and shares in %; write phase
+  groups as "phases A and C", not "phases A,C".
 - Write plain English: no field names or codes such as HIGH, LOW, POORER, abnormal_high, Q3C or other_phases, and do
   not mention "the table", "the evidence JSON" or "the draft".
 Return JSON with keys: diagnosis (string), supporting_evidence (list of strings), suggested_checks (list of strings)."""

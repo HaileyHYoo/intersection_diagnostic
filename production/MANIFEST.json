@@ -39,7 +39,7 @@
     "subsystems.py": "e4c15beefaa982e9a5d845561d250c6dc430c47a6393715fc737851984d3945c",
     "templates/__init__.py": "878f67d235883ef44246e5b6a41d03985d6641496bbea59100618f81929a2670",
     "templates/catalog.json": "ae55405c8a8801b2205cc6033903e1bc3d6b8afcfc7e1ca5791fe4eaea52dafe",
-    "templates/d001.py": "2658e27990759a9e54dd1511f98fa107a15c5d28701eedfcccb0ab6f96184927",
+    "templates/d001.py": "b3dbaa2289e1cb8540f06eb1f5f0fd53b596a3c6dc60b799c1e9d046afccb929",
     "templates/d002.py": "3a027697fd65768bdd80f3bc6c0e45871fc9909a929062541ee7a50d7b3d39b1",
     "templates/readings.py": "416679e5f79c07b9fff462e3603a8110ec6b7de5f41067362925b492dca6deb9",
     "timewin.py": "22c0522b2d475afdbe79b9fcbbde879d235aea2bb7b02ad040a7a93eddfbe416",
