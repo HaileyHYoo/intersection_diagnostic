@@ -391,7 +391,7 @@ code with a strength of evidence; the first one is the most likely reading. Rule
 - The diagnosis is returned in three parts, without their labels (the code adds them): what_the_data_show,
   most_likely_reading (starting with the name of the first reading, e.g. "Green given to ..."), other_readings.
   * What the data show: the findings, then when they happen (quarter-hours) and which phases gained or lost green,
-    when the draft gives them. Lead with the most important finding.
+    when the draft gives them. Lead with the most important finding. At most six sentences.
   * Most likely reading: name the first reading exactly as written in the table (e.g. "green given to other
     phases") and explain it from its points "for", connecting them in time order where the evidence allows (e.g. the
     volume rose in the first quarter-hour, then the cycle varied and the green moved in the second). Mention its
@@ -414,6 +414,9 @@ code with a strength of evidence; the first one is the most likely reading. Rule
 - For cycle length and cycle stability, state the position given in the evidence ("position"); never call a value
   within its normal range unless the position says so.
 - If the draft says "The evidence is close", keep that point in most_likely_reading.
+- The change from usual is the 30-minute value against its usual value (e.g. 420 against 215.5 veh/30 min).
+  Quarter-hour values show when a change happened within the period; never present the difference between the two
+  quarter-hours as the change from usual.
 - Keep the exact words "the opposite of a demand response" where the draft uses them; keep a mapping caveat and a
   detector under-count caveat where the draft has them.
 - Write every volume with its unit (veh/30 min or vehicles per 15 minutes), times in s and shares in %; write phase
