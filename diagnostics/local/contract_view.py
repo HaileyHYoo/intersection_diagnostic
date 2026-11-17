@@ -79,11 +79,20 @@ def page(report) -> str:
     return "\n".join(lines)
 
 
-def save(report, run_id: str, out_dir) -> tuple[Path, Path]:
+def save(report, run_id: str, out_dir, wording: dict | None = None) -> tuple[Path, Path]:
+    """wording (who wrote each answer, why an LLM answer was rejected) is not in the contract: it is saved under
+    "_local_wording" in the JSON and at the end of the page view, for review only."""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     base = out / f"contract_report_{run_id}_{report.site_no}"
     data = json.loads(report.model_dump_json())
+    if wording:
+        data["_local_wording"] = wording
     base.with_suffix(".json").write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    base.with_suffix(".md").write_text(page(report) + "\n", encoding="utf-8")
+    text = page(report)
+    if wording:
+        text += "\n\n## Wording (local review only)\n\n" + "\n".join(
+            f"- {k}: written by {w['generated_by']}" + (f"; LLM answer rejected: {w['rejected']}" if w["rejected"] else "")
+            for k, w in wording.items())
+    base.with_suffix(".md").write_text(text + "\n", encoding="utf-8")
     return base.with_suffix(".json"), base.with_suffix(".md")
