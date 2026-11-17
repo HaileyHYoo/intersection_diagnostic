@@ -9,7 +9,7 @@ import json
 import re
 
 from .. import llm as llm_mod
-from ..stats import ABNORMAL, NORMAL
+from ..stats import ABNORMAL, INSUFFICIENT, NORMAL
 from . import definition
 from . import readings as rd_mod
 from ..layout import D001_LABELS, d001_labels, lines
@@ -33,7 +33,8 @@ def decimals(row: dict) -> int:
     return 3
 
 
-def evidence(site: dict, period: dict, detail: dict | None = None, schema: dict | None = None) -> dict:
+def evidence(site: dict, period: dict, detail: dict | None = None, schema: dict | None = None,
+             control: dict | None = None) -> dict:
     """The diagnosis evidence: the saved 30-minute results and, when read on click (detail.py), the quarter-hour
     view, the phases serving each approach and the table of readings."""
     q1, q3 = site["q1"], site["q3"]
@@ -86,8 +87,12 @@ def evidence(site: dict, period: dict, detail: dict | None = None, schema: dict 
                                 for d in q2.get("tolerated") or []],
         "min_history": min(weeks) if weeks else None,
         "quarter_view": view,
+        "control": control,
+        "phase_service_all": [{"approach": approach_label(a), "current": r1(a["current"]), "usual": r1(a["usual"])}
+                              for a in comps["phase_service"]["approaches"] if a["status"] != INSUFFICIENT],
     }
     ev["phase_shifts"] = rd_mod.phase_shifts(ev, view)
+    ev["phase_shares"] = rd_mod.phase_shares(ev, view)
     ev["readings"] = rd_mod.readings(ev)
     return ev
 
@@ -247,10 +252,21 @@ def findings(ev: dict) -> tuple[str, str, str, str]:
     elif groups and traffic:
         shown.append("The phase-service finding is on a different approach from the traffic finding.")
 
+    a1 = opposite_approaches(ev)
+    if a1:
+        shown.append(f"Less green to {_and(a1)} while {'its' if len(a1) == 1 else 'their'} volume is higher is "
+                     f"{OPPOSITE} for {'that approach' if len(a1) == 1 else 'those approaches'}.")
     shown += rd_mod.timing_sentences(ev.get("quarter_view"), ev)
-    shown += rd_mod.shift_sentences(ev.get("phase_shifts") or [], ev.get("quarter_view"))
+    quarters = (ev.get("quarter_view") or {}).get("quarters")
+    if ev.get("phase_shares"):                          # with mixed splits: the current shares only
+        shown += rd_mod.phase_share_sentences(ev["phase_shares"], quarters)
+    else:
+        shown += rd_mod.shift_sentences(ev.get("phase_shifts") or [], ev.get("quarter_view"))
+    if rd_mod.control_sentence(ev.get("control")):
+        shown.append(rd_mod.control_sentence(ev.get("control")))
     if "readings" not in ev:                            # evidence built without evidence() (tests, old records)
         ev["phase_shifts"] = rd_mod.phase_shifts(ev, ev.get("quarter_view"))
+        ev["phase_shares"] = rd_mod.phase_shares(ev, ev.get("quarter_view"))
         ev["readings"] = rd_mod.readings(ev)
     strength, main, others = rd_mod.reading_lines(ev["readings"])
     main = main[0].upper() + main[1:]
@@ -308,7 +324,8 @@ def written(ev: dict) -> dict:
         vols = [f"{k} {v[0]:.0f}, {v[1]:.0f}" for k, v in view["volume"].items() if k in flagged and None not in v]
         if vols:
             support.append(f"Volume by quarter-hour ({q[0]}, {q[1]}; vehicles per 15 minutes): " + "; ".join(vols) + ".")
-    support += rd_mod.shift_sentences(ev.get("phase_shifts") or [], view)
+    support += (rd_mod.phase_share_sentences(ev["phase_shares"], (view or {}).get("quarters")) if ev.get("phase_shares")
+                else rd_mod.shift_sentences(ev.get("phase_shifts") or [], view))
 
     traffic = {a["approach"]: a["direction"] for a in t["abnormal_approaches"]}
     service = {a["approach"]: a["direction"] for a in ps["abnormal_approaches"]}
@@ -398,10 +415,12 @@ code with a strength of evidence; the first one is the most likely reading. Rule
 Return JSON with keys: diagnosis (string), supporting_evidence (list of strings), suggested_checks (list of strings)."""
 
 
-def run(site: dict, period: dict, llm=None, detail: dict | None = None, schema: dict | None = None) -> dict:
-    """detail: the quarter-hour records read on click (detail.safe_detail); None writes from the 30-minute values."""
+def run(site: dict, period: dict, llm=None, detail: dict | None = None, schema: dict | None = None,
+        control: dict | None = None) -> dict:
+    """detail: the quarter-hour records read on click (detail.safe_detail); control: the subsystem context
+    (subsystems.context). Without them the report is written from the 30-minute values."""
     spec = definition(TEMPLATE)
-    ev = evidence(site, period, detail, schema)
+    ev = evidence(site, period, detail, schema, control)
     draft = written(ev)
     labels = d001_labels((ev["readings"][0]["strength"]) if ev["readings"] else "Weak")
     user = json.dumps({"question": spec["question"], "evidence": ev, "draft_answer": draft}, ensure_ascii=False)

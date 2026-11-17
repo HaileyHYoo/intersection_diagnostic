@@ -139,7 +139,10 @@ def score(site: dict, rules: dict, persistence: int | None = None) -> dict:
     if tolerated:
         reasons.append("one detector tolerated")
     suspect = mapping_suspect(fs)
-    return {"site": site["site"], "name": site.get("name"), "category": site["category"], "score": round(total, 2),
+    from .subsystems import membership
+    m = membership(site["site"])
+    return {"subsystem": f"{m['region']}-{m['subsystem']}" if m else None,
+            "subsystem_sites": len(m["members"]) if m else None, "site": site["site"], "name": site.get("name"), "category": site["category"], "score": round(total, 2),
             "severity": round(severity, 2), "impact": round(impact, 2), "volume_veh_h": volume,
             "type_factor": type_factor, "confidence": round(confidence, 2), "persistence": persistence,
             "persistence_factor": persist, "findings": len(fs), "opposite_direction": opp, "min_history": min(weeks) if weeks else None,

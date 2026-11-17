@@ -120,3 +120,13 @@ Options:
 - `--rescreen`: screen again instead of reusing stored runs.
 
 The rule is in `docs/RANKING_AND_SWITCHES_2026-11.md`, section 4.
+
+
+## Subsystem data check
+
+```bash
+python main.py subsystem-check --site 3055 4864 --end 2026-11-10T08:30
+```
+
+Prints every stored `subsystem_status` field for each site's subsystem in the period and the measurements of the
+SCATS buckets; saves `out/subsystem_check_<site>.json`.

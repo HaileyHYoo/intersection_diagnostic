@@ -20,7 +20,7 @@ from ..timewin import period_ending
 from . import examples
 from .report_audit import _slug
 
-COLUMNS = ["rank", "category", "site", "name", "score", "severity", "impact", "volume_veh_h", "type_factor",
+COLUMNS = ["rank", "category", "site", "name", "subsystem", "subsystem_sites", "score", "severity", "impact", "volume_veh_h", "type_factor",
            "confidence", "persistence", "persistence_factor", "findings", "min_history", "tolerated_detector",
            "opposite_direction", "mapping_suspect", "reasons"]
 TITLES = {"red": "Red", "amber_traffic": "Amber - traffic", "amber_signal": "Amber - signal"}
@@ -73,14 +73,40 @@ def checks(rows: list[dict], sites: dict[str, dict], top: int) -> list[str]:
 
 
 def _table(rows: list[dict]) -> list[str]:
-    out = ["| # | Site | Intersection | Score | Severity | Impact | veh/h | Factors | Reasons |",
-           "|---|---|---|---|---|---|---|---|---|"]
+    out = ["| # | Site | Intersection | Subsystem | Score | Severity | Impact | veh/h | Factors | Reasons |",
+           "|---|---|---|---|---|---|---|---|---|---|"]
     for r in rows:
         factors = f"type {r['type_factor']:g}, conf {r['confidence']:g}, pers {r['persistence_factor']:g}"
-        out.append(f"| {r.get('rank', '')} | {r['site']} | {r['name'] or ''} | {r['score']:.2f} | {r['severity']:.2f} | "
+        sub = f"{r['subsystem']} ({r['subsystem_sites']} sites)" if r.get("subsystem") else "-"
+        out.append(f"| {r.get('rank', '')} | {r['site']} | {r['name'] or ''} | {sub} | {r['score']:.2f} | {r['severity']:.2f} | "
                    f"{r['impact']:.2f} | {'' if r['volume_veh_h'] is None else round(r['volume_veh_h'])} | {factors} | "
                    f"{'; '.join(r['reasons'] + r['mapping_suspect'])} |")
     return out
+
+
+def subsystem_groups(ranked: dict, payload: dict) -> list[str]:
+    """Subsystems with two or more Red or Amber sites in the period: SCATS sets the cycle and plan per subsystem, so
+    these are read together (one subsystem decision can show at several sites)."""
+    from ..subsystems import membership
+    cats = {s["site"]: s["category"] for s in payload["sites"]}
+    groups = {}
+    for c, rows in ranked.items():
+        for r in rows:
+            if r.get("subsystem"):
+                groups.setdefault(r["subsystem"], []).append(r)
+    lines = ["| Subsystem | Sites in subsystem | Red / Amber sites (rank in its category) | Other sites |", "|---|---|---|---|"]
+    n = 0
+    for key, rows in sorted(groups.items(), key=lambda kv: (-len(kv[1]), kv[0])):
+        if len(rows) < 2:
+            continue
+        n += 1
+        members = membership(rows[0]["site"])["members"]
+        flagged = {r["site"] for r in rows}
+        shown = "; ".join(f"{r['site']} {r['name'] or ''} ({TITLES.get(r['category'], r['category'])}"
+                          + (f" #{r['rank']}" if r.get("rank") else ", mapping-suspect") + ")" for r in rows)
+        others = ", ".join(f"{m} ({cats.get(m, 'not screened')})" for m in members if m not in flagged) or "-"
+        lines.append(f"| {key} | {len(members)} | {shown} | {others} |")
+    return lines if n else ["(no subsystem has two or more Red or Amber sites)"]
 
 
 def previous_runs(svc, end: str, weeks: int, rescreen: bool, progress) -> list[dict | None]:
@@ -146,7 +172,10 @@ def run(svc, periods: list[tuple[str, str]], out_dir, top: int = 20, persistence
             if ranked[c]:
                 progress(f"  {TITLES[c]} top 5: " + ", ".join(f"{r['site']} ({r['score']:.1f})" for r in ranked[c][:5]))
         page += [f"## Mapping-suspect (not ranked) - {len(ranked['mapping_suspect'])}", "",
-                 *_table(ranked["mapping_suspect"]), ""]
+                 *_table(ranked["mapping_suspect"]), "",
+                 "## Subsystems with two or more Red or Amber sites", "",
+                 "SCATS sets the cycle length and plan per subsystem: these sites are best read together.", "",
+                 *subsystem_groups(ranked, payload), ""]
         (folder / "ranked.md").write_text("\n".join(page), encoding="utf-8")
         (folder / "ranked.html").write_text(examples.to_html("\n".join(page), f"{label} - ranked sites"), encoding="utf-8")
     summary += ["", "## Checks of the ranking", "", *sections]

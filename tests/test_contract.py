@@ -264,7 +264,7 @@ class CoreTests(unittest.TestCase):
         base = ["Reference"] + ["Q1"] * 4 + ["Q3A", "Q3B"] + ["Q3C"] * 5
         self.assertEqual([e.source for e in ev][:len(base)], base)
         # then the quarter-hour view read on click (17 Nov 2026)
-        self.assertTrue(all("by quarter-hour" in e.statement for e in ev[len(base):]))
+        self.assertTrue(all("by quarter-hour" in e.statement or e.source == "Control" for e in ev[len(base):]))
         self.assertIn(d001_note(), d.q4.limitations)
         self.assertTrue(ev[0].statement.startswith("Reference: Tuesdays 08:00-08:30 in the 8 weeks 2026-09-01 to 2026-10-20 (8 used)"))
         self.assertTrue(ev[1].statement.endswith("outside its normal range."))

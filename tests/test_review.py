@@ -35,7 +35,8 @@ class Q4WordingTests(unittest.TestCase):
         self.assertNotIn(d001.ADAPTIVE, a["diagnosis"])                # said once per report (method note)
         self.assertIn("\nMost likely reading (evidence: Moderate): A response to demand: a longer cycle with higher "
                       "volume on A St [N].", a["diagnosis"])
-        self.assertIn("\nOther readings: A plan or coordination change (moderate; for: the usually fixed cycle varied",
+        self.assertIn("\nOther readings: A subsystem decision (cycle, plan or coordination) (moderate; for: the usually "
+                      "fixed cycle varied",
                       a["diagnosis"])
         self.assertTrue(a["diagnosis"].startswith("What the data show: Traffic differs"))
         self.assertTrue(a["suggested_checks"][0].startswith("Verify whether the longer cycle was SCATS's adaptive "
@@ -45,15 +46,15 @@ class Q4WordingTests(unittest.TestCase):
 
     def test_cycle_change_without_matching_demand(self):
         ev = evidence(traffic=[("A St [N]", "LOW")], cycle=measure(ABNORMAL, "HIGH", 130.0), traffic_only=["A St [N]"])
-        self.assertIn("Most likely reading (evidence: Moderate): A plan or coordination change: the longer cycle is "
-                      "not matched by higher volume.", d001.written(ev)["diagnosis"])
+        self.assertIn("Most likely reading (evidence: Moderate): A subsystem decision (cycle, plan or coordination): "
+                      "the longer cycle is not matched by higher volume.", d001.written(ev)["diagnosis"])
 
     def test_cycle_change_with_volume_moving_both_ways(self):
         """SCATS 1037, 10 Nov 2026: shorter cycle, volume lower on [W] but higher on [E]."""
         ev = evidence(traffic=[("Q St [W]", "LOW"), ("Q St [E]", "HIGH")], cycle=measure(ABNORMAL, "LOW", 70.0),
                       traffic_only=["Q St [W]", "Q St [E]"])
         a = d001.written(ev)
-        self.assertIn("A plan or coordination change: volume is lower on Q St [W] but higher on Q St [E], so the "
+        self.assertIn("A subsystem decision (cycle, plan or coordination): volume is lower on Q St [W] but higher on Q St [E], so the "
                       "shorter cycle is not clearly a response to demand.", a["diagnosis"])
         self.assertIn("a response to demand (weak; against: volume is lower", a["diagnosis"])
         self.assertNotIn("shortening the cycle", a["diagnosis"])
@@ -65,7 +66,7 @@ class Q4WordingTests(unittest.TestCase):
         a = d001.written(ev)
         self.assertIn("less green to A St [N] while its volume is higher is the opposite of a demand response",
                       a["diagnosis"])
-        self.assertIn("Most likely reading (evidence: Moderate): Green given to other phases:", a["diagnosis"])
+        self.assertIn("Most likely reading (evidence: Moderate): A local controller response", a["diagnosis"])
         self.assertTrue(a["suggested_checks"][0].startswith("Verify phase service on A St [N] against its demand"))
         self.assertTrue(a["suggested_checks"][1].startswith("Verify phase service on B Rd [E]"))
         self.assertTrue(a["suggested_checks"][2].startswith("Verify whether the longer cycle"))

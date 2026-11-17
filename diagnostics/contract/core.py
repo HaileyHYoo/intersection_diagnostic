@@ -36,6 +36,7 @@ from .. import screening
 from ..baseline import BaselineBuilder
 from ..settings import Settings, config_snapshot, load_rules
 from ..store import SQLiteStore
+from .. import subsystems
 from ..detail import safe_detail
 from ..templates import d001, d002
 from . import adapter
@@ -154,7 +155,9 @@ def run_site_report(request, run, source, settings: Settings | None = None, llm=
             diagnosis_id=f"diag_{run.run_id}_{evidence.site_no}", screening_run_id=run.run_id, region=run.result.region,
             period=period, site=S.ScreeningSite(site_no=evidence.site_no, name=evidence.name, coordinates=evidence.coordinates),
             evidence=evidence, q4_template=adapter.template_ref(settings.rules, "D001"),
-            q5_template=adapter.template_ref(settings.rules, "D002")), source, settings, llm, audit_store)
+            q5_template=adapter.template_ref(settings.rules, "D002")), source, settings, llm, audit_store,
+            control=subsystems.context(evidence.site_no, lambda no: adapter.site_from_model(run.site(no))
+                                       if run.site(no) is not None else None))
     report = S.SiteReport(region=run.result.region, screening_run_id=run.run_id, site_no=evidence.site_no, period=period,
                           evidence=evidence, diagnosis=diagnosis, link_speed=link_speed,
                           created_at=datetime.now().astimezone())
@@ -168,8 +171,9 @@ def run_site_report(request, run, source, settings: Settings | None = None, llm=
     return report
 
 
-def run_diagnosis(inp, source, settings: Settings | None = None, llm=None, audit_store=None):
-    """DiagnosisInput -> DiagnosisResult."""
+def run_diagnosis(inp, source, settings: Settings | None = None, llm=None, audit_store=None, control: dict | None = None):
+    """DiagnosisInput -> DiagnosisResult. control: the subsystem context from the same screening run
+    (subsystems.context); a direct DiagnosisInput call has no other sites, so only the membership is given."""
     S = adapter.S
     if inp.evidence.category != S.SiteCategory.RED:
         raise ValueError(f"Site {inp.site.site_no} is {inp.evidence.category.value}; only Red sites are diagnosed.")
@@ -177,7 +181,8 @@ def run_diagnosis(inp, source, settings: Settings | None = None, llm=None, audit
     period = adapter.period_from_model(inp.period, settings.rules)
     site = adapter.site_from_model(inp.evidence)
     mark = len(getattr(source, "provenance", []))
-    r1 = d001.run(site, period.to_dict(), llm, safe_detail(source, settings, site, period), settings.schema)
+    control = control or subsystems.context(site["site"], lambda no: None)
+    r1 = d001.run(site, period.to_dict(), llm, safe_detail(source, settings, site, period), settings.schema, control)
     r2 = d002.run(source, site, period, settings.rules, llm)
     refs = {"D001": inp.q4_template, "D002": inp.q5_template}
     audit_ref = None

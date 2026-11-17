@@ -388,10 +388,21 @@ def detail_items(ev: dict) -> list[S.EvidenceItem]:
             if label in flagged and None not in v:
                 items.append(S.EvidenceItem(statement=f"{label} volume by quarter-hour: {q[0]} {v[0]:.0f}, {q[1]} {v[1]:.0f} veh/15 min.",
                                             source="Q1", metric="volume", values={"q1": _f(v[0]), "q2": _f(v[1])}))
-    for text, sh in zip(readings.shift_sentences(ev.get("phase_shifts") or [], view), ev.get("phase_shifts") or []):
-        items.append(S.EvidenceItem(statement=text, source="Q3C", metric="phase_service",
-                                    values={"current": _f(sh["current"]), "reference": _f(sh["usual"]),
-                                            "other_current": _f(sh["other_current"]), "other_reference": _f(sh["other_usual"])}))
+    shares = ev.get("phase_shares") or []
+    if shares:
+        texts = readings.phase_share_sentences(shares, (view or {}).get("quarters"))
+        items.append(S.EvidenceItem(statement=" ".join(texts), source="Q3C", metric="phase_share",
+                                    values={f"phases {x['phases']}": _f(x["current"]) for x in shares}
+                                    | {f"phases {x['phases']} usual": _f(x["usual"]) for x in shares}))
+    else:
+        for text, sh in zip(readings.shift_sentences(ev.get("phase_shifts") or [], view), ev.get("phase_shifts") or []):
+            items.append(S.EvidenceItem(statement=text, source="Q3C", metric="phase_service",
+                                        values={"current": _f(sh["current"]), "reference": _f(sh["usual"]),
+                                                "other_current": _f(sh["other_current"]),
+                                                "other_reference": _f(sh["other_usual"])}))
+    ctx = ev.get("control")
+    if ctx:
+        items.append(S.EvidenceItem(statement=readings.control_sentence(ctx), source="Control", metric="subsystem"))
     return items
 
 

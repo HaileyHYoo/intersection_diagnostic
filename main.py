@@ -19,6 +19,7 @@
     python main.py stats --end 2026-10-30T15:30      every check counted on its own for every site (no gates), JSON + CSV
     python main.py export-run --run ID               the run's screening log and baseline snapshot as plain JSON files
     python main.py kpi-check --site 707 --end 2026-10-30T15:30 [--references 3]   every stored PerfKpi/PerfApproach field
+    python main.py subsystem-check --site 4864 --end 2026-11-10T08:30   subsystem_status fields and SCATS measurements
     python main.py site-history --site 4397 --from 2026-10-01 --to 2026-10-31   categories over screened periods
     python main.py watch                             (later extension) screen every new period as it completes
     python main.py backfill --from ... --to ...      (later extension) screen past periods one by one
@@ -415,6 +416,25 @@ def cmd_stats(args):
         print("Saved:", path)
 
 
+def cmd_subsystem_check(args):
+    """Every stored subsystem_status field for the site's subsystem in the period, and the measurements of the SCATS
+    buckets: to see which subsystem measures (DS, required/active cycle, plans, critical site) can be used."""
+    from diagnostics import subsystems
+    from diagnostics.settings import Settings
+    from diagnostics.sources.live import LiveSource
+    from diagnostics.timewin import latest_period, period_ending
+    settings = Settings()
+    period = period_ending(args.end, settings.rules) if args.end else latest_period(settings.rules)
+    source = LiveSource(settings)
+    for site in args.site:
+        p = subsystems.status_probe(source, settings, site, period)
+        print(subsystems.status_probe_text(p))
+        path = Path(args.out_dir) / f"subsystem_check_{p['site']}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(p, indent=2, default=str), encoding="utf-8")
+        print("Saved:", path)
+
+
 def cmd_kpi_check(args):
     from diagnostics.local import inspect_data
     from diagnostics.settings import Settings
@@ -597,6 +617,12 @@ def main(argv=None) -> int:
     p.add_argument("--sites", type=int, default=48, help=argparse.SUPPRESS)
     p.add_argument("--out-dir", default=str(ROOT / "out"))
     p.set_defaults(func=cmd_stats)
+
+    p = sub.add_parser("subsystem-check", help="subsystem_status fields of a site's subsystem, and the SCATS measurements")
+    p.add_argument("--site", nargs="+", required=True)
+    p.add_argument("--end", help="period end (default: the latest completed period)")
+    p.add_argument("--out-dir", default=str(ROOT / "out"))
+    p.set_defaults(func=cmd_subsystem_check)
 
     p = sub.add_parser("kpi-check", help="every stored IntersectionPerfKpi / IntersectionPerfApproach field for a site")
     p.add_argument("--site", required=True)

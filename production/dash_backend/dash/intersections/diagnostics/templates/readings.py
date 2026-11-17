@@ -17,9 +17,9 @@ from ..stats import ABNORMAL
 
 CATALOGUE = {          # key: the exact name used in the text (checked in an LLM wording)
     "data": "a data or mapping issue",
-    "other_phases": "green given to other phases",
+    "other_phases": "a local controller response (phase extensions, skips or pedestrian calls)",
     "demand": "a response to demand",
-    "plan": "a plan or coordination change",
+    "plan": "a subsystem decision (cycle, plan or coordination)",
     "event": "unusual demand (incident, event or diversion)",
 }
 STRENGTHS = ("Strong", "Moderate", "Weak")
@@ -130,6 +130,97 @@ def phase_shifts(ev: dict, view: dict | None) -> list[dict]:
     return out
 
 
+def _solve(rows: list[list[float]], b: list[float]) -> list[float] | None:
+    """Least squares by the normal equations; None unless every unknown is determined."""
+    k = len(rows[0])
+    a = [[sum(r[i] * r[j] for r in rows) for j in range(k)] + [sum(r[i] * y for r, y in zip(rows, b))] for i in range(k)]
+    for c in range(k):
+        p = max(range(c, k), key=lambda i: abs(a[i][c]))
+        if abs(a[p][c]) < 1e-9:
+            return None
+        a[c], a[p] = a[p], a[c]
+        for i in range(k):
+            if i != c:
+                f = a[i][c] / a[c][c]
+                a[i] = [x - f * y for x, y in zip(a[i], a[c])]
+    return [a[i][k] / a[i][i] for i in range(k)]
+
+
+def phase_shares(ev: dict, view: dict | None) -> list[dict]:
+    """The share of the cycle of each phase (or group of phases always serving the same approaches), solved from the
+    approaches' green shares and their "Phases": the green share of an approach is the sum of the shares of its
+    phases, and the phases fill the cycle. Empty when the phases are not read or the shares are not determined or
+    not consistent (more than 1.5 pp off for the current values, 4 pp for the usual medians)."""
+    if not view or not view["phases"]:
+        return []
+    every = all_phases(view)
+    # an approach served in every phase only restates that the phases fill the cycle (its usual median can be below
+    # 100 when a week ran other phases), so it is left out of the equations
+    rows = {a["approach"]: a for a in ev.get("phase_service_all") or []
+            if a["approach"] in view["phases"] and a.get("current") is not None and a.get("usual") is not None
+            and tuple(view["phases"][a["approach"]].split(",")) != every}
+    if not rows:
+        return []
+    sets = {k: set(view["phases"][k].split(",")) for k in rows}
+    atoms: dict[tuple, list[str]] = {}
+    for ph in every:
+        atoms.setdefault(tuple(ph in sets[k] for k in sorted(sets)), []).append(ph)
+    atoms_list = [tuple(sorted(v)) for v in atoms.values()]
+    eq = [[1.0 if set(at) <= sets[k] else 0.0 for at in atoms_list] for k in sorted(sets)] + [[1.0] * len(atoms_list)]
+
+    def solve(values: dict, tol: float):
+        b = [values[k] for k in sorted(sets)] + [100.0]
+        x = _solve(eq, b)
+        if x is None or any(abs(sum(c * v for c, v in zip(r, x)) - y) > tol for r, y in zip(eq, b)):
+            return None
+        return [_r(v) for v in x]
+
+    cur = solve({k: rows[k]["current"] for k in sets}, 1.5)
+    if cur is None:
+        return []
+    # usual medians that fit no single split: the reference weeks ran different splits (plans); shown without usual
+    usual = solve({k: rows[k]["usual"] for k in sets}, 4.0) or [None] * len(atoms_list)
+    quarters = []
+    for q in range(len(view["quarters"])):
+        vals = {k: (view["green_share"].get(k) or [None] * (q + 1))[q] for k in sets}
+        quarters.append(solve(vals, 1.5) if None not in vals.values() else None)
+    out = []
+    for i, at in enumerate(atoms_list):
+        serves = [k for k in sorted(sets) if set(at) <= sets[k] and tuple(sorted(sets[k])) != every]
+        out.append({"phases": ",".join(at), "current": cur[i], "usual": usual[i],
+                    "change": None if usual[i] is None else _r(cur[i] - usual[i]),
+                    "by_quarter": [q[i] if q else None for q in quarters], "serves": serves})
+    return out
+
+
+def mixed_splits(shares: list[dict]) -> bool:
+    return bool(shares) and any(s["usual"] is None for s in shares)
+
+
+def phase_share_sentences(shares: list[dict], quarters: list[str] | None = None) -> list[str]:
+    if not shares:
+        return []
+    if mixed_splits(shares):
+        parts = ", ".join(f"{_phases_text(tuple(s['phases'].split(',')))} {s['current']:.1f}%" for s in shares)
+        return [f"Share of the cycle by phase now: {parts}. The usual green shares of the approaches do not fit one "
+                "split, so the reference weeks ran different splits and no usual share by phase is given."]
+    parts = ", ".join(f"{_phases_text(tuple(s['phases'].split(',')))} {s['current']:.1f}% ({s['usual']:.1f}%)"
+                      for s in shares)
+    out = [f"Share of the cycle by phase, current (usual): {parts}."]
+    lost = min(shares, key=lambda s: s["change"])          # every change is set here (mixed splits returned above)
+    gained = max(shares, key=lambda s: s["change"])
+    if lost["change"] <= -3:
+        who = f", serving {_and(lost['serves'])}," if lost["serves"] else ", serving none of the assessed approaches,"
+        text = _phases_text(tuple(lost["phases"].split(",")))
+        q = lost["by_quarter"]
+        when = (f" ({quarters[0]} {q[0]:.1f}%, {quarters[1]} {q[1]:.1f}%)"
+                if quarters and len(quarters) == 2 and len(q) == 2 and None not in q else "")
+        out.append(f"{text[0].upper() + text[1:]}{who} lost {abs(lost['change']):.1f} percentage points{when}"
+                   + (f"; {_phases_text(tuple(gained['phases'].split(',')))} gained {gained['change']:.1f}" 
+                      if gained["change"] >= 3 else "") + ".")
+    return out
+
+
 def onset(view: dict | None, ev: dict) -> dict:
     """Which quarter-hour carries the change: {"signal": 0|1|None, "volume": {label: 0|1}}. A change is in one
     quarter when the cycle variation goes from at most 1% to more than 2%, or a green share moves by 5 pp or more
@@ -163,6 +254,24 @@ def onset(view: dict | None, ev: dict) -> dict:
     return {"signal": sig, "volume": vol}
 
 
+def control_sentence(ctx: dict | None) -> str | None:
+    """Where the site sits in SCATS control (subsystem membership; marriages and the critical site are not known)."""
+    if not ctx:
+        return None
+    name = f"subsystem {ctx['subsystem']} of Region {ctx['region']}"
+    if ctx["single_site"]:
+        return f"Control: the site is the only site of {name}, so its cycle is set from its own measurements."
+    parts = []
+    for o in ctx["others"]:
+        c = o.get("cycle_length_s") or {}
+        cyc = (f"; cycle {c['current']:.1f} s against a usual {c['usual']:.1f} s"
+               if c.get("current") is not None and c.get("usual") is not None else "")
+        label = o["category"].replace("_", " - ").replace("amber", "Amber").replace("red", "Red") \
+            .replace("normal", "Normal").replace("grey", "Grey").replace("detector - health", "Detector Health")
+        parts.append(f"{o['site']}" + (f" {o['name']}" if o.get("name") else "") + f" ({label}{cyc})")
+    return f"Control: {name}, shared with {_and(parts)}; SCATS sets the cycle length and plan per subsystem."
+
+
 def timing_sentences(view: dict | None, ev: dict) -> list[str]:
     if not view or len(view["quarters"]) != 2:
         return []
@@ -188,8 +297,9 @@ def shift_sentences(shifts: list[dict], view: dict | None) -> list[str]:
     out = []
     for s in shifts:
         own, rest = tuple(s["phases"].split(",")), tuple(s["other_phases"].split(","))
-        who = (f"which serve {_and(s['other_approaches'])}" if s["other_approaches"]
-               else "which serve none of the assessed approaches (side road, turning or pedestrian movements)")
+        verb = "serve" if len(rest) > 1 else "serves"
+        who = (f"which {verb} {_and(s['other_approaches'])}" if s["other_approaches"]
+               else f"which {verb} none of the assessed approaches (side road, turning or pedestrian movements)")
         q = ""
         if view and len(s["by_quarter"]) == 2 and None not in s["by_quarter"]:
             q = f" ({view['quarters'][0]} {s['by_quarter'][0]:.1f}%, {view['quarters'][1]} {s['by_quarter'][1]:.1f}%)"
@@ -237,25 +347,70 @@ def readings(ev: dict) -> list[dict]:
             con["demand"].append(why)
             pro["plan"].append(why)
 
-    # other phases: an approach losing green to the rest of the cycle
-    for sh in shifts:
-        if sh["direction"] != "LOW":
-            continue
-        pro["other_phases"].append(f"{_phases_text(tuple(sh['other_phases'].split(',')))} took "
-                                   f"{sh['other_current']:.1f}% of the cycle against a usual {sh['other_usual']:.1f}%")
-        gaining = [k for k in sh["other_approaches"] if traffic.get(k) == "HIGH"
-                   or (service.get(k) or {}).get("direction") == "HIGH"]
-        if gaining:
-            pro["other_phases"].append(f"volume or green is higher than usual on {_and(gaining)}, served by those phases")
+    # green moved between phases: towards busier approaches (demand) or elsewhere (local controller response)
+    shares = ev.get("phase_shares") or []
+    mixed = mixed_splits(shares)
+    if mixed:
+        pro["plan"].append("the usual green shares of its approaches fit no single split, so the reference weeks ran "
+                           "different splits (plans)")
+        shares, shifts = [], []                 # usual shares by phase are not defined: no claim of a shift
+    busier = {k for k, d in traffic.items() if d == "HIGH"}
+    if shares:
+        for g in [x for x in shares if x["change"] is not None and x["change"] >= 3]:
+            text = f"{_phases_text(tuple(g['phases'].split(',')))} gained {g['change']:.1f} percentage points"
+            verb = "serve" if "," in g["phases"] else "serves"
+            to_busier = sorted(set(g["serves"]) & busier)
+            if to_busier:
+                pro["demand"].append(f"{text} and {verb} {_and(to_busier)}, where volume is higher")
+            else:
+                who = (f"{verb} {_and(g['serves'])}, where volume is not higher" if g["serves"]
+                       else f"{verb} none of the assessed approaches (side road, turning or pedestrian movements)")
+                pro["other_phases"].append(f"{text} and {who}")
+    else:
+        for sh in shifts:
+            if sh["direction"] != "LOW":
+                continue
+            gaining = [k for k in sh["other_approaches"] if traffic.get(k) == "HIGH"
+                       or (service.get(k) or {}).get("direction") == "HIGH"]
+            text = (f"{_phases_text(tuple(sh['other_phases'].split(',')))} took {sh['other_current']:.1f}% of the cycle "
+                    f"against a usual {sh['other_usual']:.1f}%")
+            if gaining:
+                verb = "serve" if "," in sh["other_phases"] else "serves"
+                pro["demand"].append(f"{text} and {verb} {_and(gaining)}, where volume or green is higher")
+            else:
+                pro["other_phases"].append(text)
+    competing = any("where volume" in x for x in pro["demand"])     # green shown to go to busier approaches
     a1 = [k for k, a in service.items() if a["direction"] == "LOW" and traffic.get(k) == "HIGH"]
-    if a1:
+    if a1 and not competing:
         pro["other_phases"].append(f"less green to {_and(a1)} while {'its' if len(a1) == 1 else 'their'} volume is "
                                    f"higher is {OPPOSITE}")
-    elif not shifts:
+    elif not shares and not shifts and not mixed:
         lows = [k for k, a in service.items() if a["direction"] == "LOW"]
         if lows:
             pro["other_phases"].append(f"less green to {_and(lows)}")
+    n_assessed = ev["traffic"].get("approaches_assessed") or 0
+    if len(busier) >= 2 and n_assessed and len(busier) / n_assessed >= 0.6:
+        pro["demand"].append(f"volume is higher on {len(busier)} of {n_assessed} approaches")
+    # the opposite-direction point counts against demand unless the lost green is shown to go to busier approaches
+    con["demand"] = [c for c in con["demand"] if OPPOSITE not in c]
+    if not competing:
+        con["demand"] += [f"less green to {k} while its volume is higher is {OPPOSITE}" for k in a1]
 
+    # subsystem decision: the cycle is set per subsystem (control context, subsystems.py)
+    ctx = ev.get("control")
+    if ctx and (cl["status"] == ABNORMAL or cs["status"] == ABNORMAL):
+        from ..subsystems import shared_cycle
+        sc = shared_cycle(ctx, cl)
+        name = f"subsystem {ctx['region']}-{ctx['subsystem']}"
+        if sc["same_change"]:
+            pro["plan"].append(f"the cycle change is shared by {_and(sc['same_change'])} in {name}")
+        elif sc["same_value"] and not ctx["single_site"]:
+            pro["plan"].append(f"it runs the same cycle as {_and(sc['same_value'])} in {name}")
+        elif sc["usual"] and cl["status"] == ABNORMAL:
+            con["plan"].append(f"{_and(sc['usual'])}, in the same {name}, kept its usual cycle")
+        if ctx["single_site"] and cl["status"] == ABNORMAL and cl.get("direction") and \
+                any(d == cl["direction"] for d in traffic.values()):
+            pro["demand"].append(f"it is the only site of {name}, so its cycle follows its own measurements")
     # plan or coordination change (a cycle change matched by volume is read as demand above)
     if cl["status"] == ABNORMAL and not traffic:
         pro["plan"].append(f"cycle length {cl.get('current')} s against a usual {cl.get('usual')} s with no volume change")
@@ -335,21 +490,32 @@ def check_for(r: dict, ev: dict, window: str) -> str | None:
     shifts = ev.get("phase_shifts") or []
     service = [a["approach"] for a in ev["signal"]["phase_service"]["abnormal_approaches"]]
     if r["key"] == "other_phases":
-        lows = [sh for sh in shifts if sh["direction"] == "LOW"]
+        gains = [x for x in ev.get("phase_shares") or [] if x["change"] is not None and x["change"] >= 3]
+        if gains:
+            ph = _phases_text(tuple(sorted({p for g in gains for p in g["phases"].split(",")})))
+            return (f"In SCATS History for {window}, find why {ph} ran longer or more often at this site (phase "
+                    "extensions, pedestrian calls, side-road or turning demand, skipped phases); if it recurs on the same "
+                    f"weekday, review the maximum times of {ph}.")
+        lows = [] if mixed_splits(ev.get("phase_shares") or []) else [sh for sh in shifts if sh["direction"] == "LOW"]
         if lows:
             rest = _phases_text(tuple(lows[0]["other_phases"].split(",")))
-            return (f"In SCATS History for {window}, find which of {rest} extended or was called more often, and why "
+            which = f"which of {rest}" if "phases" in rest else f"whether {rest}"
+            return (f"In SCATS History for {window}, find {which} extended or was called more often, and why "
                     "(pedestrian calls, side-road or turning demand, phase skips); if it recurs on the same weekday, "
                     f"review the maximum times of {rest} or the plan selection.")
         return (f"In SCATS History for {window}, find which phases took the green lost by {_and(service)} and why; if "
                 "it recurs on the same weekday, review those phases' maximum times or the plan selection.")
     if r["key"] == "demand":
         return (f"Confirm in SCATS History for {window} that the phases serving the busier approaches reached their "
-                "maximum in most cycles; if the higher demand persists on the same weekday, review whether the plan's "
-                "maximums and splits fit it.")
+                "maximum in most cycles and how saturated their strategic approaches were; if the higher demand "
+                "persists on the same weekday, review whether the plan's maximums and splits fit it.")
     if r["key"] == "plan":
-        return (f"Check the plan number, subsystem cycle length and linking/offsets in force for {window} against the "
-                "usual weekday; if a plan or coordination change is found, confirm that it was intended.")
+        ctx = ev.get("control")
+        name = f"subsystem {ctx['region']}-{ctx['subsystem']}" if ctx else "its subsystem"
+        others = [o["site"] for o in (ctx or {}).get("others", [])]
+        return (f"Check {name} for {window} against the usual weekday: degree of saturation, required against active "
+                "cycle length, active split and link plan, and any marriage or divorce; if it was a subsystem decision, "
+                "review it for the whole subsystem" + (f" (with {_and(others)})" if others else "") + ".")
     if r["key"] == "event":
         names = ev["traffic_only_approaches"] or [a["approach"] for a in ev["traffic"]["abnormal_approaches"]]
         view, vol = ev.get("quarter_view"), onset(ev.get("quarter_view"), ev)["volume"]

@@ -37,6 +37,31 @@ Checks:
 2. Check for incidents, events, roadworks or diversions affecting Bell Street [E] during 08:00-08:15, and compare the same time next week.
 3. Check the plan number, subsystem cycle length and linking/offsets in force for 08:15-08:30 against the usual weekday; if a plan or coordination change is found, confirm that it was intended.
 
+## Update of 18 Nov 2026: control context and phase shares
+
+SCATS sets the cycle length and the split and link plans per subsystem (from the subsystem's strategic
+measurements); the local controller then extends, terminates or skips phases within that plan. The diagnosis now
+reads each change at the level that decides it.
+
+| Change | What it does |
+|---|---|
+| Control context (`subsystems.py`) | The site's Region and subsystem (from `data/site_subsystem_map.json`) and the same-period results of the other sites of the subsystem. Shown as a "Control:" sentence and a `Control` evidence item |
+| Readings by control level | "a subsystem decision (cycle, plan or coordination)" replaces "a plan or coordination change"; "a local controller response (phase extensions, skips or pedestrian calls)" replaces "green given to other phases". A cycle change shared with a subsystem neighbour, or a cycle equal to a neighbour's, counts for a subsystem decision; a neighbour keeping its usual cycle counts against it |
+| Phase shares | The share of the cycle of each phase (or group of phases that always serve the same approaches) is solved from the approaches' green shares and their phases, and compared with the usual. Green moving to phases that serve busier approaches counts for a response to demand; to phases serving no busier approach, for a local controller response |
+| Mixed splits | When the usual green shares fit no single split, the reference weeks ran different splits: the current shares are shown without a usual value, and this counts for a subsystem decision |
+| Checks | A subsystem decision: check the subsystem's degree of saturation, required against active cycle length, active split and link plan and any marriage or divorce, for the whole subsystem. A local response: why the gaining phases ran longer at this site |
+| Rank | Each ranked site carries its subsystem; `ranked.md` lists the subsystems with two or more Red or Amber sites |
+| `python main.py subsystem-check --site ... --end ...` | Lists every stored `subsystem_status` field for the site's subsystem and the measurements of the SCATS buckets, to see which subsystem measures can be added |
+
+Review evidence (four periods, 10 Nov 2026): at Red and Amber – signal sites with an assessed subsystem neighbour, the
+neighbour also had an abnormal cycle length in 14 of 16 cases (12 with the same cycle), against 7 % of all sites.
+
+Results on the two sample sites (code wording):
+- 3055 (only site of its subsystem): a local controller response, Moderate; phases B and D gained 13.8 percentage
+  points from 08:15 and serve none of the assessed approaches.
+- 4864 (subsystem with 2318): a subsystem decision, Moderate; the reference weeks ran different splits and the
+  site runs the same cycle as its neighbour. The first check is the subsystem's saturation, cycle and plans.
+
 ## Not used yet
 
 - `DemandShare`, `SignedGap` and the PerfApproach `Volume`: the PerfApproach volume differs from the link volume used by
@@ -44,3 +69,6 @@ Checks:
 - `ISI`, `RiskBusiest`: definitions to be confirmed.
 - Usual cycle variation and usual phase shares by quarter-hour (would need the reference weeks on click).
 - The rank's mapping-suspect list still uses the usual 100 % rule: the screening does not read `Phases`.
+- Subsystem measures (degree of saturation, required and active cycle length, plan numbers, critical site, marriage
+  state) and strategic-approach DS: to be added once `subsystem-check` shows which are stored. The site-subsystem map is
+  static (no marriages, no critical site).

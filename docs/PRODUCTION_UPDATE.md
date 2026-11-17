@@ -108,3 +108,13 @@ Details and an example: `docs/DIAGNOSIS_UPGRADE_2026-11.md` (repository).
 | `detail.py` (new), `service.py`, `contract/core.py` | On a Red click, the two quarter-hour KPI records (all fields) and the two 15-minute link volumes of the period are read for the diagnosis (3 small queries) | – |
 | `templates/readings.py` (new), `templates/d001.py`, `layout.py` | `q4.diagnosis` has three labelled lines: "What the data show:", "Most likely reading (evidence: Strong/Moderate/Weak):", "Other readings:"; checks are targeted to the most likely reading | Section 1, section 4 |
 | `contract/adapter.py` | `q4.supporting_evidence` adds the quarter-hour values and the phase shares; `q4.limitations` carries the note "SCATS adapts ..." that was repeated in every diagnosis | Section 2; please show `q4.limitations` under section 1 if the page does not yet |
+
+## 10. Update of 18 Nov 2026: control context
+
+Replace the package again. No contract or page change.
+
+| File | Change | Seen on the page as |
+|---|---|---|
+| `subsystems.py` (new), `contract/core.py`, `service.py` | The diagnosis receives the site's subsystem and the same-run results of the other sites of the subsystem (no new query) | Section 1: a "Control:" sentence |
+| `templates/readings.py` | Readings by control level (subsystem decision, local controller response, demand, unusual demand, data); phase shares solved from the approaches' phases | Section 1, section 4 |
+| `contract/adapter.py` | `q4.supporting_evidence` adds a phase-share item and a `Control` item | Section 2 |
