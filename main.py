@@ -329,6 +329,9 @@ def cmd_contract_report(args):
         except Exception as exc:  # noqa: BLE001 - e.g. a Normal or Grey site has no report
             print(f"SCATS {site}: no SiteReport ({exc})")
             continue
+        for key, w in contract_view.wording(svc, report).items():
+            print(f"SCATS {site} {key}: written by {w['generated_by']}"
+                  + (f"; LLM answer rejected: {w['rejected']}" if w["rejected"] else ""))
         for path in contract_view.save(report, run_id, args.out_dir):
             print("Saved:", path)
     return 0

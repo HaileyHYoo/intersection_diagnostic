@@ -446,12 +446,19 @@ def readings(ev: dict) -> list[dict]:
             pro["demand"].append(f"the subsystem degree of saturation was higher than usual (median {n['ds_median']:.0f} "
                                  f"against {u['ds_median']:.0f})")
         elif n["ds_at_least_100"] >= 3:
-            pro["demand"].append(f"the subsystem degree of saturation reached 100 or more in {n['ds_at_least_100']} of "
-                                 f"{n['records']} records")
+            share, usual_share = n["ds_at_least_100"] / n["records"], u.get("ds_at_least_100_share")
+            text = (f"the subsystem degree of saturation reached 100 or more in {n['ds_at_least_100']} of "
+                    f"{n['records']} records")
+            if usual_share is None:
+                pro["demand"].append(text)
+            elif share >= usual_share + 0.15:
+                pro["demand"].append(f"{text} (usually {usual_share * 100:.0f}% of records)")
         follows = n["cl_with_rl"] >= 0.6 * n["records"]
         if (cl["status"] == ABNORMAL or cs["status"] == ABNORMAL) and follows and n["cl_sd"] >= 3:
             why = (f"the active cycle followed the required cycle, which SCATS sets from saturation, between "
                    f"{n['cl_min']:.0f} and {n['cl_max']:.0f} s")
+            if u.get("cl_sd") is not None:
+                why += f" (spread {n['cl_sd']:.1f} s against a usual {u['cl_sd']:.1f} s)"
             pro["demand"].append(why + (", which accounts for the poorer stability" if cs["status"] == ABNORMAL else ""))
             con["plan"].append(why)
         if n["cl_above_rl"] >= 0.5 * n["records"]:

@@ -64,7 +64,7 @@ def context(site: str, lookup) -> dict | None:
             continue
         s = lookup(other)
         if not s:
-            mates.append({"site": other, "name": None, "category": "not screened"})
+            mates.append({"site": other, "name": None, "category": "not in the screened network"})
             continue
         mates.append({"site": other, "name": s.get("name"), "category": s.get("category"),
                       "cycle_length_s": _measure(s, "cycle_length"), "cycle_stability": _measure(s, "cycle_stability")})
@@ -161,6 +161,7 @@ def status_context(source, settings, site: str, period, reference: bool = True) 
         weeks = len(refs)
         if weeks >= settings.rules["history"]["min_observations"]:
             usual = {k: round(median(r[k] for r in refs), 1) for k in ("ds_median", "ds_max", "cl_mean", "rl_mean", "cl_sd")}
+            usual["ds_at_least_100_share"] = round(median(r["ds_at_least_100"] / r["records"] for r in refs), 2)
     return {"now": now, "usual": usual, "weeks": weeks}
 
 

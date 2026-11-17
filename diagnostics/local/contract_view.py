@@ -23,7 +23,18 @@ def site_report(svc, run_id: str, site_no: str):
                          key=S.ScreeningCacheKey(region=result.region, period_end=result.period.end,
                                                  baseline_version=result.baseline_version))
     request = S.SiteReportRequest(region=result.region, screening_run_id=run_id, site_no=str(site_no))
-    return core.run_site_report(request, run, svc.source, svc.settings, svc.llm)
+    return core.run_site_report(request, run, svc.source, svc.settings, svc.llm, audit_store=svc.store)
+
+
+def wording(svc, report) -> dict:
+    """{template: "code" | "llm:<model>", rejected reason} from the diagnosis audit record (not in the contract)."""
+    if not report.diagnosis:
+        return {}
+    audits = svc.store.get_audits("diagnosis", report.diagnosis.diagnosis_id)
+    if not audits:
+        return {}
+    templates = audits[-1]["payload"].get("templates", {})
+    return {k: {"generated_by": t.get("generated_by"), "rejected": t.get("rejected")} for k, t in templates.items()}
 
 
 def page(report) -> str:

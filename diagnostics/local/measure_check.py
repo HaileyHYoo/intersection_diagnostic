@@ -2,6 +2,7 @@
 period, to see whether they can support the diagnosis (split plan, phases, signal groups, cycle time ...)."""
 from __future__ import annotations
 
+import re
 from datetime import timedelta
 
 from .. import ids
@@ -34,12 +35,20 @@ def check(source, settings, site: str, period, measurements=None, limit: int = 4
         site_tag = next((t for t in tags if t.lower() in ("siteno", "site_no", "site", "scats_site_no", "sitenumber")),
                         next((t for t in tags if "site" in t.lower() and "critical" not in t.lower()), None))
         e["site_tag"] = site_tag
+        if not site_tag and "DetectorGroupId" in tags:
+            site_tag = e["site_tag"] = "DetectorGroupId"
         if site_tag:
-            values = [site, f"S{site}", site.zfill(4), f"S{site.zfill(4)}"]
-            cond = " or ".join(f"r[{flux_string(site_tag)}] == {flux_string(v)}" for v in dict.fromkeys(values))
+            if site_tag == "DetectorGroupId":            # stored link IDs may carry extra characters: match by content
+                links = [re.sub(r"[^A-Za-z0-9]", "", a["link"]) for a in source.approaches([site])]
+                cond = f"r[{flux_string(site_tag)}] =~ /{'|'.join(links)}/" if links else "false"
+            else:
+                values = [site, f"S{site}", site.zfill(4), f"S{site.zfill(4)}"]
+                cond = " or ".join(f"r[{flux_string(site_tag)}] == {flux_string(v)}" for v in dict.fromkeys(values))
             flux = (f"from(bucket: {flux_string(bucket)})\n  |> range(start: {flux_time(period.start)}, "
                     f"stop: {flux_time(period.end + timedelta(minutes=15))})\n"
                     f"  |> filter(fn: (r) => r._measurement == {flux_string(m)})\n  |> filter(fn: (r) => {cond})\n"
+                    # values of different types (string, bool, float) cannot share one table: compare as text
+                    f"  |> map(fn: (r) => ({{r with _value: string(v: r._value)}}))\n"
                     f"  |> group()\n  |> sort(columns: [\"_time\"])\n  |> limit(n: {limit})")
             try:
                 e["records"] = [{k: (str(v) if k == "time" else v) for k, v in r.items()} for r in influx.rows(flux)]
