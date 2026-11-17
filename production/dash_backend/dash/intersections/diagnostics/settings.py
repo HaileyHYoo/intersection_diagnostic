@@ -110,6 +110,26 @@ class Settings:
             "q1": self.rules["q1"].get("approach_history_min_presence"),
             "q3c": self.rules["q3c"].get("approach_history_min_presence"),
         }
+        if self.rules["history"].get("extend_beyond_weeks"):
+            relevant["backfill"] = "site-window"           # one window per site (18 Nov 2026), not per measure
+        digest = hashlib.sha1(json.dumps(relevant, sort_keys=True).encode()).hexdigest()[:10]
+        return f"{self.rules['version']}-{digest}"
+
+    @property
+    def slot_version(self) -> str:
+        """Key of the cached raw values per reference period: the baseline version without the backfill window
+        method, which changes how the values are combined, not the values themselves."""
+        if not self.rules["history"].get("extend_beyond_weeks"):
+            return self.baseline_version
+        relevant = {
+            "schema": self.schema.get("version"),
+            "history": {k: v for k, v in self.rules["history"].items() if NEW_HISTORY_DEFAULTS.get(k, object()) != v},
+            "percentiles": self.rules["percentiles"],
+            "reference_value": self.rules["reference_value"],
+            "alignment": self.rules["alignment"],
+            "q1": self.rules["q1"].get("approach_history_min_presence"),
+            "q3c": self.rules["q3c"].get("approach_history_min_presence"),
+        }
         digest = hashlib.sha1(json.dumps(relevant, sort_keys=True).encode()).hexdigest()[:10]
         return f"{self.rules['version']}-{digest}"
 

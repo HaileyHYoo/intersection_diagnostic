@@ -18,6 +18,8 @@ approach has no green in the period (HasGreen = 0 or no GreenShare in either qua
 """
 from __future__ import annotations
 
+from .baseline import site_window, window_note
+
 import logging
 from collections import defaultdict
 
@@ -250,10 +252,13 @@ def screen(source, settings, baseline: dict, period: Period, network: list[dict]
             q2 = q2_gate(detectors.get(site, []), totals.get(site, {}), rules)
             q1 = q3 = None
             shadow = None
-            q1_all = q1_traffic(links.get(site, []), volume, baseline["volume"], bounds, rules)
-            q3c = q3c_phase_service(links.get(site, []), green.get(site, {}), baseline["green"].get(site, {}), bounds, rules,
-                                    names)
-            q3_all = q3_signal(kpi.get(site, {}), baseline["kpi"].get(site, {}), origin.get(site, {}), q3c, rules)
+            # one reference window for all the measures of the site (backfill only; otherwise the baseline as is)
+            site_links = [a["link"] for a in links.get(site, [])] + list((baseline.get("by_week") or {})
+                                                                          .get("green", {}).get(site, {}))
+            base_volume, base_kpi, base_green, window = site_window(baseline, site, site_links, rules)
+            q1_all = q1_traffic(links.get(site, []), volume, base_volume, bounds, rules)
+            q3c = q3c_phase_service(links.get(site, []), green.get(site, {}), base_green, bounds, rules, names)
+            q3_all = q3_signal(kpi.get(site, {}), base_kpi, origin.get(site, {}), q3c, rules)
             label_site(q1_all["approaches"], q1_all["not_evaluated"], q3c["approaches"])
             if q2["status"] == PASS:
                 q1, q3 = q1_all, q3_all
@@ -267,7 +272,9 @@ def screen(source, settings, baseline: dict, period: Period, network: list[dict]
             continue
         results.append({"site": site, "name": site_name(s.get("streets")) or s.get("name"), "lat": s.get("lat"),
                         "lon": s.get("lon"), "category": category, "label": CATEGORIES[category], "reasons": reasons,
-                        "notes": detector_notes(q2, category) + caution_notes(q1, q3, category),
+                        "notes": detector_notes(q2, category) + caution_notes(q1, q3, category)
+                                 + ([window_note(window)] if window and category not in ("grey", "detector_health") else []),
+                        **({"reference_window": window} if window else {}),
                         "selectable": rules["click"].get(category, []), "q2": q2, "q1": q1, "q3": q3,
                         "total_volume_veh_h": total_volume(q1),
                         **({"if_detectors_passed": shadow} if shadow else {}),

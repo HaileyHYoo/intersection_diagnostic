@@ -240,8 +240,8 @@ class SwitchTests(unittest.TestCase):
         self.assertGreater(len(cands), 8)
         self.assertLessEqual((p.day - cands[-1].day).days, 7 * rules["history"]["max_lookback_weeks"])
 
-    def test_backfill_replaces_a_week_without_data(self):
-        from diagnostics.baseline import BaselineBuilder
+    def test_backfill_baseline_keeps_every_candidate_week(self):
+        from diagnostics.baseline import BaselineBuilder, site_window
 
         class Builder(BaselineBuilder):
             def __init__(self, rules):
@@ -257,11 +257,14 @@ class SwitchTests(unittest.TestCase):
         off = timewin.period_at(date(2026, 11, 10), "08:00", RULES)
         b = Builder(RULES).build(off)
         self.assertEqual(b["volume"]["L"]["n"], 5)              # 7 calendar weeks, 2 without data, not replaced
+        self.assertNotIn("by_week", b)
         rules = load_rules(overrides={"history": {"extend_beyond_weeks": True}})
         b = Builder(rules).build(off)
-        self.assertEqual(b["volume"]["L"]["n"], 8)
-        self.assertEqual(b["volume"]["L"]["values"][-1], 110.0)                    # usable weeks 1, 4-10
-        self.assertEqual(len(b["reference_periods"]), 8)
+        self.assertEqual(len(b["reference_periods"]), 8)        # the first 8 usable weeks
+        self.assertEqual(b["volume"]["L"]["n"], 6)
+        self.assertEqual(len(b["by_week"]["volume"]["L"]), 9)    # every candidate week with a value is kept
+        vol, _, _, info = site_window(b, "S", ["L"], rules)
+        self.assertEqual((vol["L"]["n"], info["weeks"], info["extended_for"]), (6, 8, []))   # 6 >= 5: no extension
 
     def test_count_noise_floor(self):
         env = {"n": 7, "usual": 9.0, "p_low": 6.0, "p_high": 11.0}
@@ -272,11 +275,11 @@ class SwitchTests(unittest.TestCase):
         self.assertEqual(stats.two_sided(1000.0, big, 10, noise_sd=2)["status"], stats.ABNORMAL)
 
 
-class BackfillPerMeasureTests(unittest.TestCase):
-    def test_each_measure_fills_on_its_own_and_stops_where_data_stop(self):
-        """AM peak 10 Nov 2026 with every switch on: volume reached 7 weeks, cycle and green share stayed at 5
-        because the signal-performance records do not go further back; backfill fills per measure."""
-        from diagnostics.baseline import BaselineBuilder
+class SiteWindowTests(unittest.TestCase):
+    def test_one_window_for_all_the_measures_of_a_site(self):
+        """Decision of 18 Nov 2026: when one measure of a site has fewer than 5 values, the site's window is extended
+        to earlier weeks for all its measures together (not measure by measure)."""
+        from diagnostics.baseline import BaselineBuilder, site_window, window_note
         from diagnostics.settings import switch_overrides
 
         class Builder(BaselineBuilder):
@@ -286,12 +289,32 @@ class BackfillPerMeasureTests(unittest.TestCase):
             def slot_values(self, periods):
                 out = {}
                 for k, q in enumerate(periods, 1):          # 9 term candidates, most recent first
-                    out[q.key] = {"volume": {} if k in (3, 7) else {"L": 100.0 + k},     # 7 weeks with volume
-                                  "kpi": {"S": {"cycle_length": 90.0}} if k <= 5 else {},  # cycle only in 5
+                    out[q.key] = {"volume": {} if k in (3, 7) else {"L": 100.0 + k},
+                                  "kpi": {"S": {"cycle_length": 90.0 + k}} if k in (1, 2, 3, 4, 9) else {},
                                   "green": {}}
                 return out
 
         rules = load_rules(overrides=switch_overrides("all"))
         b = Builder(rules).build(timewin.period_at(date(2026, 11, 10), "08:00", rules))
-        self.assertEqual(b["volume"]["L"]["n"], 7)
-        self.assertEqual(b["kpi"]["S"]["cycle_length"]["n"], 5)
+        vol, kpi, _, info = site_window(b, "S", ["L"], rules)
+        # cycle length has 4 values in the first 8 weeks: the window goes to the 9th week for every measure
+        self.assertEqual((info["weeks"], info["extended_for"]), (9, ["kpi cycle_length"]))
+        self.assertEqual(kpi["cycle_length"]["n"], 5)
+        self.assertEqual(vol["L"]["n"], 7)                      # volume uses the same 9 weeks (7 with data)
+        self.assertIn("extended from 8 weeks because these measures had fewer than the minimum: kpi cycle_length",
+                      window_note(info))
+
+    def test_a_measure_that_cannot_reach_the_minimum_does_not_extend_the_window(self):
+        from diagnostics.baseline import site_window
+        cands = [{"key": f"k{i}", "day": f"2026-10-{30 - i:02d}"} for i in range(12)]
+        b = {"candidates": cands, "calendar_weeks": 8, "volume": {}, "kpi": {}, "green": {},
+             "by_week": {"volume": {"L": {f"k{i}": 10.0 for i in range(8)}},
+                         "kpi": {"S": {"cycle_length": {"k0": 1.0, "k1": 1.0}}}, "green": {}}}
+        _, kpi, _, info = site_window(b, "S", ["L"], load_rules())
+        self.assertEqual((info["weeks"], kpi["cycle_length"]["usual"]), (8, None))
+
+    def test_window_method_reuses_the_cached_raw_values(self):
+        from diagnostics.settings import switch_overrides
+        s = Settings(rules=load_rules(overrides=switch_overrides("all")))
+        self.assertNotEqual(s.baseline_version, s.slot_version)
+        self.assertEqual(Settings().baseline_version, Settings().slot_version)
