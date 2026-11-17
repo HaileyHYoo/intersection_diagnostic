@@ -150,7 +150,7 @@ def check(answer: dict | None, keys: list[str], allowed: set[str], required: dic
 
 
 def word(llm, system: str, user: str, keys: list[str], evidence: dict, fallback: dict,
-         required: dict[str, list[str]] | None = None, validate=None) -> dict:
+         required: dict[str, list[str]] | None = None, validate=None, prepare=None) -> dict:
     """{'answer', 'generated_by', 'rejected'}: the LLM's answer when it passes the check, else the fallback."""
     if llm is None:
         return {"answer": fallback, "generated_by": "code", "rejected": None}
@@ -159,6 +159,8 @@ def word(llm, system: str, user: str, keys: list[str], evidence: dict, fallback:
     except Exception as exc:  # noqa: BLE001 - the report is still produced from code
         return {"answer": fallback, "generated_by": "code", "rejected": f"LLM call failed ({type(exc).__name__})"}
     answer = parse_json(raw)
+    if answer is not None and prepare is not None:
+        answer = prepare(answer)                        # template-specific normalisation (e.g. label spelling)
     reference = json.dumps([evidence, fallback], ensure_ascii=False, default=str)
     problems = check(answer, keys, allowed_numbers(evidence, fallback), required, reference)
     if not problems and validate is not None:

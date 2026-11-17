@@ -433,10 +433,36 @@ def run(site: dict, period: dict, llm=None, detail: dict | None = None, schema: 
     named = [a["approach"] for a in ev["traffic"]["abnormal_approaches"] + ev["signal"]["phase_service"]["abnormal_approaches"]]
     worded = llm_mod.word(llm, SYSTEM, user, ["diagnosis", "supporting_evidence", "suggested_checks"], ev, draft,
                           required={"diagnosis": named + labels, "supporting_evidence": named},
-                          validate=lambda answer: contradictions(answer, ev) + kept_points(answer, ev) + causal(answer))
+                          validate=lambda answer: contradictions(answer, ev) + kept_points(answer, ev) + causal(answer),
+                          prepare=lambda answer: normalise_labels(answer, labels))
     worded["answer"]["diagnosis"] = lines(worded["answer"]["diagnosis"], labels)
     return {"template_id": TEMPLATE, "template_version": spec["version"], "question": spec["question"],
             "evidence": ev, "method_note": METHOD_NOTE, **worded}
+
+
+MAIN_LABEL = re.compile(r"most\s+likely\s+reading\s*(?:\(\s*(?:strength\s+of\s+)?(?:evidence\s*[:=-]?\s*)?"
+                        r"(strong|moderate|weak)(?:\s+evidence)?\s*\))?\s*[:\-–]", re.I)
+OTHER_LABEL = re.compile(r"other\s+readings\s*[:\-–]", re.I)
+DATA_LABEL = re.compile(r"what\s+the\s+data\s+show\s*[:\-–]", re.I)
+
+
+def normalise_labels(answer: dict, labels: list[str]) -> dict:
+    """The three labels as written by the code when the LLM spelled them differently (seen live at SCATS 4864:
+    the answer was rejected for its labels only). A different strength of evidence is left as written, so it is
+    still rejected."""
+    text = answer.get("diagnosis")
+    if isinstance(text, list):
+        text = "\n".join(str(x) for x in text)
+    if not isinstance(text, str):
+        return answer
+    strength = labels[1].split(": ", 1)[1].rstrip("):").lower()
+
+    def main(m):
+        return labels[1] if m.group(1) is None or m.group(1).lower() == strength else m.group(0)
+    text = DATA_LABEL.sub(labels[0], text, count=1)
+    text = MAIN_LABEL.sub(main, text, count=1)
+    text = OTHER_LABEL.sub(labels[2], text, count=1)
+    return {**answer, "diagnosis": text}
 
 
 CAUSAL = re.compile(r"\b(caused|causes|because of|due to|proves?|proven)\b", re.I)

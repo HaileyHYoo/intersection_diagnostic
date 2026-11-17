@@ -214,3 +214,35 @@ class CountsAgainstSaturationTests(unittest.TestCase):
         table = {r["key"]: r for r in ev["readings"]}
         self.assertIn("the counts and the strategic measurements disagree", " ".join(table["data"]["for"]))
         self.assertTrue(any("stayed at its usual level" in c for c in table["demand"]["against"]))
+
+
+class LabelNormalisationTests(unittest.TestCase):
+    """SCATS 4864, 17 Nov 2026: an LLM answer was rejected only because its labels were spelled differently."""
+
+    def test_spelling_variants_are_normalised(self):
+        from diagnostics.layout import d001_labels
+        labels = d001_labels("Moderate")
+        fixed = d001.normalise_labels({"diagnosis": "what the data show: x\nMost likely reading (Moderate evidence): y\n"
+                                                    "Other Readings - z"}, labels)["diagnosis"]
+        self.assertEqual(fixed, "What the data show: x\nMost likely reading (evidence: Moderate): y\nOther readings: z")
+
+    def test_a_different_strength_is_not_rewritten(self):
+        from diagnostics.layout import d001_labels
+        text = "What the data show: x\nMost likely reading (evidence: Strong): y\nOther readings: z"
+        self.assertEqual(d001.normalise_labels({"diagnosis": text}, d001_labels("Moderate"))["diagnosis"], text)
+
+    def test_llm_answer_with_variant_labels_is_accepted(self):
+        import json as _json
+        from diagnostics.templates.d001 import run
+
+        class LLM:
+            model = "stub"
+
+            def complete(self, system, user):
+                draft = _json.loads(user)["draft_answer"]
+                d = draft["diagnosis"].replace("Most likely reading (evidence: Moderate):",
+                                               "most likely reading (Moderate):").replace("Other readings:", "Other readings -")
+                return _json.dumps({**draft, "diagnosis": d})
+        r = run(SITE, {"local": "p"}, LLM(), detail(), None, subsystems.context("3055", lambda no: None))
+        self.assertEqual((r["generated_by"], r["rejected"]), ("llm:stub", None))
+        self.assertIn("\nMost likely reading (evidence: Moderate): ", r["answer"]["diagnosis"])
