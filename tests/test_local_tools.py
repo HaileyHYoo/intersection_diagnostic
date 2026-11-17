@@ -139,3 +139,15 @@ class InspectTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ContractWordingTests(unittest.TestCase):
+    def test_wording_reads_the_diagnosis_audit(self):
+        from types import SimpleNamespace
+        from diagnostics.local import contract_view
+        from diagnostics.store import SQLiteStore
+        store = SQLiteStore(":memory:")
+        store.save_audit("diagnosis", "diag_r_1", {"templates": {"D001": {"generated_by": "code", "rejected": "x"}}})
+        report = SimpleNamespace(diagnosis=SimpleNamespace(diagnosis_id="diag_r_1"))
+        self.assertEqual(contract_view.wording(SimpleNamespace(store=store), report),
+                         {"D001": {"generated_by": "code", "rejected": "x"}})
