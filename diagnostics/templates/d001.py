@@ -400,7 +400,7 @@ code with a strength of evidence; the first one is the most likely reading. Rule
   * Most likely reading: name the first reading exactly as written in the table (e.g. "green given to other
     phases") and explain it from its points "for", connecting them in time order where the evidence allows (e.g. the
     volume rose in the first quarter-hour, then the cycle varied and the green moved in the second). Mention its
-    points "against" if any. Be direct: "is most consistent with", "points to". Never state a cause as proven and
+    points "against" if any; when it has none, do not mention points against at all. Be direct: "is most consistent with", "points to". Never state a cause as proven and
     never use "caused", "because of", "due to" or "proves".
   * Other readings: each other reading, in one short clause, with why it is weaker (its main point against, or
     that it rests on few points); do not repeat every point.
@@ -481,10 +481,18 @@ def assemble_parts(answer: dict, labels: list[str]) -> dict:
         for k, label, pattern in zip(PARTS, labels, (DATA_LABEL, MAIN_LABEL, OTHER_LABEL)):
             v = answer[k].strip()
             m = pattern.match(v)                        # a label written anyway at the start is dropped
-            clean[k] = v[m.end():].strip() if m else v
+            clean[k] = sentence_case(v[m.end():].strip() if m else v)
         answer = {**answer, "diagnosis": "\n".join(f"{label} {clean[k]}" for k, label in zip(PARTS, labels))}
         return answer
     return normalise_labels(answer, labels)
+
+
+def sentence_case(text: str) -> str:
+    """A capital at the start of each sentence (the reading names start in lower case and were seen live after a full
+    stop: "... two approaches. a data or mapping issue is weaker")."""
+    if text:
+        text = text[0].upper() + text[1:]
+    return re.sub(r"(?<!\be\.g)(?<!\bi\.e)(\. )([a-z])", lambda m: m.group(1) + m.group(2).upper(), text)
 
 
 def normalise_labels(answer: dict, labels: list[str]) -> dict:
