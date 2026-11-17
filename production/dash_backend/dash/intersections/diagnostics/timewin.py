@@ -175,8 +175,9 @@ def reference_span(period: Period, rules: dict) -> str:
     if history.get("extend_beyond_weeks", False):
         first = used[-1].day if used else period.day - timedelta(days=7 * weeks)
         text = (f"{head} in the {weeks} most recent usable weeks, {first.isoformat()} to "
-                f"{(period.day - timedelta(days=7)).isoformat()} ({len(used)} found; a left-out week or a week without "
-                f"data is replaced by an earlier one, up to {history.get('max_lookback_weeks', weeks)} weeks back")
+                f"{(period.day - timedelta(days=7)).isoformat()} ({len(used)} found; for each measure, a left-out week "
+                f"or a week without data is replaced by an earlier one, up to "
+                f"{history.get('max_lookback_weeks', weeks)} weeks back, so the Weeks column can differ by measure")
     else:
         first = period.day - timedelta(days=7 * weeks)
         last = period.day - timedelta(days=7)

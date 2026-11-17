@@ -270,3 +270,28 @@ class SwitchTests(unittest.TestCase):
         self.assertEqual(stats.two_sided(16.0, env, 10, noise_sd=2)["status"], stats.ABNORMAL)
         big = {"n": 7, "usual": 900.0, "p_low": 850.0, "p_high": 950.0}
         self.assertEqual(stats.two_sided(1000.0, big, 10, noise_sd=2)["status"], stats.ABNORMAL)
+
+
+class BackfillPerMeasureTests(unittest.TestCase):
+    def test_each_measure_fills_on_its_own_and_stops_where_data_stop(self):
+        """AM peak 10 Nov 2026 with every switch on: volume reached 7 weeks, cycle and green share stayed at 5
+        because the signal-performance records do not go further back; backfill fills per measure."""
+        from diagnostics.baseline import BaselineBuilder
+        from diagnostics.settings import switch_overrides
+
+        class Builder(BaselineBuilder):
+            def __init__(self, rules):
+                self.rules, self.version = rules, "t"
+
+            def slot_values(self, periods):
+                out = {}
+                for k, q in enumerate(periods, 1):          # 9 term candidates, most recent first
+                    out[q.key] = {"volume": {} if k in (3, 7) else {"L": 100.0 + k},     # 7 weeks with volume
+                                  "kpi": {"S": {"cycle_length": 90.0}} if k <= 5 else {},  # cycle only in 5
+                                  "green": {}}
+                return out
+
+        rules = load_rules(overrides=switch_overrides("all"))
+        b = Builder(rules).build(timewin.period_at(date(2026, 11, 10), "08:00", rules))
+        self.assertEqual(b["volume"]["L"]["n"], 7)
+        self.assertEqual(b["kpi"]["S"]["cycle_length"]["n"], 5)
