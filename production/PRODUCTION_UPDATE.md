@@ -123,3 +123,11 @@ Replace the package again. No contract or page change.
 
 Unchanged by these updates: the screening, the categories, the baseline version (`v1.1-f6389e86dc`) and the
 methodology switches, which stay off (`history.extend_beyond_weeks`, `history.school_holidays`, `q1.min_count_noise_sd`).
+
+## 11. Update of 18 Nov 2026: recurrence, one window per site, ranking apart
+
+| File | Change | Seen on the page as |
+|---|---|---|
+| `persistence.py` (new), `service.py`, `contract/core.py` | The Red diagnosis reads the site's category at the same weekday and time in the previous 4 weeks and in the 2 earlier periods of the day from the screening logs in `DIAGNOSTICS_ARCHIVE` (up to 6 logs per click); a recurring condition counts against a one-off incident | Section 1: a "History:" sentence |
+| `baseline.py`, `screening.py`, `settings.py` | When `history.extend_beyond_weeks` is turned on (off today), all the measures of a site share one reference window, extended together (up to 12 weeks) when one measure has fewer than 5 values; the site's note gives the window | Nothing while the switch is off |
+| `rank.py` | No longer in this package: delivered on its own as `rank_addon/` (README inside) | - |

@@ -65,3 +65,26 @@ class RankTests(unittest.TestCase):
         r = rank.rank([site("1", volume=[row("A", 150, 100, 90, 110, "HIGH")])], RULES, previous=[None, None])
         self.assertIsNone(r["red"][0]["persistence"])
         self.assertEqual(r["red"][0]["persistence_factor"], 1.0)
+
+
+class RankOnContractSitesTests(unittest.TestCase):
+    def test_rank_from_the_contract_screening_result(self):
+        """The add-on is called on SiteScreeningResult models (README): Red and Amber sites through site_from_model."""
+        from datetime import datetime, timezone
+        from diagnostics import timewin
+        from diagnostics.baseline import BaselineBuilder
+        from diagnostics.contract import adapter
+        from diagnostics.local.fake import FakeSource
+        from diagnostics.service import DiagnosticsService
+        from diagnostics.settings import Settings
+        from diagnostics.store import SQLiteStore
+        settings = Settings()
+        period = timewin.period_ending(datetime(2026, 10, 27, 8, 30, tzinfo=timezone.utc), settings.rules)
+        source = FakeSource(settings.rules, settings.schema, period.end, n_sites=20)
+        svc = DiagnosticsService(source, settings, SQLiteStore(":memory:"), None, archive=None)
+        view = svc.screen(period.end, now=period.end + timewin.timedelta(hours=1))
+        payload = svc.store.get_run(view["run_id"])["payload"]
+        result = adapter.screening_result(payload, settings, run=view["run_id"])
+        sites = [adapter.site_from_model(s) for s in result.sites if s.category.value in rank.RANKED]
+        ranked = rank.rank(sites, RULES, None)
+        self.assertEqual(sum(len(ranked[c]) for c in rank.RANKED) + len(ranked["mapping_suspect"]), len(sites))

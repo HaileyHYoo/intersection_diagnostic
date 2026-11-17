@@ -124,8 +124,27 @@ def previous_runs(svc, end: str, weeks: int, rescreen: bool, progress) -> list[d
     return out
 
 
+def reports(svc, run_id: str, rows: list[dict], folder: Path, progress=print) -> list[str]:
+    """The SiteReport (contract) of each site, saved under <period>/reports/, for review of the top of the rank."""
+    from . import contract_view
+    out_dir = folder / "reports"
+    lines = []
+    for r in rows:
+        try:
+            report = contract_view.site_report(svc, run_id, r["site"])
+            wording = contract_view.wording(svc, report)
+            contract_view.save(report, run_id, out_dir, wording)
+            w = (wording.get("D001") or {})
+            lines.append(f"| {r['rank']} | {r['site']} | {r['name'] or ''} | {w.get('generated_by')} | "
+                         f"{(w.get('rejected') or '')[:80]} |")
+            progress(f"  report #{r['rank']} SCATS {r['site']}: D001 written by {w.get('generated_by')}")
+        except Exception as exc:  # noqa: BLE001 - one report must not stop the others
+            lines.append(f"| {r['rank']} | {r['site']} | {r['name'] or ''} | failed | {type(exc).__name__}: {exc} |")
+    return lines
+
+
 def run(svc, periods: list[tuple[str, str]], out_dir, top: int = 20, persistence: bool = True,
-        rescreen: bool = False, progress=print) -> Path:
+        rescreen: bool = False, progress=print, report_top: int = 0) -> Path:
     rules = svc.settings.rules
     weeks = rules["rank"]["persistence_weeks"] if persistence else 0
     batch = Path(out_dir) / "rank" / datetime.now().strftime("%Y%m%d_%H%M")
@@ -176,6 +195,10 @@ def run(svc, periods: list[tuple[str, str]], out_dir, top: int = 20, persistence
                  "## Subsystems with two or more Red or Amber sites", "",
                  "SCATS sets the cycle length and plan per subsystem: these sites are best read together.", "",
                  *subsystem_groups(ranked, payload), ""]
+        if report_top:
+            page += [f"## Reports of the top {report_top} Red sites (reports/)", "",
+                     "| # | Site | Intersection | D001 written by | LLM answer rejected |", "|---|---|---|---|---|",
+                     *reports(svc, view["run_id"], ranked["red"][:report_top], folder, progress), ""]
         (folder / "ranked.md").write_text("\n".join(page), encoding="utf-8")
         (folder / "ranked.html").write_text(examples.to_html("\n".join(page), f"{label} - ranked sites"), encoding="utf-8")
     summary += ["", "## Checks of the ranking", "", *sections]

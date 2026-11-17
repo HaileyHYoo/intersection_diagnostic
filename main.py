@@ -307,10 +307,10 @@ def cmd_audit_reports(args):
 def cmd_rank(args):
     """Screening only (no LLM) and the ranking within Red and Amber, for review."""
     from diagnostics.local import rank_run, report_audit
-    args.no_llm = True
+    args.no_llm = args.no_llm or not args.reports          # the LLM is used only for the reports of the top sites
     svc = make_service(args, fake=args.fake)
     batch = rank_run.run(svc, report_audit.parse_periods(args.end), args.out_dir, top=args.top,
-                         persistence=not args.no_persistence, rescreen=args.rescreen)
+                         persistence=not args.no_persistence, rescreen=args.rescreen, report_top=args.reports)
     print("Saved:", batch)
     return 0
 
@@ -611,6 +611,8 @@ def main(argv=None) -> int:
     p.add_argument("--end", nargs="+", required=True,
                    help='period ends, optionally labelled: "AM peak=2026-11-10T08:30" "Weekend midday=2026-11-08T12:30"')
     p.add_argument("--top", type=int, default=20, help="sites listed per category (all are in ranked.csv)")
+    p.add_argument("--reports", type=int, default=0, metavar="N",
+                   help="also write the full report (SiteReport, with the LLM wording) of the top N Red sites")
     p.add_argument("--no-persistence", action="store_true",
                    help="do not screen the previous 4 weeks (faster; persistence factor 1)")
     p.add_argument("--rescreen", action="store_true", help="screen again instead of reusing stored runs")

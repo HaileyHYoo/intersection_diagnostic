@@ -22,13 +22,18 @@ SOURCE = ROOT / "diagnostics"
 OUT = ROOT / "production"
 TARGET = OUT / "dash_backend" / "dash" / "intersections" / "diagnostics"
 EXCLUDE_DIRS = {"local", "__pycache__"}
+# Delivered on its own (production/rank_addon): the production team integrates the ranking separately.
+SEPARATE = {"rank.py"}
+RANK_OUT = OUT / "rank_addon"
+RANK_TARGET = RANK_OUT / "dash_backend" / "dash" / "intersections" / "diagnostics"
 DOCS = {"docs/PRODUCTION_UPDATE.md": "PRODUCTION_UPDATE.md",
         "docs/SCHEMA.md": "SCHEMA.md", "docs/DATA_MAPPING.md": "DATA_MAPPING.md", "requirements.txt": "requirements.txt", ".env.example": ".env.example"}
 
 
 def source_files() -> list[Path]:
     return sorted(p for p in SOURCE.rglob("*") if p.is_file()
-                  and not EXCLUDE_DIRS.intersection(p.relative_to(SOURCE).parts) and p.suffix != ".pyc")
+                  and not EXCLUDE_DIRS.intersection(p.relative_to(SOURCE).parts) and p.suffix != ".pyc"
+                  and str(p.relative_to(SOURCE)) not in SEPARATE)
 
 
 def digest(path: Path) -> str:
@@ -62,6 +67,13 @@ def build() -> None:
     for src, dst in DOCS.items():
         if (ROOT / src).exists():
             shutil.copy2(ROOT / src, OUT / dst)
+    if RANK_OUT.exists():
+        shutil.rmtree(RANK_OUT)
+    RANK_TARGET.mkdir(parents=True)
+    for name in SEPARATE:
+        shutil.copy2(SOURCE / name, RANK_TARGET / name)
+    if (ROOT / "docs" / "RANK_ADDON.md").exists():
+        shutil.copy2(ROOT / "docs" / "RANK_ADDON.md", RANK_OUT / "README.md")
     (OUT / "MANIFEST.json").write_text(json.dumps(manifest(), indent=2) + "\n", encoding="utf-8")
     check_imports()
     print(f"Built {len(source_files())} files into {TARGET.relative_to(ROOT)}")
@@ -75,6 +87,11 @@ def check() -> int:
     built = {str(p.relative_to(TARGET)): digest(p) for p in TARGET.rglob("*") if p.is_file() and "__pycache__" not in p.parts}
     if built != saved["files"]:
         print("production/ was edited by hand or is incomplete: rebuild it")
+        return 1
+    stale = [n for n in SEPARATE if not (RANK_TARGET / n).exists()
+             or digest(RANK_TARGET / n) != digest(SOURCE / n)]
+    if stale:
+        print(f"production/rank_addon is out of date ({stale}): run python tools/build_production.py")
         return 1
     print("production/ matches the source")
     return 0
