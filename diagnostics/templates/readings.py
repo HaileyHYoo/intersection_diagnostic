@@ -478,10 +478,8 @@ def reading_lines(table: list[dict]) -> tuple[str, str, str]:
         main += ", although " + "; ".join(top["against"])
     others = []
     for r in table[1:]:
-        if r["against"]:
-            others.append(f"{r['name']} ({r['strength'].lower()}; against: {'; '.join(r['against'])})")
-        else:
-            others.append(f"{r['name']} ({r['strength'].lower()}; for: {'; '.join(r['for'])})")
+        parts = [f"for: {'; '.join(r['for'])}"] + ([f"against: {'; '.join(r['against'])}"] if r["against"] else [])
+        others.append(f"{r['name']} ({r['strength'].lower()}; {'; '.join(parts)})")
     return top["strength"], main + ".", ("; ".join(others) + ".") if others else "no other reading is supported by these data."
 
 
@@ -503,7 +501,8 @@ def check_for(r: dict, ev: dict, window: str) -> str | None:
             return (f"In SCATS History for {window}, find {which} extended or was called more often, and why "
                     "(pedestrian calls, side-road or turning demand, phase skips); if it recurs on the same weekday, "
                     f"review the maximum times of {rest} or the plan selection.")
-        return (f"In SCATS History for {window}, find which phases took the green lost by {_and(service)} and why; if "
+        losing = [a["approach"] for a in ev["signal"]["phase_service"]["abnormal_approaches"] if a["direction"] == "LOW"]
+        return (f"In SCATS History for {window}, find which phases took the green lost by {_and(losing or service)} and why; if "
                 "it recurs on the same weekday, review those phases' maximum times or the plan selection.")
     if r["key"] == "demand":
         return (f"Confirm in SCATS History for {window} that the phases serving the busier approaches reached their "

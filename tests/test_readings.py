@@ -147,3 +147,13 @@ class SubsystemTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EvidencePositionTests(unittest.TestCase):
+    def test_normal_value_outside_its_range_is_not_called_within(self):
+        from diagnostics.contract.adapter import _position
+        cycle = {"status": "NORMAL", "current": 121.6, "p_low": 120.0, "p_high": 121.0}   # SCATS 3055, 10 Nov 08:00
+        self.assertEqual(_position(cycle), "outside its normal range but less than 10% from usual, so not flagged")
+        self.assertEqual(_position({**cycle, "current": 120.5}), "within its normal range")
+        stab = {"status": "NORMAL", "current": 95.5, "p_low": 62.5, "p_high": 80.3}
+        self.assertIn("more stable than usual", _position(stab, poorer=True))

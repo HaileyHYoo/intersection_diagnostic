@@ -322,6 +322,11 @@ def _abnormal_first(rows: list[dict]) -> list[dict]:
 def _position(row: dict, poorer: bool = False) -> str:
     if row["status"] == ABNORMAL:
         return "poorer than usual, outside its normal range" if poorer else "outside its normal range"
+    c, lo, hi = row.get("current"), row.get("p_low"), row.get("p_high")
+    if c is not None and lo is not None and hi is not None and not lo <= c <= hi:
+        # NORMAL outside the range (seen at SCATS 3055: 121.6 s against 120.0-121.0 s)
+        return ("outside its normal range but more stable than usual; only poorer stability is flagged" if poorer
+                else "outside its normal range but less than 10% from usual, so not flagged")
     return "within its normal range"
 
 
