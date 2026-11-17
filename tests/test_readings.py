@@ -174,10 +174,13 @@ class SubsystemStatusTests(unittest.TestCase):
     def test_summary(self):
         n = status_of("3055")["now"]
         self.assertEqual((n["critical_site"], n["records"], n["cl_mean"], n["cl_sd"], n["cl_above_rl"]),
-                         ("3055", 16, 120.0, 0.0, 14))
+                         ("3055", 15, 120.0, 0.0, 13))
         self.assertEqual([q["ds_median"] for q in n["by_quarter"]], [65.5, 93.0])
         m = status_of("4864")["now"]
         self.assertEqual((m["critical_site"], m["ds_at_least_100"], m["cl_min"], m["cl_max"]), ("4864", 10, 70.0, 90.0))
+        # records stamped 20:59:58 and 21:30:27 UTC belong to the cycles before and after the period: left out, the
+        # median moves from 83 to 99 (DS swings 34-159 from cycle to cycle), so the mean is compared as well
+        self.assertEqual((m["records"], m["ds_median"], m["ds_mean"], m["cl_below_rl"]), (23, 99.0, 94.0, 5))
 
     def test_3055_held_cycle_and_local_variation(self):
         ctx = subsystems.context("3055", lambda no: None)
@@ -189,9 +192,9 @@ class SubsystemStatusTests(unittest.TestCase):
         plan = next(r for r in ev["readings"] if r["key"] == "plan")
         self.assertIn("held by a plan, coordination or a configured minimum", " ".join(plan["for"]))
         d = d001.written(ev)["diagnosis"]
-        self.assertIn("Subsystem saturation median 79; active cycle constant at 120.0 s, above the required cycle "
-                      "(mean 109.8 s).", d)
-        self.assertNotIn("at least 3 s above it in 14", d)                  # the full statement is evidence only
+        self.assertIn("Subsystem saturation median 78; active cycle constant at 120.0 s, above the required cycle "
+                      "(mean 109.5 s).", d)
+        self.assertNotIn("at least 3 s above it in 13", d)                  # the full statement is evidence only
 
     def test_4864_cycle_follows_saturation(self):
         from tests import site_4864 as s
@@ -209,15 +212,28 @@ class SubsystemStatusTests(unittest.TestCase):
 
 class CountsAgainstSaturationTests(unittest.TestCase):
     def test_volume_doubling_with_usual_saturation_is_flagged(self):
-        """SCATS 4864, 10 Nov 08:00: volume +95-98% while the subsystem saturation median stayed at 83 (usual 84)."""
+        """Volume +95-98% (SCATS 4864, 10 Nov 08:00) with a subsystem saturation mean and median near usual."""
         from tests import site_4864 as s
         ctx = subsystems.context("4864", lambda no: None)
-        ctx["status"] = {**status_of("4864"), "usual": {"ds_median": 84.0, "cl_mean": 74.9, "cl_sd": 4.8,
-                                                        "ds_at_least_100_share": 0.4}}
+        ctx["status"] = {**status_of("4864"), "usual": {"ds_median": 97.0, "ds_mean": 92.0, "cl_mean": 74.9,
+                                                        "cl_sd": 4.8, "ds_at_least_100_share": 0.4}}
         ev = d001.evidence(s.SITE, {"local": "p"}, s.DETAIL, None, ctx)
         table = {r["key"]: r for r in ev["readings"]}
         self.assertIn("the counts and the strategic measurements disagree", " ".join(table["data"]["for"]))
         self.assertTrue(any("stayed at its usual level" in c for c in table["demand"]["against"]))
+
+    def test_higher_saturation_is_not_read_as_usual(self):
+        """The real 4864 case: within the period the saturation median was 99 against a usual 84. A median of 83
+        (with two records outside the period) had read as "usual" and made a data issue the leading reading."""
+        from tests import site_4864 as s
+        ctx = subsystems.context("4864", lambda no: None)
+        ctx["status"] = {**status_of("4864"), "usual": {"ds_median": 84.0, "ds_mean": 82.0, "cl_mean": 74.9,
+                                                        "cl_sd": 4.8, "ds_at_least_100_share": 0.4}}
+        ev = d001.evidence(s.SITE, {"local": "p"}, s.DETAIL, None, ctx)
+        table = {r["key"]: r for r in ev["readings"]}
+        self.assertNotIn("data", table)
+        self.assertIn("the subsystem degree of saturation was higher than usual (mean 94 against 82)",
+                      " ".join(table["demand"]["for"]))
 
 
 class LabelNormalisationTests(unittest.TestCase):
@@ -309,8 +325,8 @@ class WeightTests(unittest.TestCase):
         top = d001.evidence(SITE, {"local": "p"}, detail(), None, ctx)["readings"][0]
         self.assertEqual((top["key"], top["strength"], top["score"]), ("other_phases", "Strong", 6))
         ctx = subsystems.context("4864", lambda no: None)
-        ctx["status"] = {**status_of("4864"), "usual": {"ds_median": 84.0, "cl_mean": 74.9, "cl_sd": 4.8,
-                                                        "ds_at_least_100_share": 0.4}}
+        ctx["status"] = {**status_of("4864"), "usual": {"ds_median": 97.0, "ds_mean": 92.0, "cl_mean": 74.9,
+                                                        "cl_sd": 4.8, "ds_at_least_100_share": 0.4}}
         table = d001.evidence(s.SITE, {"local": "p"}, s.DETAIL, None, ctx)["readings"]
         self.assertEqual([(r["key"], r["strength"]) for r in table[:2]], [("data", "Moderate"), ("other_phases", "Moderate")])
         self.assertEqual(next(r for r in table if r["key"] == "event")["strength"], "Weak")
@@ -372,3 +388,55 @@ class SwitchOverrideTests(unittest.TestCase):
         from diagnostics.settings import Settings, load_rules
         self.assertEqual(load_rules()["history"]["max_lookback_weeks"], 12)
         self.assertEqual(Settings().baseline_version, "v1.1-f6389e86dc")
+
+
+class PhaseListTests(unittest.TestCase):
+    """Rank run of 10 Nov 2026 08:00-08:30 (switches on)."""
+
+    @staticmethod
+    def _3426():
+        """SCATS 3426: every approach lost 8-9.5 pp of green; Barkly [N] (phase C) and Carlisle [W] (every other listed
+        phase) share no phase, yet their green shares add up to 76.9%, so unlisted phases took about 23%."""
+        phases = {"N": "C", "S": "C,D1,E1", "W": "A,B,D1,D2,D3,E1,E2", "E": "A,B,D2,D3,E2"}
+        cur = {"N": 37.592, "S": 37.592, "W": 39.303, "E": 39.303}
+        usual = {"N": 45.599, "S": 47.068, "W": 48.329, "E": 48.329}
+        view = {"phases": phases, "quarters": ["08:00-08:15", "08:15-08:30"],
+                "green_share": {"N": [41.9, 33.2], "S": [41.9, 33.2], "W": [42.8, 35.8], "E": [42.8, 35.8]}}
+        ev = {"phase_service_all": [{"approach": k, "current": cur[k], "usual": usual[k], "normal_range": [38.0, 49.0]}
+                                    for k in phases],
+              "signal": {"phase_service": {"abnormal_approaches": [
+                  {"approach": k, "direction": "LOW", "current_green_share_pct": cur[k],
+                   "usual_green_share_pct": usual[k], "normal_range": [38.0, 49.0]} for k in phases]}}}
+        return ev, view
+
+    def test_unlisted_phases_are_solved_and_shifts_dropped(self):
+        ev, view = self._3426()
+        self.assertFalse(readings.phases_cover_cycle(ev, view))
+        self.assertEqual(readings.phase_shifts(ev, view), [])        # "100 minus the share" would be wrong here
+        shares = {x["phases"]: x for x in readings.phase_shares(ev, view)}
+        self.assertEqual(shares["unlisted"]["current"], 23.1)
+        self.assertGreaterEqual(shares["unlisted"]["change"], 15)
+        text = " ".join(readings.phase_share_sentences(list(shares.values()), view["quarters"]))
+        self.assertIn("the phases not listed for any assessed approach 23.1%", text)
+
+    def test_wide_reference_gives_no_usual_share(self):
+        """SCATS 3182: Reserve Street [NW] green share usual 91.6% within a 18.6-92.4% range; the solve gave phases
+        A, B and D a usual 8.4% on the main road. A range this wide is not one operation: no usual by phase."""
+        view = {"phases": {"R": "C", "N": "A,B,D"}, "quarters": ["q1", "q2"], "green_share": {}}
+        ev = {"phase_service_all": [{"approach": "R", "current": 14.6, "usual": 91.6, "normal_range": [18.6, 92.4]}],
+              "signal": {"phase_service": {"abnormal_approaches": [
+                  {"approach": "R", "direction": "LOW", "current_green_share_pct": 14.6, "usual_green_share_pct": 91.6,
+                   "normal_range": [18.6, 92.4]}]}}}
+        shares = readings.phase_shares(ev, view)
+        self.assertTrue(shares and all(x["usual"] is None for x in shares))
+        self.assertIn("varies widely", readings.phase_share_sentences(shares)[0])
+        self.assertEqual(readings.phase_shifts(ev, view), [])
+
+    def test_an_approach_that_lost_green_did_not_gain_it(self):
+        ev, view = self._3426()
+        view = {**view, "phases": {"N": "C", "S": "C,D1,E1", "W": "A,B,D1,D2,D3,E1,E2"}}
+        ev["phase_service_all"] = [x for x in ev["phase_service_all"] if x["approach"] != "E"]
+        ev["phase_service_all"][2]["current"] = 62.4                 # now the lists fill the cycle
+        sh = readings.phase_shifts(ev, view)
+        n = next(x for x in sh if x["approaches"] == ["N"])
+        self.assertIn("S", n["other_approaches"])

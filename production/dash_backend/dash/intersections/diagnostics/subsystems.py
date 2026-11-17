@@ -107,7 +107,8 @@ def _status_rows(source, settings, m: dict, period) -> list[dict]:
 
 
 def _summary(rows: list[dict], period) -> dict | None:
-    """DS, required (RL) and active cycle (CL) of the subsystem over the period and by quarter-hour."""
+    """DS, required (RL) and active cycle (CL) of the subsystem over the period and by quarter-hour. DS swings widely
+    from cycle to cycle (often 40-160 in one half-hour), so its mean is compared with usual as well as its median."""
     from statistics import median, pstdev
     from .timewin import to_utc
     if not rows:
@@ -120,10 +121,11 @@ def _summary(rows: list[dict], period) -> dict | None:
         ds = [r["DegreeOfSaturation"] for r in rs]
         cl = [r["ActiveCycleLength"] for r in rs]
         rl = [r["RequiredCycleLength"] for r in rs]
-        return {"records": len(rs), "ds_median": r1(median(ds)), "ds_max": r1(max(ds)),
+        return {"records": len(rs), "ds_median": r1(median(ds)), "ds_mean": r1(sum(ds) / len(ds)), "ds_max": r1(max(ds)),
                 "ds_at_least_100": sum(d >= 100 for d in ds), "rl_mean": r1(sum(rl) / len(rl)),
                 "cl_mean": r1(sum(cl) / len(cl)), "cl_min": r1(min(cl)), "cl_max": r1(max(cl)), "cl_sd": r1(pstdev(cl)),
-                "cl_above_rl": sum(c >= q + 3 for c, q in zip(cl, rl)), "cl_with_rl": sum(abs(c - q) <= 2 for c, q in zip(cl, rl))}
+                "cl_above_rl": sum(c >= q + 3 for c, q in zip(cl, rl)), "cl_below_rl": sum(c <= q - 3 for c, q in zip(cl, rl)),
+                "cl_with_rl": sum(abs(c - q) <= 2 for c, q in zip(cl, rl))}
     start = to_utc(period.start)
     quarters = [[], []]
     for r in rows:
@@ -131,7 +133,9 @@ def _summary(rows: list[dict], period) -> dict | None:
         if 0 <= k < 2:
             quarters[k].append(r)
     crit = next((r["critical"] for r in rows if r.get("critical")), None)
-    return {**block(rows), "critical_site": ids.site(crit) if crit else None, "by_quarter": [block(q) for q in quarters]}
+    # the period itself: a record stamped just before the start or at the end belongs to the cycle before or after
+    inside = quarters[0] + quarters[1]
+    return {**block(inside or rows), "critical_site": ids.site(crit) if crit else None, "by_quarter": [block(q) for q in quarters]}
 
 
 def status_context(source, settings, site: str, period, reference: bool = True) -> dict | None:
@@ -160,7 +164,8 @@ def status_context(source, settings, site: str, period, reference: bool = True) 
                 refs.append(s)
         weeks = len(refs)
         if weeks >= settings.rules["history"]["min_observations"]:
-            usual = {k: round(median(r[k] for r in refs), 1) for k in ("ds_median", "ds_max", "cl_mean", "rl_mean", "cl_sd")}
+            usual = {k: round(median(r[k] for r in refs), 1) for k in ("ds_median", "ds_mean", "ds_max", "cl_mean", "rl_mean", "cl_sd")
+                     if all(r.get(k) is not None for r in refs)}
             usual["ds_at_least_100_share"] = round(median(r["ds_at_least_100"] / r["records"] for r in refs), 2)
     return {"now": now, "usual": usual, "weeks": weeks}
 

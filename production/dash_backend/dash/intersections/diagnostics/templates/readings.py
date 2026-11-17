@@ -42,8 +42,43 @@ def _phase_set(value) -> tuple[str, ...] | None:
     return tuple(sorted(p.strip() for p in value.split(",") if p.strip())) or None
 
 
+UNLISTED = "unlisted"           # the phases in no assessed approach's "Phases" (pedestrian, turning or side-road phases)
+UNLISTED_TEXT = "the phases not listed for any assessed approach"
+WIDE_PP = 40                    # a green-share normal range this wide mixes different operation (also a data point)
+
+
 def _phases_text(ph: tuple[str, ...]) -> str:
+    if tuple(ph) == (UNLISTED,):
+        return UNLISTED_TEXT
     return ("phase " if len(ph) == 1 else "phases ") + _and(list(ph))
+
+
+def wide_reference(ev: dict) -> list[str]:
+    """Approaches whose green-share normal range is WIDE_PP or wider: their usual median is not one operation."""
+    out = []
+    for a in ev.get("phase_service_all") or []:
+        lo, hi = a.get("normal_range") or (None, None)
+        if lo is not None and hi is not None and hi - lo >= WIDE_PP:
+            out.append(a["approach"])
+    return out
+
+
+def phases_cover_cycle(ev: dict, view: dict | None, tol: float = 3.0) -> bool:
+    """False when two approaches served by complementary phases (no phase in common, all listed phases between
+    them) do not fill the cycle: then phases outside the lists take the rest, and "100 minus the approach's share"
+    is not the share of the other listed phases."""
+    if not view or not view.get("phases"):
+        return True
+    every = set(all_phases(view))
+    rows = {a["approach"]: a["current"] for a in ev.get("phase_service_all") or []
+            if a["approach"] in view["phases"] and a.get("current") is not None}
+    sets = {k: set(view["phases"][k].split(",")) for k in rows}
+    keys = sorted(sets)
+    for i, x in enumerate(keys):
+        for y in keys[i + 1:]:
+            if not sets[x] & sets[y] and sets[x] | sets[y] == every and abs(rows[x] + rows[y] - 100) > tol:
+                return False
+    return True
 
 
 # ---------------------------------------------------------------------------------------------- quarter-hour view
@@ -102,11 +137,17 @@ def phase_shifts(ev: dict, view: dict | None) -> list[dict]:
     served by the rest. Green shares are of the cycle, so the phases not serving the approach take the remainder."""
     if not view or not view["phases"]:
         return []
+    if not phases_cover_cycle(ev, view):
+        return []
     rows = {a["approach"]: a for a in ev["signal"]["phase_service"]["abnormal_approaches"]}
     every = all_phases(view)
+    wide = set(wide_reference(ev))
     out = []
     for group in ev.get("phase_groups") or [[k] for k in rows]:
         a = rows[group[0]]
+        lo, hi = a.get("normal_range") or (None, None)
+        if group[0] in wide or (lo is not None and hi is not None and hi - lo >= WIDE_PP):
+            continue
         own = view["phases"].get(group[0])
         if not own or a["current_green_share_pct"] is None or a["usual_green_share_pct"] is None:
             continue
@@ -170,15 +211,24 @@ def phase_shares(ev: dict, view: dict | None) -> list[dict]:
     def solve(values: dict, tol: float):
         b = [values[k] for k in sorted(sets)] + [100.0]
         x = _solve(eq, b)
-        if x is None or any(abs(sum(c * v for c, v in zip(r, x)) - y) > tol for r, y in zip(eq, b)):
+        if x is None or any(abs(sum(c * v for c, v in zip(r, x)) - y) > tol for r, y in zip(eq, b)) \
+                or min(x) < -tol:
             return None
         return [_r(v) for v in x]
 
     cur = solve({k: rows[k]["current"] for k in sets}, 1.5)
     if cur is None:
-        return []
-    # usual medians that fit no single split: the reference weeks ran different splits (plans); shown without usual
-    usual = solve({k: rows[k]["usual"] for k in sets}, 4.0) or [None] * len(atoms_list)
+        # the listed phases may not fill the cycle (a pedestrian, turning or side-road phase in no approach's list):
+        # one more unknown, the unlisted phases, determined by the cycle total
+        eq = [r + [0.0] for r in eq[:-1]] + [[1.0] * (len(atoms_list) + 1)]
+        cur = solve({k: rows[k]["current"] for k in sets}, 1.5)
+        if cur is None or cur[-1] < 3:
+            return []
+        atoms_list.append((UNLISTED,))
+    # usual medians that fit no single split: the reference weeks ran different splits (plans); shown without usual.
+    # A very wide green-share range means the same: the usual median is not one operation.
+    wide = sorted(set(wide_reference(ev)) & set(sets))
+    usual = (None if wide else solve({k: rows[k]["usual"] for k in sets}, 4.0)) or [None] * len(atoms_list)
     quarters = []
     for q in range(len(view["quarters"])):
         vals = {k: (view["green_share"].get(k) or [None] * (q + 1))[q] for k in sets}
@@ -186,7 +236,7 @@ def phase_shares(ev: dict, view: dict | None) -> list[dict]:
     out = []
     for i, at in enumerate(atoms_list):
         serves = [k for k in sorted(sets) if set(at) <= sets[k] and tuple(sorted(sets[k])) != every]
-        out.append({"phases": ",".join(at), "current": cur[i], "usual": usual[i],
+        out.append({"phases": ",".join(at), "current": cur[i], "usual": usual[i], "wide": wide,
                     "change": None if usual[i] is None else _r(cur[i] - usual[i]),
                     "by_quarter": [q[i] if q else None for q in quarters], "serves": serves})
     return out
@@ -201,8 +251,15 @@ def phase_share_sentences(shares: list[dict], quarters: list[str] | None = None,
         return []
     if mixed_splits(shares):
         parts = ", ".join(f"{_phases_text(tuple(s['phases'].split(',')))} {s['current']:.1f}%" for s in shares)
+        wide = shares[0].get("wide") or []
         if brief:
-            return [f"Share of the cycle by phase now: {parts} (the reference weeks ran different splits)."]
+            why = (f"the usual green share of {_and(wide)} varies widely between the reference weeks" if wide
+                   else "the reference weeks ran different splits")
+            return [f"Share of the cycle by phase now: {parts} ({why})."]
+        if wide:
+            return [f"Share of the cycle by phase now: {parts}. The green share of {_and(wide)} varies widely between "
+                    "the reference weeks (normal range 40 percentage points or wider), so no usual share by phase is "
+                    "given."]
         return [f"Share of the cycle by phase now: {parts}. The usual green shares of the approaches do not fit one "
                 "split, so the reference weeks ran different splits and no usual share by phase is given."]
     parts = ", ".join(f"{_phases_text(tuple(s['phases'].split(',')))} {s['current']:.1f}% ({s['usual']:.1f}%)"
@@ -255,6 +312,14 @@ def onset(view: dict | None, ev: dict) -> dict:
     return {"signal": sig, "volume": vol}
 
 
+def ds_levels(n: dict, u: dict) -> dict:
+    """The subsystem's DS now and usual: the mean when both are known (DS swings widely from cycle to cycle, so the
+    median of one half-hour can move 15 points with two records), else the median."""
+    key = "ds_mean" if n.get("ds_mean") is not None and u.get("ds_mean") is not None else "ds_median"
+    return {"key": key, "word": key[3:], "now": n.get(key), "usual": u.get(key),
+            "median_now": n.get("ds_median"), "median_usual": u.get("ds_median")}
+
+
 def control_sentence(ctx: dict | None, brief: bool = False) -> str | None:
     """Where the site sits in SCATS control (subsystem membership; marriages and the critical site are not known)."""
     if not ctx:
@@ -285,16 +350,25 @@ def status_sentence(ctx: dict | None, quarters: list[str] | None = None) -> str 
         return None
     n, u = st["now"], st["usual"]
     crit = f", critical site {n['critical_site']}" if n.get("critical_site") else ""
-    usual = f" (usual median {u['ds_median']:.0f})" if u.get("ds_median") is not None else ""
+    if n.get("ds_mean") is not None:
+        level = f"mean {n['ds_mean']:.0f} and median {n['ds_median']:.0f}"
+        if u.get("ds_mean") is not None:
+            level += f" (usual mean {u['ds_mean']:.0f}, median {u['ds_median']:.0f})"
+        elif u.get("ds_median") is not None:
+            level += f" (usual median {u['ds_median']:.0f})"
+    else:
+        level = f"median {n['ds_median']:.0f}" + (f" (usual median {u['ds_median']:.0f})"
+                                                  if u.get("ds_median") is not None else "")
     inner = [] if n["cl_min"] == n["cl_max"] else [f"mean {n['cl_mean']:.1f} s"]
     if u.get("cl_mean") is not None:
         inner.append(f"usual {u['cl_mean']:.1f} s")
     cycle = (f"active cycle constant at {n['cl_mean']:.1f} s" if n["cl_min"] == n["cl_max"]
              else f"active cycle {n['cl_min']:.0f}-{n['cl_max']:.0f} s") + (f" ({', '.join(inner)})" if inner else "")
-    text = (f"Subsystem {ctx['region']}-{ctx['subsystem']}{crit}: degree of saturation median {n['ds_median']:.0f}"
-            f"{usual}, up to {n['ds_max']:.0f}, at 100 or more in {n['ds_at_least_100']} of {n['records']} records; "
+    below = f", and at least 3 s below it in {n['cl_below_rl']}" if n.get("cl_below_rl") else ""
+    text = (f"Subsystem {ctx['region']}-{ctx['subsystem']}{crit}: degree of saturation {level}, up to "
+            f"{n['ds_max']:.0f}, at 100 or more in {n['ds_at_least_100']} of {n['records']} records; "
             f"{cycle} against a required cycle of mean {n['rl_mean']:.1f} s; the active cycle was within 2 s of the "
-            f"required cycle in {n['cl_with_rl']} records and at least 3 s above it in {n['cl_above_rl']}.")
+            f"required cycle in {n['cl_with_rl']} records, at least 3 s above it in {n['cl_above_rl']}{below}.")
     q = n.get("by_quarter") or []
     if quarters and len(q) == 2 and all(q):
         text += (f" Saturation median by quarter-hour: {quarters[0]} {q[0]['ds_median']:.0f}, {quarters[1]} "
@@ -308,14 +382,17 @@ def status_brief(ctx: dict | None) -> str | None:
     if not st:
         return None
     n, u = st["now"], st["usual"]
-    usual = f" (usual {u['ds_median']:.0f})" if u.get("ds_median") is not None else ""
+    lv = ds_levels(n, u)
+    usual = f" (usual {lv['usual']:.0f})" if lv["usual"] is not None else ""
     cycle = (f"constant at {n['cl_mean']:.1f} s" if n["cl_min"] == n["cl_max"]
              else f"{n['cl_min']:.0f}-{n['cl_max']:.0f} s")
     if n["cl_with_rl"] >= 0.6 * n["records"]:
         cycle += ", following the required cycle"
     elif n["cl_above_rl"] >= 0.5 * n["records"]:
         cycle += f", above the required cycle (mean {n['rl_mean']:.1f} s)"
-    return f"Subsystem saturation median {n['ds_median']:.0f}{usual}; active cycle {cycle}."
+    elif (n.get("cl_below_rl") or 0) >= 0.3 * n["records"]:
+        cycle += f", below the required cycle (mean {n['rl_mean']:.1f} s)"
+    return f"Subsystem saturation {lv['word']} {lv['now']:.0f}{usual}; active cycle {cycle}."
 
 
 def timing_sentences(view: dict | None, ev: dict) -> list[str]:
@@ -363,7 +440,7 @@ def shift_sentences(shifts: list[dict], view: dict | None) -> list[str]:
 SPECIFIC = re.compile("|".join([
     r"percentage points and serves?", r"% of the cycle against a usual", OPPOSITE, r"subsystem's active cycle stayed at",
     r"degree of saturation was higher than usual", r"\(usually \d+% of records\)", r"followed the required cycle",
-    r"above the required cycle", r"fit no single split", r"same cycle as", r"cycle change is shared by",
+    r"above the required cycle", r"below the required cycle", r"fit no single split", r"same cycle as", r"cycle change is shared by",
     r"kept its usual cycle", r"ran the usual cycle", r"stayed at its usual level", r"changed between the quarter-hours",
     r"usual green share of 100%", r"usual volume of 0", r"is concentrated in", r"did not change \("]))
 
@@ -415,14 +492,17 @@ def readings(ev: dict) -> list[dict]:
     shares = ev.get("phase_shares") or []
     mixed = mixed_splits(shares)
     if mixed:
-        pro["plan"].append("the usual green shares of its approaches fit no single split, so the reference weeks ran "
-                           "different splits (plans)")
+        if not shares[0].get("wide"):           # a wide range is read as a data point below, not as a plan
+            pro["plan"].append("the usual green shares of its approaches fit no single split, so the reference weeks "
+                               "ran different splits (plans)")
         shares, shifts = [], []                 # usual shares by phase are not defined: no claim of a shift
     busier = {k for k, d in traffic.items() if d == "HIGH"}
     if shares:
         for g in [x for x in shares if x["change"] is not None and x["change"] >= 3]:
             text = f"{_phases_text(tuple(g['phases'].split(',')))} gained {g['change']:.1f} percentage points"
             verb = "serve" if "," in g["phases"] else "serves"
+            if g["phases"] == UNLISTED:
+                text += " (pedestrian, turning or side-road phases)"
             to_busier = sorted(set(g["serves"]) & busier)
             if to_busier:
                 pro["demand"].append(f"{text} and {verb} {_and(to_busier)}, where volume is higher")
@@ -434,8 +514,9 @@ def readings(ev: dict) -> list[dict]:
         for sh in shifts:
             if sh["direction"] != "LOW":
                 continue
-            gaining = [k for k in sh["other_approaches"] if traffic.get(k) == "HIGH"
-                       or (service.get(k) or {}).get("direction") == "HIGH"]
+            # an approach that itself lost green did not gain the green this group lost
+            gaining = [k for k in sh["other_approaches"] if (service.get(k) or {}).get("direction") != "LOW"
+                       and (traffic.get(k) == "HIGH" or (service.get(k) or {}).get("direction") == "HIGH")]
             text = (f"{_phases_text(tuple(sh['other_phases'].split(',')))} took {sh['other_current']:.1f}% of the cycle "
                     f"against a usual {sh['other_usual']:.1f}%")
             if gaining:
@@ -479,9 +560,10 @@ def readings(ev: dict) -> list[dict]:
     st = (ctx or {}).get("status")
     if st:
         n, u = st["now"], st["usual"]
-        if u.get("ds_median") is not None and n["ds_median"] >= u["ds_median"] + 10:
-            pro["demand"].append(f"the subsystem degree of saturation was higher than usual (median {n['ds_median']:.0f} "
-                                 f"against {u['ds_median']:.0f})")
+        lv = ds_levels(n, u)
+        if lv["usual"] is not None and lv["now"] >= lv["usual"] + 10:
+            pro["demand"].append(f"the subsystem degree of saturation was higher than usual ({lv['word']} "
+                                 f"{lv['now']:.0f} against {lv['usual']:.0f})")
         elif n["ds_at_least_100"] >= 3:
             share, usual_share = n["ds_at_least_100"] / n["records"], u.get("ds_at_least_100_share")
             text = (f"the subsystem degree of saturation reached 100 or more in {n['ds_at_least_100']} of "
@@ -492,9 +574,12 @@ def readings(ev: dict) -> list[dict]:
                 pro["demand"].append(f"{text} (usually {usual_share * 100:.0f}% of records)")
         # a large volume rise with a usual subsystem saturation: the counts and the strategic measurements disagree
         rise = max([a["pct_difference"] or 0 for a in t["abnormal_approaches"] if a["direction"] == "HIGH"] or [0])
-        if rise >= 30 and u.get("ds_median") is not None and abs(n["ds_median"] - u["ds_median"]) <= 5:
+        # both the mean and the median near usual: one of them alone can sit near usual by chance
+        steady = (lv["usual"] is not None and abs(lv["now"] - lv["usual"]) <= 5
+                  and (lv["median_usual"] is None or abs(lv["median_now"] - lv["median_usual"]) <= 10))
+        if rise >= 30 and steady:
             why = (f"volume rose by up to {rise:.1f}% while the subsystem degree of saturation stayed at its usual level "
-                   f"(median {n['ds_median']:.0f} against {u['ds_median']:.0f})")
+                   f"({lv['word']} {lv['now']:.0f} against {lv['usual']:.0f})")
             con["demand"].append(why)
             con["event"].append(why)
             pro["data"].append(why + ", so the counts and the strategic measurements disagree")
@@ -510,6 +595,11 @@ def readings(ev: dict) -> list[dict]:
             pro["plan"].append(f"the active cycle ({n['cl_mean']:.1f} s) stayed at least 3 s above the required cycle "
                                f"(mean {n['rl_mean']:.1f} s) in {n['cl_above_rl']} of {n['records']} records, so it was "
                                "held by a plan, coordination or a configured minimum rather than by saturation")
+        if (n.get("cl_below_rl") or 0) >= 0.3 * n["records"] and n["rl_mean"] >= n["cl_mean"] + 2:
+            pro["demand"].append(f"the active cycle stayed at least 3 s below the required cycle in {n['cl_below_rl']} of "
+                                 f"{n['records']} records (active up to {n['cl_max']:.0f} s, required mean "
+                                 f"{n['rl_mean']:.1f} s), so saturation called for a longer cycle than it ran, as when "
+                                 "the cycle is at its maximum")
         cv = [v for v in ((view or {}).get("cycle_cv_pct") or []) if v is not None]
         if cv and max(cv) > 2 and n["cl_sd"] <= 1:
             pro["other_phases"].append(f"the subsystem's active cycle stayed at {n['cl_mean']:.1f} s while the site's "
@@ -612,7 +702,10 @@ def check_for(r: dict, ev: dict, window: str) -> str | None:
     if r["key"] == "other_phases":
         gains = [x for x in ev.get("phase_shares") or [] if x["change"] is not None and x["change"] >= 3]
         if gains:
-            ph = _phases_text(tuple(sorted({p for g in gains for p in g["phases"].split(",")})))
+            listed = sorted({p for g in gains for p in g["phases"].split(",") if p != UNLISTED})
+            ph = _and(([_phases_text(tuple(listed))] if listed else [])
+                      + (["the phases outside the approaches' lists (pedestrian or turning phases)"]
+                         if any(g["phases"] == UNLISTED for g in gains) else []))
             return (f"In SCATS History for {window}, find why {ph} ran longer or more often at this site (phase "
                     "extensions, pedestrian calls, side-road or turning demand, skipped phases); if it recurs on the same "
                     f"weekday, review the maximum times of {ph}.")
