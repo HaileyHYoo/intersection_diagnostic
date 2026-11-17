@@ -131,3 +131,16 @@ methodology switches, which stay off (`history.extend_beyond_weeks`, `history.sc
 | `persistence.py` (new), `service.py`, `contract/core.py` | The Red diagnosis reads the site's category at the same weekday and time in the previous 4 weeks and in the 2 earlier periods of the day from the screening logs in `DIAGNOSTICS_ARCHIVE` (up to 6 logs per click); a recurring condition counts against a one-off incident | Section 1: a "History:" sentence |
 | `baseline.py`, `screening.py`, `settings.py` | When `history.extend_beyond_weeks` is turned on (off today), all the measures of a site share one reference window, extended together (up to 12 weeks) when one measure has fewer than 5 values; the site's note gives the window | Nothing while the switch is off |
 | `rank.py` | No longer in this package: delivered on its own as `rank_addon/` (README inside) | - |
+
+## 12. Update of 18 Nov 2026: fixes from the top-10 rank review
+
+Found in the Red reports of the rank run of 10 Nov 2026 08:00-08:30 (sites 3426, 4864, 204, 3182). Categories, contract
+and baseline version are unchanged; only the diagnosis text and the supporting evidence change.
+
+| File | Change | Seen on the page as |
+|---|---|---|
+| `subsystems.py` | The subsystem's saturation is summarised over the period only (a record stamped just before the start or at the end belonged to the neighbouring cycle) and its mean is kept beside the median. Degree of saturation swings 40-160 from cycle to cycle, so two boundary records had moved the 4864 median from 99 to 83 | Subsystem statement: "degree of saturation mean X and median Y (usual mean, median)"; "at least 3 s below the required cycle in N" |
+| `templates/readings.py` | Saturation compared with usual by its mean; "stayed at its usual level" needs the mean and the median both near usual. A cycle running at least 3 s below the required cycle in 30% of the records counts for a response to demand (the cycle could not grow) | 4864 no longer leads with a data issue; 3426 reads the cycle held below the required cycle |
+| `templates/readings.py` | Phases outside every approach's "Phases" list (pedestrian, turning or side-road phases): when two approaches served by complementary phases do not fill the cycle, the phase shares are solved with one more unknown for the unlisted phases, and the per-approach "the other phases took 100 minus its share" sentences are dropped | 3426: "the phases not listed for any assessed approach took 23.1%" instead of contradictory phase sentences |
+| `templates/readings.py` | A green-share normal range of 40 pp or wider gives no usual share by phase and no phase shift | 3182: no "phases A, B and D usual 8.4%" |
+| `templates/readings.py` | An approach that itself lost green is not counted as receiving the green another approach lost, so "less green with higher volume" is no longer cancelled against a response to demand | 3426: the demand reading is no longer Strong with a point against it |

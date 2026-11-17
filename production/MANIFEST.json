@@ -41,7 +41,7 @@
     "templates/catalog.json": "ae55405c8a8801b2205cc6033903e1bc3d6b8afcfc7e1ca5791fe4eaea52dafe",
     "templates/d001.py": "9b70e7a4cc902089e349a026cdd80f833046d3c1df0a33b8ce76b64876e5f71e",
     "templates/d002.py": "3a027697fd65768bdd80f3bc6c0e45871fc9909a929062541ee7a50d7b3d39b1",
-    "templates/readings.py": "77c5f839178422620117721e73e82ff46b5a896fee1df92e364a9c06f25af825",
+    "templates/readings.py": "599a7c39a8ea32a7f4f8650caa0efb89299cdd5c30a13c8facd3570d1c8d27f9",
     "timewin.py": "2d27ec5596a7c8b406f5f5689ce6188554be16c35c937d901a1792ee6fbd0bf9",
     "tomtom_map.py": "25d7f1ba29d9e117b5948dc37a882594038c78b8ba2b6a95099b288ac952d8f8",
     "vic_calendar.py": "484d6d1d28f8c44c5295b975f5a3587990d90081bbba64e7fc0f15ec91785ed5"

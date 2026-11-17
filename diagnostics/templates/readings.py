@@ -214,7 +214,7 @@ def phase_shares(ev: dict, view: dict | None) -> list[dict]:
         if x is None or any(abs(sum(c * v for c, v in zip(r, x)) - y) > tol for r, y in zip(eq, b)) \
                 or min(x) < -tol:
             return None
-        return [_r(v) for v in x]
+        return [_r(max(v, 0.0)) for v in x]          # a share within the tolerance below 0 is 0
 
     cur = solve({k: rows[k]["current"] for k in sets}, 1.5)
     if cur is None:
