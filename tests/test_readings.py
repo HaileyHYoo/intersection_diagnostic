@@ -188,7 +188,10 @@ class SubsystemStatusTests(unittest.TestCase):
         self.assertIn("the subsystem's active cycle stayed at 120.0 s while the site's measured cycles varied", " ".join(top["for"]))
         plan = next(r for r in ev["readings"] if r["key"] == "plan")
         self.assertIn("held by a plan, coordination or a configured minimum", " ".join(plan["for"]))
-        self.assertIn("active cycle constant at 120.0 s", d001.written(ev)["diagnosis"])
+        d = d001.written(ev)["diagnosis"]
+        self.assertIn("Subsystem saturation median 79; active cycle constant at 120.0 s, above the required cycle "
+                      "(mean 109.8 s).", d)
+        self.assertNotIn("at least 3 s above it in 14", d)                  # the full statement is evidence only
 
     def test_4864_cycle_follows_saturation(self):
         from tests import site_4864 as s
@@ -200,6 +203,7 @@ class SubsystemStatusTests(unittest.TestCase):
                       " ".join(ev["readings"][0]["for"]))
         w = d001.written(ev)
         self.assertIn("(critical site 4864)", w["diagnosis"])
+        self.assertIn("active cycle 70-90 s, following the required cycle", w["diagnosis"])
         self.assertEqual(d001.kept_points(w, ev), [])
 
 
@@ -275,3 +279,16 @@ class LabelNormalisationTests(unittest.TestCase):
         r = run(SITE, {"local": "p"}, LLM(), detail(), None, None)
         self.assertEqual(r["generated_by"], "code")
         self.assertEqual(r["llm_raw"], '{"diagnosis": "nothing useful"}')
+
+
+class CloseEvidenceTests(unittest.TestCase):
+    def test_close_readings_are_said_to_be_close(self):
+        from tests import site_4864 as s
+        ctx = subsystems.context("4864", lambda no: None)
+        ctx["status"] = {**status_of("4864"), "usual": {"ds_median": 84.0, "cl_mean": 74.9, "cl_sd": 4.8,
+                                                        "ds_at_least_100_share": 0.4}}
+        ev = d001.evidence(s.SITE, {"local": "p"}, s.DETAIL, None, ctx)
+        main = d001.written(ev)["diagnosis"].split("\n")[1]
+        self.assertIn(f"The evidence is close: {ev['readings'][1]['name']} is about as well supported", main)
+        first = d001.written(ev)["diagnosis"].split("\n")[0]
+        self.assertLess(len(first), 1300)

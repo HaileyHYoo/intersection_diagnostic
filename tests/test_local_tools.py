@@ -151,3 +151,19 @@ class ContractWordingTests(unittest.TestCase):
         report = SimpleNamespace(diagnosis=SimpleNamespace(diagnosis_id="diag_r_1"))
         self.assertEqual(contract_view.wording(SimpleNamespace(store=store), report),
                          {"D001": {"generated_by": "code", "rejected": "x"}})
+
+
+class ReadingsSummaryTests(unittest.TestCase):
+    def test_counts_leading_readings_close_cases_and_rejections(self):
+        from diagnostics.local.report_audit import readings_summary
+        reds = [{"period": "AM", "d001": {"readings": [{"key": "plan", "strength": "Moderate", "for": 2, "against": 0},
+                                                       {"key": "event", "strength": "Moderate", "for": 2, "against": 0}],
+                                          "quarter_view": True, "phase_shares": "mixed",
+                                          "subsystem": {"single_site": False, "status": True},
+                                          "generated_by": "code", "rejected": "'diagnosis' omits: X"}},
+                {"period": "AM", "d001": {"readings": [{"key": "demand", "strength": "Strong", "for": 3, "against": 0}],
+                                          "quarter_view": False, "phase_shares": 2, "subsystem": None,
+                                          "generated_by": "llm:x", "rejected": None}}]
+        text = readings_summary(reds)
+        self.assertIn("| AM | 2 | plan (Moderate): 1; demand (Strong): 1 | 1 (50%) |", text)
+        self.assertIn("- 'diagnosis' omits: 1", text)

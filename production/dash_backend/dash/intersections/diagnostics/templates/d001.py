@@ -259,13 +259,14 @@ def findings(ev: dict) -> tuple[str, str, str, str]:
     shown += rd_mod.timing_sentences(ev.get("quarter_view"), ev)
     quarters = (ev.get("quarter_view") or {}).get("quarters")
     if ev.get("phase_shares"):                          # with mixed splits: the current shares only
-        shown += rd_mod.phase_share_sentences(ev["phase_shares"], quarters)
+        shown += rd_mod.phase_share_sentences(ev["phase_shares"], quarters, brief=True)
     else:
         shown += rd_mod.shift_sentences(ev.get("phase_shifts") or [], ev.get("quarter_view"))
-    if rd_mod.control_sentence(ev.get("control")):
-        shown.append(rd_mod.control_sentence(ev.get("control")))
-    if rd_mod.status_sentence(ev.get("control"), quarters):
-        shown.append(rd_mod.status_sentence(ev.get("control"), quarters))
+    # the subsystem in one or two clauses; the full statement is in the supporting evidence
+    if rd_mod.control_sentence(ev.get("control"), brief=True):
+        shown.append(rd_mod.control_sentence(ev.get("control"), brief=True))
+    if rd_mod.status_brief(ev.get("control")):
+        shown.append(rd_mod.status_brief(ev.get("control")))
     if "readings" not in ev:                            # evidence built without evidence() (tests, old records)
         ev["phase_shifts"] = rd_mod.phase_shifts(ev, ev.get("quarter_view"))
         ev["phase_shares"] = rd_mod.phase_shares(ev, ev.get("quarter_view"))
@@ -412,6 +413,7 @@ code with a strength of evidence; the first one is the most likely reading. Rule
 - Name every abnormal approach exactly as written in the evidence (e.g. "Swanston Street [N]").
 - For cycle length and cycle stability, state the position given in the evidence ("position"); never call a value
   within its normal range unless the position says so.
+- If the draft says "The evidence is close", keep that point in most_likely_reading.
 - Keep the exact words "the opposite of a demand response" where the draft uses them; keep a mapping caveat and a
   detector under-count caveat where the draft has them.
 - Write every volume with its unit (veh/30 min or vehicles per 15 minutes), times in s and shares in %; write phase

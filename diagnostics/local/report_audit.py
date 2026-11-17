@@ -194,7 +194,16 @@ def detail(label: str, p: dict, run_id: str, s: dict, r: dict | None, speed: dic
                        "code_checks": d001.written(ev1)["suggested_checks"] if ev1 else [],
                        "code_diagnosis": d001.written(ev1)["diagnosis"] if ev1 else "",
                        "answer": {k: (one.get("answer") or {}).get(k) for k in ("diagnosis", "suggested_checks")},
-                       "generated_by": one.get("generated_by"), "rejected": one.get("rejected")}
+                       "generated_by": one.get("generated_by"), "rejected": one.get("rejected"),
+                       # readings (17-18 Nov 2026): the ranked table, the inputs it had, the control context
+                       "readings": [{"key": x["key"], "strength": x["strength"], "for": len(x["for"]),
+                                     "against": len(x["against"])} for x in ev1.get("readings") or []],
+                       "quarter_view": bool(ev1.get("quarter_view")),
+                       "phase_shares": ("mixed" if any(x.get("usual") is None for x in ev1.get("phase_shares") or [])
+                                        else len(ev1.get("phase_shares") or [])),
+                       "subsystem": ({"single_site": (ev1.get("control") or {}).get("single_site"),
+                                      "status": bool((ev1.get("control") or {}).get("status"))}
+                                     if ev1.get("control") else None)}
         ev2 = two.get("evidence") or {}
         comp = ev2.get("comparison") or {}
         out["d002"] = {"available": ev2.get("available"), "queue": ev2.get("queue"),
@@ -232,6 +241,7 @@ def run(svc, periods: list[tuple[str, str]], out_dir, amber_speed: bool = True, 
     index = batch / "index.csv"
     rows, counts, verdicts = [], {}, Counter()
     details = (batch / "details.jsonl").open("w", encoding="utf-8")
+    red_details = []
     with index.open("w", newline="", encoding="utf-8-sig") as fh:            # utf-8-sig: opens cleanly in Excel
         writer = csv.DictWriter(fh, fieldnames=COLUMNS)
         writer.writeheader()
@@ -262,7 +272,9 @@ def run(svc, periods: list[tuple[str, str]], out_dir, amber_speed: bool = True, 
                 red += [f"- LLM answer not used (code wording shown) - {x}" for x in rejected] + ["", "---", ""]
                 d002 = (r.get("templates") or {}).get("D002")
                 row = _row(label, p, run_id, s, d002, r.get("link_speed"), r.get("templates") or {})
-                details.write(json.dumps(detail(label, p, run_id, s, r, r.get("link_speed")), default=str) + "\n")
+                d = detail(label, p, run_id, s, r, r.get("link_speed"))
+                red_details.append(d)
+                details.write(json.dumps(d, default=str) + "\n")
                 writer.writerow(row)
                 rows.append(row)
                 verdicts[(label, row["q5_verdict"])] += 1
@@ -295,8 +307,49 @@ def run(svc, periods: list[tuple[str, str]], out_dir, amber_speed: bool = True, 
             (folder / "amber.md").write_text("\n".join(amber), encoding="utf-8")
             (folder / "amber.html").write_text(examples.to_html("\n".join(amber), f"{label} - Amber evidence"), encoding="utf-8")
     details.close()
-    (batch / "summary.md").write_text(summary(counts, rows, verdicts, svc), encoding="utf-8")
+    (batch / "summary.md").write_text(summary(counts, rows, verdicts, svc) + readings_summary(red_details),
+                                      encoding="utf-8")
     return batch
+
+
+def readings_summary(reds: list[dict]) -> str:
+    """How the Red diagnoses read across the batch: which reading leads and how strongly, how often the evidence is
+    close, what the readings had to work with, and how often the LLM wording was used and why it was not."""
+    reds = [d for d in reds if d.get("d001")]
+    if not reds:
+        return ""
+    from collections import defaultdict
+    lines = ["", "## Red diagnoses: readings", "",
+             "| Period | Red | Leading reading (strength) | Close to the second | Quarter-hour data | Phase shares solved | "
+             "Subsystem state read | LLM wording used |", "|---|---|---|---|---|---|---|---|"]
+    by = defaultdict(list)
+    for d in reds:
+        by[d["period"]].append(d["d001"])
+    reasons = Counter()
+    for period, ds in by.items():
+        lead = Counter(f"{x['readings'][0]['key']} ({x['readings'][0]['strength']})" if x.get("readings") else "none"
+                       for x in ds)
+        close = 0
+        for x in ds:
+            r = x.get("readings") or []
+            if len(r) > 1 and r[0]["strength"] == r[1]["strength"] and \
+                    (r[0]["for"] - r[0]["against"]) - (r[1]["for"] - r[1]["against"]) <= 1:
+                close += 1
+        n = len(ds)
+        pct = lambda k: f"{k} ({k / n:.0%})"
+        lines.append(f"| {period} | {n} | " + "; ".join(f"{k}: {v}" for k, v in lead.most_common()) + f" | {pct(close)} | "
+                     f"{pct(sum(bool(x.get('quarter_view')) for x in ds))} | "
+                     f"{pct(sum(isinstance(x.get('phase_shares'), int) and x['phase_shares'] > 0 for x in ds))} "
+                     f"(mixed splits {sum(x.get('phase_shares') == 'mixed' for x in ds)}) | "
+                     f"{pct(sum(bool((x.get('subsystem') or {}).get('status')) for x in ds))} | "
+                     f"{pct(sum(str(x.get('generated_by') or '').startswith('llm') for x in ds))} |")
+        for x in ds:
+            if x.get("rejected"):
+                for part in str(x["rejected"]).split("; "):
+                    reasons[re.sub(r"[:(].*", "", part).strip()] += 1
+    if reasons:
+        lines += ["", "LLM answers not used, by reason:", ""] + [f"- {k}: {v}" for k, v in reasons.most_common()]
+    return "\n".join(lines) + "\n"
 
 
 def summary(counts: dict, rows: list[dict], verdicts: Counter, svc) -> str:

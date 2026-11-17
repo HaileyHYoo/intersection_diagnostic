@@ -197,11 +197,13 @@ def mixed_splits(shares: list[dict]) -> bool:
     return bool(shares) and any(s["usual"] is None for s in shares)
 
 
-def phase_share_sentences(shares: list[dict], quarters: list[str] | None = None) -> list[str]:
+def phase_share_sentences(shares: list[dict], quarters: list[str] | None = None, brief: bool = False) -> list[str]:
     if not shares:
         return []
     if mixed_splits(shares):
         parts = ", ".join(f"{_phases_text(tuple(s['phases'].split(',')))} {s['current']:.1f}%" for s in shares)
+        if brief:
+            return [f"Share of the cycle by phase now: {parts} (the reference weeks ran different splits)."]
         return [f"Share of the cycle by phase now: {parts}. The usual green shares of the approaches do not fit one "
                 "split, so the reference weeks ran different splits and no usual share by phase is given."]
     parts = ", ".join(f"{_phases_text(tuple(s['phases'].split(',')))} {s['current']:.1f}% ({s['usual']:.1f}%)"
@@ -254,7 +256,7 @@ def onset(view: dict | None, ev: dict) -> dict:
     return {"signal": sig, "volume": vol}
 
 
-def control_sentence(ctx: dict | None) -> str | None:
+def control_sentence(ctx: dict | None, brief: bool = False) -> str | None:
     """Where the site sits in SCATS control (subsystem membership; marriages and the critical site are not known)."""
     if not ctx:
         return None
@@ -272,6 +274,8 @@ def control_sentence(ctx: dict | None) -> str | None:
         label = o["category"].replace("_", " - ").replace("amber", "Amber").replace("red", "Red") \
             .replace("normal", "Normal").replace("grey", "Grey").replace("detector - health", "Detector Health")
         parts.append(f"{o['site']}" + (f" {o['name']}" if o.get("name") else "") + f" ({label}{cyc})")
+    if brief:
+        return f"Control: {name}, shared with {_and(parts)}."
     return f"Control: {name}, shared with {_and(parts)}; SCATS sets the cycle length and plan per subsystem."
 
 
@@ -297,6 +301,22 @@ def status_sentence(ctx: dict | None, quarters: list[str] | None = None) -> str 
         text += (f" Saturation median by quarter-hour: {quarters[0]} {q[0]['ds_median']:.0f}, {quarters[1]} "
                  f"{q[1]['ds_median']:.0f}.")
     return text
+
+
+def status_brief(ctx: dict | None) -> str | None:
+    """One clause on the subsystem for the diagnosis (the full statement is in the supporting evidence)."""
+    st = (ctx or {}).get("status")
+    if not st:
+        return None
+    n, u = st["now"], st["usual"]
+    usual = f" (usual {u['ds_median']:.0f})" if u.get("ds_median") is not None else ""
+    cycle = (f"constant at {n['cl_mean']:.1f} s" if n["cl_min"] == n["cl_max"]
+             else f"{n['cl_min']:.0f}-{n['cl_max']:.0f} s")
+    if n["cl_with_rl"] >= 0.6 * n["records"]:
+        cycle += ", following the required cycle"
+    elif n["cl_above_rl"] >= 0.5 * n["records"]:
+        cycle += f", above the required cycle (mean {n['rl_mean']:.1f} s)"
+    return f"Subsystem saturation median {n['ds_median']:.0f}{usual}; active cycle {cycle}."
 
 
 def timing_sentences(view: dict | None, ev: dict) -> list[str]:
@@ -544,6 +564,11 @@ def reading_lines(table: list[dict]) -> tuple[str, str, str]:
     main = f"{top['name']}: " + "; ".join(top["for"])
     if top["against"]:
         main += ", although " + "; ".join(top["against"])
+    if len(table) > 1:
+        second = table[1]
+        margin = (len(top["for"]) - len(top["against"])) - (len(second["for"]) - len(second["against"]))
+        if second["strength"] == top["strength"] and margin <= 1:
+            main += f". The evidence is close: {second['name']} is about as well supported"
     others = []
     for r in table[1:]:
         # one clause each: the main point against, or the main point for (the full lists are in the evidence)
