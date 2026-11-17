@@ -201,3 +201,16 @@ class SubsystemStatusTests(unittest.TestCase):
         w = d001.written(ev)
         self.assertIn("(critical site 4864)", w["diagnosis"])
         self.assertEqual(d001.kept_points(w, ev), [])
+
+
+class CountsAgainstSaturationTests(unittest.TestCase):
+    def test_volume_doubling_with_usual_saturation_is_flagged(self):
+        """SCATS 4864, 10 Nov 08:00: volume +95-98% while the subsystem saturation median stayed at 83 (usual 84)."""
+        from tests import site_4864 as s
+        ctx = subsystems.context("4864", lambda no: None)
+        ctx["status"] = {**status_of("4864"), "usual": {"ds_median": 84.0, "cl_mean": 74.9, "cl_sd": 4.8,
+                                                        "ds_at_least_100_share": 0.4}}
+        ev = d001.evidence(s.SITE, {"local": "p"}, s.DETAIL, None, ctx)
+        table = {r["key"]: r for r in ev["readings"]}
+        self.assertIn("the counts and the strategic measurements disagree", " ".join(table["data"]["for"]))
+        self.assertTrue(any("stayed at its usual level" in c for c in table["demand"]["against"]))

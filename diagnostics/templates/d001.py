@@ -413,7 +413,8 @@ code with a strength of evidence; the first one is the most likely reading. Rule
   within its normal range unless the position says so.
 - Keep the exact words "the opposite of a demand response" where the draft uses them; keep a mapping caveat and a
   detector under-count caveat where the draft has them.
-- Write plain English: no field names or codes such as HIGH, LOW, POORER, abnormal_high, Q3C or other_phases.
+- Write plain English: no field names or codes such as HIGH, LOW, POORER, abnormal_high, Q3C or other_phases, and do
+  not mention "the table", "the evidence JSON" or "the draft".
 Return JSON with keys: diagnosis (string), supporting_evidence (list of strings), suggested_checks (list of strings)."""
 
 

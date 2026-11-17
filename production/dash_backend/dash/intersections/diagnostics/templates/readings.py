@@ -453,6 +453,14 @@ def readings(ev: dict) -> list[dict]:
                 pro["demand"].append(text)
             elif share >= usual_share + 0.15:
                 pro["demand"].append(f"{text} (usually {usual_share * 100:.0f}% of records)")
+        # a large volume rise with a usual subsystem saturation: the counts and the strategic measurements disagree
+        rise = max([a["pct_difference"] or 0 for a in t["abnormal_approaches"] if a["direction"] == "HIGH"] or [0])
+        if rise >= 30 and u.get("ds_median") is not None and abs(n["ds_median"] - u["ds_median"]) <= 5:
+            why = (f"volume rose by up to {rise:.1f}% while the subsystem degree of saturation stayed at its usual level "
+                   f"(median {n['ds_median']:.0f} against {u['ds_median']:.0f})")
+            con["demand"].append(why)
+            con["event"].append(why)
+            pro["data"].append(why + ", so the counts and the strategic measurements disagree")
         follows = n["cl_with_rl"] >= 0.6 * n["records"]
         if (cl["status"] == ABNORMAL or cs["status"] == ABNORMAL) and follows and n["cl_sd"] >= 3:
             why = (f"the active cycle followed the required cycle, which SCATS sets from saturation, between "
