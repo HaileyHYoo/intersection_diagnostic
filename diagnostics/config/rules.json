@@ -17,7 +17,7 @@
     "weeks": 8,
     "min_observations": 5,
     "extend_beyond_weeks": false,
-    "max_lookback_weeks": 16,
+    "max_lookback_weeks": 12,
     "school_holidays": "include",
     "exclude": {"public_holidays": true, "dst_change_days": true, "year_end": true}
   },

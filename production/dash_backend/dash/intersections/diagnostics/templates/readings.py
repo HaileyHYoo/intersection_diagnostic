@@ -539,6 +539,17 @@ def readings(ev: dict) -> list[dict]:
     for label, k in on["volume"].items():
         pro["event"].append(f"the change on {label} is concentrated in {view['quarters'][k]}")
 
+    # recurrence at this time (persistence.py): a recurring condition is not a one-off incident
+    hist = ev.get("persistence") or {}
+    if hist.get("weeks_screened", 0) >= 2:
+        k, n = hist["weeks_flagged"], hist["weeks_screened"]
+        if k >= 2:
+            con["event"].append(f"the site was Red or Amber at this time in {k} of the previous {n} screened weeks, "
+                                "so the condition recurs")
+            pro["plan"].append(f"the condition recurs at this time ({k} of the previous {n} screened weeks)")
+        elif k == 0:
+            pro["event"].append(f"the site was not Red or Amber at this time in any of the previous {n} screened weeks")
+
     # data or mapping
     for m in ev.get("mapping_checks") or []:
         pro["data"].append(f"a usual {m['measure']} of {'100%' if m['measure'] == 'green share' else '0'} on "

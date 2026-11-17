@@ -318,3 +318,57 @@ class WeightTests(unittest.TestCase):
     def test_negated_cause_and_undercount_spelling_are_accepted(self):
         self.assertEqual(d001.causal({"diagnosis": "This is an association and does not prove that one caused the other."}), [])
         self.assertEqual(d001.causal({"diagnosis": "The longer cycle caused the queue."}), ['states a cause ("caused")'])
+
+
+class PersistenceTests(unittest.TestCase):
+    """Recurrence at the same weekday and time, and earlier the same day, from archived screening logs."""
+
+    def setUp(self):
+        import tempfile
+        from diagnostics.archive import open_archive
+        from diagnostics.settings import load_rules
+        from diagnostics.timewin import period_ending
+        self.archive = open_archive(tempfile.mkdtemp())
+        self.period = period_ending("2026-11-10T08:30", load_rules())
+
+    def log(self, end_local, categories):
+        from diagnostics.settings import load_rules
+        from diagnostics.timewin import period_ending
+        p = period_ending(end_local, load_rules())
+        key = f"screening-logs/AU-VIC-Melbourne/{p.day:%Y/%m/%d}/{p.slot.replace(':', '')}_r.json"
+        self.archive.put_new(key, json.dumps({"metadata": {"period": {"end_local": end_local}},
+                                              "intersections": [{"site": k, "category": v}
+                                                                for k, v in categories.items()]}).encode())
+
+    def test_recurring_red_counts_against_a_one_off_event(self):
+        from diagnostics import persistence
+        for day, cat in (("2026-11-03", "red"), ("2026-10-27", "amber_traffic"), ("2026-10-20", "normal")):
+            self.log(f"{day}T08:30", {"3055": cat})
+        self.log("2026-11-10T08:00", {"3055": "amber_signal"})
+        h = persistence.site_persistence(self.archive, "AU-VIC-Melbourne", "3055", self.period)
+        self.assertEqual((h["weeks_screened"], h["weeks_flagged"], h["weeks_red"]), (3, 2, 1))
+        self.assertEqual(persistence.sentence(h), "History: Red or Amber at this time in 2 of the previous 3 screened "
+                         "weeks (Red in 1); earlier today: 07:30-08:00 Amber - signal, 07:00-07:30 not screened.")
+        ev = d001.evidence(SITE, {"local": "p"}, detail(), None, None, h)
+        event = next(r for r in ev["readings"] if r["key"] == "event")
+        self.assertIn("so the condition recurs", " ".join(event["against"]))
+        self.assertIn("History: Red or Amber at this time in 2 of the previous 3", d001.written(ev)["diagnosis"])
+
+    def test_without_archive_nothing_changes(self):
+        from diagnostics import persistence
+        self.assertIsNone(persistence.site_persistence(None, "AU-VIC-Melbourne", "3055", self.period))
+
+
+class SwitchOverrideTests(unittest.TestCase):
+    def test_switches(self):
+        from diagnostics.settings import switch_overrides
+        self.assertEqual(switch_overrides("none"), {})
+        self.assertEqual(switch_overrides("all"), {"history": {"extend_beyond_weeks": True, "school_holidays": "match"},
+                                                   "q1": {"min_count_noise_sd": 2}})
+        with self.assertRaises(ValueError):
+            switch_overrides("nope")
+
+    def test_lookback_is_12_weeks_and_version_unchanged(self):
+        from diagnostics.settings import Settings, load_rules
+        self.assertEqual(load_rules()["history"]["max_lookback_weeks"], 12)
+        self.assertEqual(Settings().baseline_version, "v1.1-f6389e86dc")

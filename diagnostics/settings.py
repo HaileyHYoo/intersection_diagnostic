@@ -23,7 +23,7 @@ from pathlib import Path
 
 PACKAGE_ROOT = Path(__file__).resolve().parent
 CONFIG_DIR = PACKAGE_ROOT / "config"
-NEW_HISTORY_DEFAULTS = {"max_lookback_weeks": 16, "school_holidays": "include"}
+NEW_HISTORY_DEFAULTS = {"max_lookback_weeks": 12, "school_holidays": "include"}
 
 
 def _read_json(path: Path) -> dict:
@@ -44,8 +44,32 @@ def load_schema(path: str | Path | None = None) -> dict:
     return _read_json(Path(path or os.environ.get("DIAGNOSTICS_SCHEMA_FILE") or CONFIG_DIR / "schema.json"))
 
 
+SWITCHES = {   # main.py --switches: methodology switches for sensitivity runs (all off in rules.json)
+    "backfill": {"history": {"extend_beyond_weeks": True}},
+    "school": {"history": {"school_holidays": "match"}},
+    "noise": {"q1": {"min_count_noise_sd": 2}},
+}
+
+
+def switch_overrides(names: str | None) -> dict:
+    """"all", "none" or a comma list of SWITCHES keys -> the rules overrides."""
+    if not names or names == "none":
+        return {}
+    keys = list(SWITCHES) if names == "all" else [n.strip() for n in names.split(",") if n.strip()]
+    unknown = [k for k in keys if k not in SWITCHES]
+    if unknown:
+        raise ValueError(f"Unknown switch(es) {unknown}; use all, none or {', '.join(SWITCHES)}")
+    out: dict = {}
+    for k in keys:
+        out = _merge(out, SWITCHES[k])
+    return out
+
+
 def load_rules(path: str | Path | None = None, overrides: dict | None = None) -> dict:
     rules = _read_json(Path(path or os.environ.get("DIAGNOSTICS_RULES_FILE") or CONFIG_DIR / "rules.json"))
+    env = os.environ.get("DIAGNOSTICS_RULES_OVERRIDES")        # set by main.py --switches (local runs only)
+    if env:
+        rules = _merge(rules, json.loads(env))
     return _merge(rules, overrides) if overrides else rules
 
 

@@ -137,3 +137,19 @@ python main.py measure-check --site 4864 --end 2026-11-10T08:30
 
 Lists the tag and field keys of SCATS measurements not yet used and the site's records in the period; saves
 `out/measure_check_<site>.json`.
+
+
+## Sensitivity run with the methodology switches on
+
+```bash
+python main.py --switches all audit-reports --end "AM peak=2026-11-10T08:30" --persistence --no-amber-speed
+```
+
+`--switches` (all, none, or a comma list of `backfill`, `school`, `noise`) turns on the switches that are off in
+`rules.json` for that run only; the runs and baselines are kept apart from the default ones (another baseline version).
+`--persistence` first screens the previous 4 weeks and the 2 earlier periods, so the Red diagnoses can say whether the
+condition recurs. Compare the categories of two runs of the same period:
+
+```bash
+python main.py compare-runs --run <default run id> <switches run id>
+```

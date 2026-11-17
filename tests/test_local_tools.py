@@ -166,4 +166,18 @@ class ReadingsSummaryTests(unittest.TestCase):
                                           "generated_by": "llm:x", "rejected": None}}]
         text = readings_summary(reds)
         self.assertIn("| AM | 2 | plan (Moderate): 1; demand (Strong): 1 | 1 (50%) |", text)
+        self.assertIn("History (2+ weeks screened)", text)
         self.assertIn("- 'diagnosis' omits: 1", text)
+
+
+class CompareRunsTests(unittest.TestCase):
+    def test_moves_between_two_runs(self):
+        from diagnostics.local import compare_runs
+        mk = lambda rid, cats: {"run_id": rid, "period": {"local": "p", "key": "k"}, "rules_version": rid,
+                                "baseline": {"reference_periods": [1] * 5, "skipped_days": {}},
+                                "sites": [{"site": k, "name": k, "category": v} for k, v in cats.items()]}
+        c = compare_runs.compare(mk("a", {"1": "red", "2": "amber_traffic", "3": "normal"}),
+                                 mk("b", {"1": "red", "2": "normal", "3": "normal"}))
+        self.assertEqual(c["moves"][("amber_traffic", "normal")], 1)
+        self.assertEqual(c["changed"], [("2", "amber_traffic", "normal", "2")])
+        self.assertIn("| amber_traffic | 1 | 0 | -1 |", compare_runs.text(c))

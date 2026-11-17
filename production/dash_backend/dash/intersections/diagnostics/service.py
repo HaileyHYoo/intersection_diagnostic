@@ -28,7 +28,7 @@ from .baseline import BaselineBuilder
 from .report import assemble
 from .settings import Settings, config_snapshot
 from .store import SQLiteStore
-from . import subsystems
+from . import persistence, subsystems
 from .detail import safe_detail
 from .templates import d001, d002
 from .timewin import Period, latest_period, period_ending, reference_text, to_utc
@@ -219,7 +219,9 @@ class DiagnosticsService:
         control = subsystems.context(s["site"], sites.get) if "D001" in templates else None
         if control:
             control["status"] = subsystems.status_context(self.source, self.settings, s["site"], period)
-        r1 = d001.run(s, p["period"], self.llm, detail, self.settings.schema, control) if "D001" in templates else None
+        hist = (persistence.site_persistence(self.archive, self.settings.region, s["site"], period)
+                if "D001" in templates else None)
+        r1 = d001.run(s, p["period"], self.llm, detail, self.settings.schema, control, hist) if "D001" in templates else None
         r2 = d002.run(self.source, s, period, self.settings.rules, self.llm) if "D002" in templates else None
         link_speed = self._link_speed(run, s)
         report = assemble(s, p["period"], r1, r2, link_speed,

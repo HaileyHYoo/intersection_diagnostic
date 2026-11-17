@@ -18,7 +18,7 @@ implemented as switches that are off by default; sections 4–6 are proposals.
 | Switch | Off (methodology as written) | On |
 |---|---|---|
 | `history.school_holidays` | `"include"` | `"match"`: term weekdays against term days, school-holiday weekdays against school-holiday days |
-| `history.extend_beyond_weeks` | `false`: a left-out or missing week is not replaced | `true`: replaced by an earlier week, up to `max_lookback_weeks` (16) |
+| `history.extend_beyond_weeks` | `false`: a left-out or missing week is not replaced | `true`: replaced by an earlier week, up to `max_lookback_weeks` (12) |
 | `q1.min_count_noise_sd` | `0` | `2`: the difference must also be at least 2√usual vehicles |
 
 The baseline version is unchanged while the switches are off (`v1.1-f6389e86dc`). "match" for a school-holiday day

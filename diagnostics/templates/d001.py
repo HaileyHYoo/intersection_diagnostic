@@ -34,7 +34,7 @@ def decimals(row: dict) -> int:
 
 
 def evidence(site: dict, period: dict, detail: dict | None = None, schema: dict | None = None,
-             control: dict | None = None) -> dict:
+             control: dict | None = None, persistence: dict | None = None) -> dict:
     """The diagnosis evidence: the saved 30-minute results and, when read on click (detail.py), the quarter-hour
     view, the phases serving each approach and the table of readings."""
     q1, q3 = site["q1"], site["q3"]
@@ -88,6 +88,7 @@ def evidence(site: dict, period: dict, detail: dict | None = None, schema: dict 
         "min_history": min(weeks) if weeks else None,
         "quarter_view": view,
         "control": control,
+        "persistence": persistence,
         "phase_service_all": [{"approach": approach_label(a), "current": r1(a["current"]), "usual": r1(a["usual"])}
                               for a in comps["phase_service"]["approaches"] if a["status"] != INSUFFICIENT],
     }
@@ -267,6 +268,9 @@ def findings(ev: dict) -> tuple[str, str, str, str]:
         shown.append(rd_mod.control_sentence(ev.get("control"), brief=True))
     if rd_mod.status_brief(ev.get("control")):
         shown.append(rd_mod.status_brief(ev.get("control")))
+    from ..persistence import sentence as history_sentence
+    if history_sentence(ev.get("persistence")):
+        shown.append(history_sentence(ev.get("persistence")))
     if "readings" not in ev:                            # evidence built without evidence() (tests, old records)
         ev["phase_shifts"] = rd_mod.phase_shifts(ev, ev.get("quarter_view"))
         ev["phase_shares"] = rd_mod.phase_shares(ev, ev.get("quarter_view"))
@@ -428,11 +432,11 @@ supporting_evidence (list of strings), suggested_checks (list of strings)."""
 
 
 def run(site: dict, period: dict, llm=None, detail: dict | None = None, schema: dict | None = None,
-        control: dict | None = None) -> dict:
+        control: dict | None = None, persistence: dict | None = None) -> dict:
     """detail: the quarter-hour records read on click (detail.safe_detail); control: the subsystem context
     (subsystems.context). Without them the report is written from the 30-minute values."""
     spec = definition(TEMPLATE)
-    ev = evidence(site, period, detail, schema, control)
+    ev = evidence(site, period, detail, schema, control, persistence)
     draft = written(ev)
     labels = d001_labels((ev["readings"][0]["strength"]) if ev["readings"] else "Weak")
     parts = split_parts(draft["diagnosis"], labels)

@@ -299,7 +299,7 @@ def cmd_audit_reports(args):
     svc = make_service(args, fake=args.fake)
     periods = report_audit.parse_periods(args.end)
     batch = report_audit.run(svc, periods, args.out_dir, amber_speed=not args.no_amber_speed, resume=args.resume,
-                             rescreen=args.rescreen)
+                             rescreen=args.rescreen, persistence=args.persistence)
     print("Saved:", batch)
     return 0
 
@@ -312,6 +312,15 @@ def cmd_rank(args):
     batch = rank_run.run(svc, report_audit.parse_periods(args.end), args.out_dir, top=args.top,
                          persistence=not args.no_persistence, rescreen=args.rescreen)
     print("Saved:", batch)
+    return 0
+
+
+def cmd_compare_runs(args):
+    """Category of every site in two runs of the same period (e.g. default against --switches all)."""
+    from diagnostics.local import compare_runs
+    svc = make_service(args)
+    path = compare_runs.write(svc, args.run[0], args.run[1], args.out_dir)
+    print("Saved:", path)
     return 0
 
 
@@ -508,6 +517,11 @@ def main(argv=None) -> int:
     parser.add_argument("--env", help=".env file (default: ./.env)")
     parser.add_argument("--db", help="SQLite file (default: DIAGNOSTICS_DB or diagnostics.sqlite3)")
     parser.add_argument("--no-llm", action="store_true", help="reports written by code only")
+    parser.add_argument("--switches", default="none",
+                        help="methodology switches for a sensitivity run (off in rules.json): all, none, or a comma "
+                             "list of backfill (earlier weeks fill left-out weeks, up to 12 weeks back), school "
+                             "(school-term and school-holiday days compared separately), noise (volume difference "
+                             "of at least 2 x sqrt(usual)). The runs are kept apart from the default ones.")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("demo", help="synthetic network end to end")
@@ -585,6 +599,9 @@ def main(argv=None) -> int:
     p.add_argument("--no-amber-speed", action="store_true", help="skip link speed on Amber pages (much faster)")
     p.add_argument("--resume", action="store_true", help="reuse Red reports already saved for the same run")
     p.add_argument("--rescreen", action="store_true", help="screen the periods again instead of reusing stored runs")
+    p.add_argument("--persistence", action="store_true",
+                   help="first screen the previous 4 weeks and the 2 earlier periods, so the Red diagnoses can say "
+                        "whether the condition recurs (slower the first time; stored runs are reused)")
     p.add_argument("--fake", action="store_true", help="use the demo store")
     p.add_argument("--sites", type=int, default=48)
     p.add_argument("--out-dir", default=str(ROOT / "out"))
@@ -601,6 +618,11 @@ def main(argv=None) -> int:
     p.add_argument("--sites", type=int, default=48)
     p.add_argument("--out-dir", default=str(ROOT / "out"))
     p.set_defaults(func=cmd_rank)
+
+    p = sub.add_parser("compare-runs", help="category changes between two runs of the same period")
+    p.add_argument("--run", nargs=2, required=True, metavar=("BASE", "OTHER"))
+    p.add_argument("--out-dir", default=str(ROOT / "out"))
+    p.set_defaults(func=cmd_compare_runs)
 
     p = sub.add_parser("contract-report", help="the production SiteReport for sites of a stored run (JSON + page view)")
     p.add_argument("--site", nargs="+", required=True, help="Red or Amber SCATS site numbers")
@@ -679,6 +701,12 @@ def main(argv=None) -> int:
 
     args = parser.parse_args(argv)
     load_env(args.env)
+    from diagnostics.settings import switch_overrides
+    overrides = switch_overrides(args.switches)
+    if overrides:
+        import os
+        os.environ["DIAGNOSTICS_RULES_OVERRIDES"] = json.dumps(overrides)
+        print(f"Switches on: {args.switches} -> {overrides}")
     return args.func(args) or 0
 
 

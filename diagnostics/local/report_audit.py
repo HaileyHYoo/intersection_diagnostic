@@ -202,6 +202,8 @@ def detail(label: str, p: dict, run_id: str, s: dict, r: dict | None, speed: dic
                        "quarter_view": bool(ev1.get("quarter_view")),
                        "phase_shares": ("mixed" if any(x.get("usual") is None for x in ev1.get("phase_shares") or [])
                                         else len(ev1.get("phase_shares") or [])),
+                       "history": ({k: (ev1.get("persistence") or {}).get(k) for k in ("weeks_screened", "weeks_flagged")}
+                                   if ev1.get("persistence") else None),
                        "subsystem": ({"single_site": (ev1.get("control") or {}).get("single_site"),
                                       "status": bool((ev1.get("control") or {}).get("status"))}
                                      if ev1.get("control") else None)}
@@ -235,8 +237,23 @@ def _llm_failed(r: dict) -> bool:
     return any("LLM call failed" in str(t.get("rejected") or "") for t in (r.get("templates") or {}).values())
 
 
+def screen_history(svc, end, weeks: int = 4, earlier: int = 2, progress=print) -> None:
+    """Screen (and archive) the same weekday and time in the previous weeks and the earlier periods of the same day,
+    so that the Red diagnoses can say whether the condition recurs (persistence.py). Stored runs are reused."""
+    from datetime import timedelta
+    from ..timewin import period_ending
+    period = period_ending(end, svc.settings.rules)
+    ends = [period.end - timedelta(days=7 * k) for k in range(1, weeks + 1)]
+    ends += [period.end - timedelta(minutes=period.minutes * j) for j in range(1, earlier + 1)]
+    for e in ends:
+        try:
+            svc.screen(e)
+        except Exception as exc:  # noqa: BLE001 - a missing period is reported as not screened
+            progress(f"  history period ending {e:%Y-%m-%d %H:%M} UTC not screened ({type(exc).__name__}: {exc})")
+
+
 def run(svc, periods: list[tuple[str, str]], out_dir, amber_speed: bool = True, resume: bool = False,
-        progress=print, rescreen: bool = False) -> Path:
+        progress=print, rescreen: bool = False, persistence: bool = False) -> Path:
     batch = Path(out_dir) / "report_audit" / datetime.now().strftime("%Y%m%d_%H%M")
     batch.mkdir(parents=True, exist_ok=True)
     index = batch / "index.csv"
@@ -247,6 +264,9 @@ def run(svc, periods: list[tuple[str, str]], out_dir, amber_speed: bool = True, 
         writer = csv.DictWriter(fh, fieldnames=COLUMNS)
         writer.writeheader()
         for label, end in periods:
+            if persistence:
+                progress(f"{label}: screening the previous 4 weeks and the 2 earlier periods for the history")
+                screen_history(svc, end, progress=progress)
             view = svc.screen(end, force=rescreen)
             run_id = view["run_id"]
             p = svc.store.get_run(run_id)["payload"]
@@ -322,7 +342,8 @@ def readings_summary(reds: list[dict]) -> str:
     from collections import defaultdict
     lines = ["", "## Red diagnoses: readings", "",
              "| Period | Red | Leading reading (strength) | Close to the second | Quarter-hour data | Phase shares solved | "
-             "Subsystem state read | LLM wording used |", "|---|---|---|---|---|---|---|---|"]
+             "Subsystem state read | History (2+ weeks screened) | Recurring (2+ weeks Red/Amber) | LLM wording used |",
+             "|---|---|---|---|---|---|---|---|---|---|"]
     by = defaultdict(list)
     for d in reds:
         by[d["period"]].append(d["d001"])
@@ -344,6 +365,8 @@ def readings_summary(reds: list[dict]) -> str:
                      f"{pct(sum(isinstance(x.get('phase_shares'), int) and x['phase_shares'] > 0 for x in ds))} "
                      f"(mixed splits {sum(x.get('phase_shares') == 'mixed' for x in ds)}) | "
                      f"{pct(sum(bool((x.get('subsystem') or {}).get('status')) for x in ds))} | "
+                     f"{pct(sum(((x.get('history') or {}).get('weeks_screened') or 0) >= 2 for x in ds))} | "
+                     f"{pct(sum(((x.get('history') or {}).get('weeks_flagged') or 0) >= 2 for x in ds))} | "
                      f"{pct(sum(str(x.get('generated_by') or '').startswith('llm') for x in ds))} |")
         for x in ds:
             if x.get("rejected"):
