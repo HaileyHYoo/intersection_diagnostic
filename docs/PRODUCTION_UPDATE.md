@@ -186,3 +186,11 @@ class SiteReport(BaseModel):
 The `SiteReport` validator is unchanged (`diagnosis` stays Red-only). A Red click now makes about 7 more small InfluxDB
 queries and up to 7 queue-archive calls (one per reference week) for the usual values; `tomtom.queue_reference: false`
 turns the queue history off if the click is too slow.
+
+**Merged on the production tree of 19 Nov 2026 (`dash_backend_20261119_intersection_diagnostics`).** Kept as the
+production team left them: `dash/helpers/`, `dash/layers/`, and the package's `contract/intersections_diagnostics_schemas.py`
+(re-export of the platform schema). Taken into the package source: the production team's `adapter.site_from_model` patch
+for Grey and Detector Health neighbours (no Q1/Q3), and `rank.py` inside the package (the page's ranking imports it; the
+new `rank.py` only changes the spread to c(n), same functions and rows). `dash_backend/schemas/intersections_diagnostics_schemas.py`
+is the production team's file (with `SiteRank` and `ScreeningPanelData.ranking`) plus only the optional fields above;
+drop that file to keep the schema as it was, and the package still runs (the fields are filled only when they exist).

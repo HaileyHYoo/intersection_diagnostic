@@ -238,6 +238,14 @@ class CoreTests(unittest.TestCase):
             q4_template=S.TemplateRef(template_id="ID_Q4_SCATS_INTERPRETATION", version="1.0.0"),
             q5_template=S.TemplateRef(template_id="ID_Q5_TOMTOM_CONFIRMATION", version="1.0.0")), self.source, self.settings)
 
+    def test_grey_site_record_for_subsystem_neighbours(self):
+        """Production team's patch (18 Nov 2026): a Grey or Detector Health neighbour has no Q1/Q3; its record still
+        gives name and category so subsystems.context can describe it."""
+        grey = next(s for s in self.result.sites if s.q1 is None or s.q3 is None)
+        rec = adapter.site_from_model(grey)
+        self.assertEqual((rec["site"], rec["q1"], rec["q3"]), (grey.site_no, None, None))
+        self.assertEqual(rec["category"], adapter.CATEGORY_BACK[grey.category])
+
     def test_screening_keeps_the_hosts_ids(self):
         self.assertEqual((self.result.run_id, self.result.baseline_version), ("scr_test", "2026-W44"))
         self.assertEqual(len(self.result.sites), 20)

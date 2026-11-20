@@ -22,7 +22,9 @@ SOURCE = ROOT / "diagnostics"
 OUT = ROOT / "production"
 TARGET = OUT / "dash_backend" / "dash" / "intersections" / "diagnostics"
 EXCLUDE_DIRS = {"local", "__pycache__"}
-# Delivered on its own (production/rank_addon): the production team integrates the ranking separately.
+# The ranking: also copied to production/rank_addon with its README. Since 19 Nov 2026 the production team has it
+# inside the package (dash_backend 2026-11-19: helpers/intersections_diagnostics_service.py imports it), so it is
+# part of the package too.
 SEPARATE = {"rank.py"}
 RANK_OUT = OUT / "rank_addon"
 RANK_TARGET = RANK_OUT / "dash_backend" / "dash" / "intersections" / "diagnostics"
@@ -32,8 +34,7 @@ DOCS = {"docs/PRODUCTION_UPDATE.md": "PRODUCTION_UPDATE.md",
 
 def source_files() -> list[Path]:
     return sorted(p for p in SOURCE.rglob("*") if p.is_file()
-                  and not EXCLUDE_DIRS.intersection(p.relative_to(SOURCE).parts) and p.suffix != ".pyc"
-                  and str(p.relative_to(SOURCE)) not in SEPARATE)
+                  and not EXCLUDE_DIRS.intersection(p.relative_to(SOURCE).parts) and p.suffix != ".pyc")
 
 
 def digest(path: Path) -> str:

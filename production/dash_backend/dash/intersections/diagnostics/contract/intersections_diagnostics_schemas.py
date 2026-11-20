@@ -630,6 +630,20 @@ class IntersectionMarker(SiteRef):
 class DetectorHealthIssue(SiteRef):
     failed_detectors: list[DetectorCount]
 
+class SiteRank(BaseModel):
+    """Order of a Red or Amber site within its category (rank.py); never changes the category."""
+    site_no: str
+    category: SiteCategory
+    rank: int | None = Field(default=None, description="1 = highest score in the category; None when mapping-suspect (unranked)")
+    score: float
+    reasons: Annotated[list[str], Field(default_factory=list, description="Findings and factors behind the score")]
+    mapping_suspect: Annotated[list[str], Field(
+        default_factory=list,
+        description="Why the finding may come from the phase-to-approach or link assignment; the site is listed apart",
+    )]
+    persistence: int | None = Field(default=None, description="Previous same-slot weeks with the same flag; None when none archived")
+    subsystem: str | None = Field(default=None, description="SCATS Region-subsystem, e.g. 'CBD-12'")
+
 class ScreeningPanelData(BaseModel):
     """What the screening callback writes to the panel's dcc.Store."""
     region: str
@@ -648,6 +662,10 @@ class ScreeningPanelData(BaseModel):
         description="Every drawn site, Normal first so it renders under the others; Detector Health Issues are listed instead",
     )]
     detector_health_issues: Annotated[list[DetectorHealthIssue], Field(default_factory=list)]
+    ranking: Annotated[list[SiteRank], Field(
+        default_factory=list,
+        description="Red and Amber sites ranked within their category; mapping-suspect sites last, unranked",
+    )]
     error: str | None = None
     note: str | None = Field(default=None, description="E.g. a newer period still waiting for its data")
     checking: bool = Field(default=False, description="The data check for the latest period is still reading")

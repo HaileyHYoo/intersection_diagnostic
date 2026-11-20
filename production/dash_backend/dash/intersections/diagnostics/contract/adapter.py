@@ -212,6 +212,14 @@ def network(inp: S.ScreeningInput) -> list[dict] | None:
 # ---------------------------------------------------------------------- Level 2
 def site_from_model(m: S.SiteScreeningResult) -> dict:
     """The contract's saved evidence back in our record form, for D001/D002 (values unchanged)."""
+    if m.q1 is None or m.q3 is None:
+        # From the production team's patch (18 Nov 2026): a Grey or Detector Health site has no Q1/Q3.
+        # subsystems.context looks up every site of the subsystem through this function and reads only name,
+        # category and q3 (as optional).
+        lon, lat = m.coordinates if m.coordinates else (None, None)
+        return {"site": m.site_no, "name": m.name or None, "lat": lat, "lon": lon, "category": CATEGORY_BACK[m.category],
+                "label": m.category.value, "reasons": [m.insufficient_data_reason] if m.insufficient_data_reason else m.notes,
+                "notes": [], "q1": None, "q3": None}
     def row(approach_id, name, hc, status, direction):
         label = re.match(r"^(.*) \[([A-Z]{1,2})\]$", name or "")         # approach_label: "Street [N]"
         street, bound = (label.group(1), label.group(2)) if label else (name or None, None)
