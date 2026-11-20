@@ -71,6 +71,36 @@ def _usual(weeks: list[dict], key: str) -> dict:
     return {item: {"usual": _r(median(v)), "weeks": len(v)} for item, v in vals.items()}
 
 
+def raw_stamps(source, site: str, period, rules: dict) -> dict:
+    """Record stamps (local time) of the TomTom feeds from 30 minutes before to 30 minutes after the period, to see
+    how they are labelled: at the quarter-hour (end or start label) or some minutes after it (written after)."""
+    from datetime import timedelta
+    from zoneinfo import ZoneInfo
+    from ..timewin import to_utc, tz_name
+    tz = ZoneInfo(tz_name(rules))
+    a, b = period.start - timedelta(minutes=30), period.end + timedelta(minutes=30)
+    out = {}
+    try:
+        per = defaultdict(set)
+        for r in source.tomtom_turn_kpi(site, a, b):
+            per[f"{r['approach']} {r['field']}"].add(to_utc(r["time"]).astimezone(tz).strftime("%H:%M:%S"))
+        out["turn_kpi"] = {k: sorted(v) for k, v in sorted(per.items()) if k.endswith(("approach_delay", "sample_count"))}
+    except Exception as exc:  # noqa: BLE001
+        out["turn_kpi"] = f"{type(exc).__name__}: {str(exc)[:160]}"
+    try:
+        out["site_kpi"] = sorted({to_utc(r["time"]).astimezone(tz).strftime("%H:%M:%S") for r in source.tomtom_site_kpi(site, a, b)})
+    except Exception as exc:  # noqa: BLE001
+        out["site_kpi"] = f"{type(exc).__name__}: {str(exc)[:160]}"
+    try:
+        rows = source.tomtom_turn_kpi(site, a, b)
+        out["turn_kpi_values"] = sorted((to_utc(r["time"]).astimezone(tz).strftime("%H:%M:%S"), r["approach"], r["exit"],
+                                         r["field"], r["value"]) for r in rows
+                                        if r["field"] in ("approach_delay", "control_delay", "sample_count"))
+    except Exception:  # noqa: BLE001
+        pass
+    return out
+
+
 def check(source, settings, site: str, period, queue_history: bool = False) -> dict:
     from ..link_speed import harmonic
     from ..timewin import reference_periods
@@ -97,8 +127,10 @@ def check(source, settings, site: str, period, queue_history: bool = False) -> d
             w["site_kpi_error"] = f"{type(exc).__name__}: {str(exc)[:160]}"
         try:
             per = defaultdict(list)
-            for r in source.link_speeds(links, p.start, p.end):
-                if r.get("value") and float(r["value"]) > 0:
+            from ..timewin import to_utc
+            a, b = to_utc(p.start), to_utc(p.end)
+            for r in source.link_speeds(links, p.start, p.end):           # [start, end), as link_speed.py
+                if r.get("value") and float(r["value"]) > 0 and a <= to_utc(r["time"]) < b:
                     per[r["link"]].append(float(r["value"]))
             w["speed"] = {l: _r(harmonic(v)) for l, v in per.items()}
         except Exception as exc:  # noqa: BLE001
@@ -124,6 +156,18 @@ def check(source, settings, site: str, period, queue_history: bool = False) -> d
     if queue_history:
         out["usual"]["queue_mean"] = _usual(out["weeks"], "queue")
     return out
+
+
+def raw_text(r: dict) -> str:
+    lines = ["  raw stamps (local) of the TomTom feeds, period -30 min to +30 min:"]
+    if isinstance(r.get("turn_kpi"), str):
+        lines.append(f"    IntersectionTurnKpi: {r['turn_kpi']}")
+    else:
+        for k, v in r.get("turn_kpi", {}).items():
+            lines.append(f"    IntersectionTurnKpi {k}: {', '.join(v)}")
+    site_kpi = r.get("site_kpi")
+    lines.append("    IntersectionKpi: " + (site_kpi if isinstance(site_kpi, str) else ", ".join(site_kpi) or "none"))
+    return "\n".join(lines)
 
 
 def text(c: dict) -> str:
