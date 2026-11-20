@@ -61,23 +61,39 @@ def evidence_tables(site: dict) -> list[dict]:
 
 
 def tomtom_tables(d002: dict) -> list[dict]:
+    """Per approach: the value now and its usual value (median of the reference weeks), with the probe vehicles behind
+    it (20 Nov 2026: movements pooled by vehicles; stops per vehicle)."""
     rows = d002["evidence"]["approaches"]
     if not rows:
         return []
     queue = d002["evidence"]["queue"] == "available"
-    approach = {"title": "TomTom approach performance (same 30 min)",
-                "columns": ["Approach", "Approach delay (s)", "Control delay (s)", "Multi-stop rate", "Delay minutes (of 30)"]
+    nu = lambda a, m, d=1: (_fmt(a.get(m)) if d == 1 else ("-" if a.get(m) is None else f"{a[m]:.{d}f}")) + (
+        "" if (a.get("usual") or {}).get(m) is None else
+        f" ({(a['usual'][m]):.{d}f})")
+    weeks = lambda a: str((a.get("usual_weeks") or {}).get("control_delay_s") or 0)
+    approach = {"title": "TomTom approach performance (same 30 min; usual in brackets)",
+                "columns": ["Approach", "Vehicles", "Control delay (s)", "Approach delay (s)", "Stops per vehicle",
+                            "Delay minutes (of 30)", "Usual from (weeks)"]
                 + (["Mean queue (m)", "Max queue (m)", "Queue minutes (of 30)"] if queue else []),
-                "rows": [[a["approach"], _fmt(a["approach_delay_s"]), _fmt(a["control_delay_s"]),
-                          "-" if a["multi_stop_rate"] is None else f"{a['multi_stop_rate']:.3f}", str(15 * a["quarters_observed"])]
-                         + ([_fmt(a["queue_mean_m"]), _fmt(a["queue_max_m"]), str(a["queue_minutes"])] if queue else [])
+                "rows": [[a["approach"], str(a.get("vehicles", "-")), nu(a, "control_delay_s"), nu(a, "approach_delay_s"),
+                          nu(a, "stops_per_vehicle", 2), str(15 * a["quarters_observed"]), weeks(a)]
+                         + ([nu(a, "queue_mean_m"), _fmt(a["queue_max_m"]), str(a["queue_minutes"])] if queue else [])
                          for a in rows]}
     to = lambda m: " ".join(x for x in (m.get("to_street"), f"({m['to_direction'].lower()}bound)" if m.get("to_direction")
                                          else None) if x) or "-"
-    moves = {"title": "TomTom movements (control delay, s)", "columns": ["Approach", "Movement", "To", "Control delay (s)"],
-             "rows": [[a["approach"], m["movement"], to(m), _fmt(m.get("control_delay_s"))]
+    moves = {"title": "TomTom movements (same 30 min)", "columns": ["Approach", "Movement", "To", "Vehicles",
+                                                                     "Control delay (s)", "Stops per vehicle"],
+             "rows": [[a["approach"], m["movement"], to(m), str(m.get("vehicles", "-")), _fmt(m.get("control_delay_s")),
+                       "-" if m.get("stops_per_vehicle") is None else f"{m['stops_per_vehicle']:.2f}"]
                       for a in rows for m in a["movements"]]}
-    return [approach] + ([moves] if moves["rows"] else [])
+    site = d002["evidence"].get("site") or {}
+    whole = [[name, "-" if (site.get(f) or {}).get("now") is None else f"{site[f]['now']:.{d}f}",
+              "-" if (site.get(f) or {}).get("usual") is None else f"{site[f]['usual']:.{d}f}", str((site.get(f) or {}).get("weeks", 0))]
+             for f, name, d in (("control_delay", "Control delay (s)", 1), ("stops", "Stops per vehicle", 2),
+                                ("speed", "Speed (km/h)", 1))]
+    junction = {"title": "TomTom whole junction (same 30 min)", "columns": ["Measure", "Now", "Usual", "Weeks"],
+                "rows": [r for r in whole if r[1] != "-"]}
+    return [approach] + ([moves] if moves["rows"] else []) + ([junction] if junction["rows"] else [])
 
 
 def speed_part(link_speed: dict | None) -> tuple[list[str], list[dict]]:

@@ -434,6 +434,16 @@ def q4_output(site: dict, d001: dict, rules: dict, template: S.TemplateRef | Non
                       **optional(S.Q4Output, generated_by=d001["generated_by"], llm_rejected=d001["rejected"]))
 
 
+def tomtom_extra(a: dict) -> dict:
+    """The proposed TomTomApproachMetrics fields (20 Nov 2026): vehicles, stops per vehicle and usual values. Filled
+    only when the contract has them (optional())."""
+    u, w = a.get("usual") or {}, a.get("usual_weeks") or {}
+    return {"vehicles": a.get("vehicles"), "stops_per_vehicle": a.get("stops_per_vehicle"),
+            "reference_delay_s": u.get("approach_delay_s"), "reference_control_delay_s": u.get("control_delay_s"),
+            "reference_stops_per_vehicle": u.get("stops_per_vehicle"),
+            "reference_queue_length_m": u.get("queue_mean_m"), "reference_weeks": w.get("control_delay_s") or None}
+
+
 def q5_output(d002: dict, period: Period, rules: dict, template: S.TemplateRef | None = None) -> S.Q5Output:
     ev = d002["evidence"]
     template = template or template_ref(rules, "D002")
@@ -452,13 +462,16 @@ def q5_output(d002: dict, period: Period, rules: dict, template: S.TemplateRef |
                                           delay_s=a.get("approach_delay_s", a["delay_s"]),
                                           control_delay_s=a["control_delay_s"], multi_stop_rate=a["multi_stop_rate"],
                                           queue_length_m=a["queue_mean_m"] if a["queue_adequate"] else None,
-                                          is_observed=a["adequate"]) for a in ev["approaches"]]
+                                          is_observed=a["adequate"],
+                                          **optional(S.TomTomApproachMetrics, **tomtom_extra(a)))
+                  for a in ev["approaches"]]
     # A SCATS-identified approach with no TomTom approach at all is listed as not observed, so the page can name it
     # (seen live: "PRINVH6GVH2H: Q3C abnormal_high" where Princess Street [S] had no TomTom row).
     listed = {a.approach_id for a in approaches}
     approaches += [S.TomTomApproachMetrics(approach_id=p["link"], approach_name=p.get("approach") or p["link"], is_observed=False)
                    for p in ev["comparison"]["per_approach"] if p["link"] not in listed]
-    movements = [S.TomTomMovementMetrics(approach_id=ident(a), movement=m["movement"], control_delay_s=m.get("control_delay_s"))
+    movements = [S.TomTomMovementMetrics(approach_id=ident(a), movement=m["movement"], control_delay_s=m.get("control_delay_s"),
+                                         **optional(S.TomTomMovementMetrics, vehicles=m.get("vehicles")))
                  for a in ev["approaches"] for m in a["movements"]]
     comp = ev["comparison"]
     none_ok = accepts_none(S.ScatsComparison, "has_largest_queue")

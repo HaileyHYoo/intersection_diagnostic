@@ -25,6 +25,15 @@ class RankTests(unittest.TestCase):
         f = rank.findings(site("1", volume=[row("A", 16, 10, 9, 11, "HIGH")]), RULES["rank"])
         self.assertAlmostEqual(f[0]["z"], 6 / 10 ** 0.5, places=3)
 
+    def test_spread_constant_follows_the_number_of_weeks(self):
+        """c(n), the expected 10th-90th percentile width of n normal values (review of 18 Nov 2026)."""
+        c = {n: round(rank.range_constant(n, RULES["rank"]), 2) for n in (5, 6, 7, 8)}
+        self.assertEqual(c, {5: 1.79, 6: 1.91, 7: 1.99, 8: 2.05})
+        self.assertEqual(rank.range_constant(None, RULES["rank"]), 2.563)
+        # range 30-50 over 5 weeks: spread 20 / 1.79 = 11.2 (not 20 / 2.563 = 7.8), above the sqrt(40) floor
+        f = rank.findings(site("1", volume=[row("A", 80, 40, 30, 50, "HIGH", n=5)]), RULES["rank"])
+        self.assertAlmostEqual(f[0]["z"], 40 / (20 / rank.range_constant(5, RULES["rank"])), places=3)
+
     def test_z_is_capped(self):
         f = rank.findings(site("1", volume=[row("A", 3000, 1000, 990, 1010, "HIGH")]), RULES["rank"])
         self.assertEqual(f[0]["z"], 5)
@@ -40,9 +49,10 @@ class RankTests(unittest.TestCase):
         opp = rank.score(site("1", volume=[row("A", 150, 100, 90, 110, "HIGH")],
                               service=[row("A", 20, 40, 38, 42, "LOW")]), RULES)
         self.assertEqual(opp["type_factor"], 1.25)
+        five = rank.score(site("1", volume=[row("A", 150, 100, 90, 110, "HIGH", n=5)]), RULES)
         thin = rank.score(site("1", volume=[row("A", 150, 100, 90, 110, "HIGH", n=5)], tolerated=[3]), RULES)
         self.assertAlmostEqual(thin["confidence"], 0.64)
-        self.assertAlmostEqual(thin["score"], round(base["score"] * 0.64, 2), places=1)
+        self.assertAlmostEqual(thin["score"], round(five["score"] / 0.8 * 0.64, 2), places=1)
         pers = rank.score(site("1", volume=[row("A", 150, 100, 90, 110, "HIGH")]), RULES, persistence=2)
         self.assertEqual(pers["persistence_factor"], 1.5)
         self.assertEqual(rank.score(site("1", volume=[row("A", 150, 100, 90, 110, "HIGH")], veh_h=1000), RULES)["impact"], 1.0)

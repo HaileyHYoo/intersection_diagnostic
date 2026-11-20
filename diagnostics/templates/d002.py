@@ -98,83 +98,161 @@ def resolve_stubs(approaches: dict, names: dict) -> dict[str, str]:
     return out
 
 
-def measure(source, site: dict, period: Period, rules: dict) -> dict:
-    mapping = source.tomtom_mapping(site["site"])
-    rows = source.tomtom_turn_kpi(site["site"], period.start, period.end)
+POOLED = ("approach_delay", "control_delay", "stops", "stop_rate", "multi_stop_rate")
+
+
+def aggregate(rows: list[dict], period: Period, rules: dict, label: str = "end") -> dict[str, dict]:
+    """{TomTom approach: values for the period} from the 15-minute movement records (IntersectionTurnKpi).
+
+    Each record is the mean over the probe vehicles of one movement (approach -> exit) in one quarter-hour, with
+    their number in SampleCount. An approach's value is the mean over all its observed vehicles: the records pooled
+    by SampleCount, over its movements and both quarter-hours (decision with the methodology owner, 20 Nov 2026;
+    tomtom.delay_mean "sample_weighted"). "plain" gives every record the same weight (the chatbot's tomtom/los.py).
+    A negative delay counts as 0 before pooling. A record without SampleCount weighs 1."""
+    tt = rules["tomtom"]
+    weighted = tt.get("delay_mean", "sample_weighted") == "sample_weighted"
     aligner = Aligner(rules["alignment"])
+    ends = set(period.interval_ends(15))
     series = defaultdict(list)
     for r in rows:
         series[(r["approach"], r["exit"], r["field"])].append((r["time"], r["value"]))
-    ends = period.interval_ends(15)
+    aligned = {k: {t: v for t, v in aligner.align(points, 15, label).items() if t in ends} for k, points in series.items()}
+    if tt.get("negative_delay", "zero") == "zero":                     # the chatbot's delay_policy: faster than
+        aligned = {k: ({t: max(v, 0.0) for t, v in s.items()} if k[2] in DELAY_FIELDS else s)   # free flow = no delay
+                   for k, s in aligned.items()}
+    acc = defaultdict(lambda: {"sums": defaultdict(lambda: [0.0, 0.0]), "quarters": defaultdict(set), "vehicles": 0.0,
+                               "movements": defaultdict(lambda: {"sums": defaultdict(lambda: [0.0, 0.0]), "vehicles": 0.0})})
+    for (approach, exit_id, field), s in aligned.items():
+        if field not in POOLED:
+            continue
+        counts = aligned.get((approach, exit_id, "sample_count"), {})
+        a, mv = acc[approach], acc[approach]["movements"][exit_id]
+        for t, v in s.items():
+            n = counts.get(t)
+            w = (n if n and n > 0 else 1.0) if weighted else 1.0
+            for target in (a, mv):
+                target["sums"][field][0] += w * v
+                target["sums"][field][1] += w
+            a["quarters"][field].add(t)
+            if field == "control_delay":
+                vehicles = n if n and n > 0 else 0
+                a["vehicles"] += vehicles
+                mv["vehicles"] += vehicles
+    pooled = lambda sums, f, d=1: round(sums[f][0] / sums[f][1], d) if sums[f][1] else None
+    out = {}
+    for approach, a in acc.items():
+        out[approach] = {"approach_delay_s": pooled(a["sums"], "approach_delay"),
+                         "control_delay_s": pooled(a["sums"], "control_delay"),
+                         "stops_per_vehicle": pooled(a["sums"], "stops", 2),
+                         "stop_rate": pooled(a["sums"], "stop_rate", 2),
+                         "multi_stop_rate": pooled(a["sums"], "multi_stop_rate", 3),
+                         "vehicles": int(round(a["vehicles"])),
+                         "quarters_by": {f: len(a["quarters"][f]) for f in DELAY_FIELDS},
+                         "movements": {e: {"control_delay_s": pooled(m["sums"], "control_delay"),
+                                           "approach_delay_s": pooled(m["sums"], "approach_delay"),
+                                           "stops_per_vehicle": pooled(m["sums"], "stops", 2),
+                                           "vehicles": int(round(m["vehicles"]))}
+                                       for e, m in a["movements"].items() if m["sums"]["control_delay"][1]}}
+    return out
+
+
+USUAL = ("approach_delay_s", "control_delay_s", "stops_per_vehicle", "queue_mean_m")
+
+
+def reference(source, site: str, period: Period, rules: dict, label: str = "end") -> dict:
+    """The usual TomTom values of the site: each measure in each reference week of the screening (same weekday and
+    slot, holidays left out; timewin.reference_periods), and the median of the weeks that have a value, shown when
+    at least tomtom.reference_min_weeks (2) weeks have one (methodology owner, 20 Nov 2026). Read on the click,
+    one small query per week; the queue history is one archive call per week (tomtom.queue_reference)."""
+    from statistics import median
+    from ..timewin import reference_periods
+    tt = rules["tomtom"]
+    need = tt.get("reference_min_weeks", 2)
+    weeks, _ = reference_periods(period, rules)
+    per = defaultdict(lambda: defaultdict(list))            # approach -> measure -> weekly values
+    site_per = defaultdict(list)
+    errors = []
+    for p in weeks:
+        try:
+            for ap, v in aggregate(source.tomtom_turn_kpi(site, p.start, p.end), p, rules, label).items():
+                for m in ("approach_delay_s", "control_delay_s", "stops_per_vehicle"):
+                    if v[m] is not None:
+                        per[ap][m].append(v[m])
+                if v["vehicles"]:
+                    per[ap]["vehicles"].append(v["vehicles"])
+            rows = source.tomtom_site_kpi(site, p.start, p.end)
+            for f in ("control_delay", "stops", "speed"):
+                vals = [max(float(r["value"]), 0.0) if f == "control_delay" else float(r["value"])
+                        for r in rows if r["field"] == f and r.get("value") is not None]
+                if vals:
+                    site_per[f].append(mean(vals))
+        except Exception as exc:  # noqa: BLE001 - the usual values are supplementary
+            errors.append(f"{p.label()}: {type(exc).__name__}")
+        if tt.get("queue_reference", True):
+            q, status = _queue(source, site, p, rules)
+            for ap, v in q.items():
+                if v["minutes"] >= tt["queue_min_minutes"]:
+                    per[ap]["queue_mean_m"].append(v["mean_m"])
+    usual = lambda vals, d=1: round(median(vals), d) if len(vals) >= need else None
+    return {"weeks_read": len(weeks), "min_weeks": need, "errors": errors,
+            "approaches": {ap: {**{m: usual(v[m], 2 if m == "stops_per_vehicle" else 1) for m in USUAL},
+                                "weeks": {m: len(v[m]) for m in USUAL},
+                                "vehicles_median": round(median(v["vehicles"])) if v["vehicles"] else None}
+                           for ap, v in per.items()},
+            "site": {f: {"usual": usual(v, 2), "weeks": len(v)} for f, v in site_per.items()}}
+
+
+def measure(source, site: dict, period: Period, rules: dict) -> dict:
+    mapping = source.tomtom_mapping(site["site"])
     feed = source.schema["influx"]["sources"]["tomtom_turn_kpi"] if hasattr(source, "schema") else {}
     label = feed.get("timestamp_label", "end")
-    aligned = {k: {t: v for t, v in aligner.align(points, 15, label).items() if t in ends} for k, points in series.items()}
+    current = aggregate(source.tomtom_turn_kpi(site["site"], period.start, period.end), period, rules, label)
 
     names = {a["link"]: a for a in site["q1"]["approaches"] + site["q1"].get("not_evaluated", [])}
     names.update({a["link"]: a for a in site["q3"]["components"]["phase_service"]["approaches"]})
     tt = rules["tomtom"]
     metric = tt.get("delay_metric", "control_delay")
-    if tt.get("negative_delay", "zero") == "zero":                     # the chatbot's delay_policy: faster than
-        aligned = {k: ({t: max(v, 0.0) for t, v in s.items()} if k[2] in DELAY_FIELDS else s)   # free flow = no delay
-                   for k, s in aligned.items()}
-    acc = defaultdict(lambda: {"quarters": defaultdict(set), "delay": defaultdict(list), "control": [],
-                               "weighted": defaultdict(list), "movements": {}})
-    for (approach, exit_id, field), s in aligned.items():
-        a = acc[approach]
-        a["quarters"][field].update(s)
-        if field == "approach_delay":
-            for t, v in s.items():
-                a["delay"][t].append(v)
-        elif field == "control_delay":
-            # The chatbot's approach and movement control delay (tomtom/los.py): the plain mean of the stored
-            # 15-minute turn records; "sample_weighted" weights them by SampleCount instead.
-            weights = aligned.get((approach, exit_id, "sample_count"), {})
-            pairs = [(v, (weights.get(t, 0) or 0) if tt.get("delay_mean") == "sample_weighted" else 1) for t, v in s.items()]
-            a["control"] += pairs
-            if s:
-                a["movements"].setdefault(exit_id, {})["control_delay_s"] = r1(_weighted(pairs))
-        elif field == "multi_stop_rate":
-            weights = aligned.get((approach, exit_id, "sample_count"), {})
-            a["weighted"][field] += [(v, weights.get(t, 0) or 0) for t, v in s.items()]
-
     queue, queue_status = _queue(source, site["site"], period, rules)
     min_minutes = rules["tomtom"]["queue_min_minutes"]
     approaches, exits = mapping.get("approaches", {}), mapping.get("exits", {})
+    ref = reference(source, site["site"], period, rules, label) if (approaches or current) else \
+        {"weeks_read": 0, "min_weeks": tt.get("reference_min_weeks", 2), "errors": [], "approaches": {}, "site": {}}
     via_stub = resolve_stubs(approaches, names)
     out = []
-    for approach_id in sorted(set(acc) | set(queue)):
-        a, info = acc[approach_id], approaches.get(approach_id, {})
+    for approach_id in sorted(set(current) | set(queue)):
+        a, info = current.get(approach_id) or {}, approaches.get(approach_id, {})
         mapped_link = info.get("link")
         link = via_stub.get(approach_id, mapped_link)
         on_site = link in names                         # one of the site's screened (EGRESS) approaches
         base = names.get(link, {"link": link, "street": info.get("street"), "bound": info.get("direction")})
-        label = approach_label(base) if on_site else \
+        label_ = approach_label(base) if on_site else \
             f"{info.get('street') or 'TomTom approach'} ({(info.get('direction') or '?').lower()}bound, link {link})"
-        delays = [mean(v) for v in a["delay"].values() if v]
         q = queue.get(approach_id)
         movements = []
-        for exit_id, mv in sorted(a["movements"].items()):
+        for exit_id, mv in sorted((a.get("movements") or {}).items()):
             out_arm = exits.get(exit_id, {})
             turn = movement(info.get("direction"), out_arm.get("direction"))
             movements.append({"exit": exit_id, "movement": turn or "unknown", "to_street": out_arm.get("street"),
                               "to_direction": out_arm.get("direction"), **mv})
-        mrate = _weighted(a["weighted"].get("multi_stop_rate", []))
-        approach_delay = r1(mean(delays)) if delays else None
-        control_delay = r1(_weighted(a["control"]))
-        quarters = len(a["quarters"][metric])
+        quarters_by = a.get("quarters_by") or {m: 0 for m in DELAY_FIELDS}
+        quarters = quarters_by.get(metric, 0)
+        usual = ref["approaches"].get(approach_id, {})
         out.append({"tomtom_approach": approach_id, "link": link, "mapped": link is not None, "on_site": on_site,
                     "mapped_link": mapped_link, "via_stub": approach_id in via_stub,
                     "stub_hops": info.get("stub_hops", 0),
-                    "approach": label if link else f"TomTom approach {approach_id} (not mapped)",
-                    "delay_s": control_delay if metric == "control_delay" else approach_delay,
-                    "approach_delay_s": approach_delay, "control_delay_s": control_delay,
-                    "multi_stop_rate": None if mrate is None else round(mrate, 3),
+                    "approach": label_ if link else f"TomTom approach {approach_id} (not mapped)",
+                    "delay_s": a.get("control_delay_s") if metric == "control_delay" else a.get("approach_delay_s"),
+                    "approach_delay_s": a.get("approach_delay_s"), "control_delay_s": a.get("control_delay_s"),
+                    "stops_per_vehicle": a.get("stops_per_vehicle"), "stop_rate": a.get("stop_rate"),
+                    "multi_stop_rate": a.get("multi_stop_rate"), "vehicles": a.get("vehicles", 0),
                     "quarters_observed": quarters,
                     "adequate": quarters >= tt["adequate_quarters"],
-                    "quarters_by": {m: len(a["quarters"][m]) for m in DELAY_FIELDS},
+                    "quarters_by": quarters_by,
                     "queue_mean_m": r1(q["mean_m"]) if q else None, "queue_max_m": r1(q["max_m"]) if q else None,
                     "queue_minutes": q["minutes"] if q else 0,
                     "queue_adequate": bool(q) and q["minutes"] >= min_minutes,
+                    "usual": {m: usual.get(m) for m in USUAL}, "usual_weeks": usual.get("weeks") or {m: 0 for m in USUAL},
+                    "usual_vehicles": usual.get("vehicles_median"),
                     "movements": movements})
     # The mapping file can tie two TomTom approaches to one link (seen at SCATS 4566); each is named by its
     # TomTom approach ID as well, so the two rows can be told apart. Nothing is merged or re-assigned.
@@ -190,10 +268,16 @@ def measure(source, site: dict, period: Period, rules: dict) -> dict:
                 r["shares_link"] = True
     out.sort(key=lambda r: -(r["delay_s"] if r["delay_s"] is not None else -1))
     site_rows = source.tomtom_site_kpi(site["site"], period.start, period.end)
-    site_delay = [max(float(r["value"]), 0.0) for r in site_rows if r["field"] == "control_delay"]
+    site_now = {}
+    for f in ("control_delay", "stops", "speed"):
+        vals = [max(float(r["value"]), 0.0) if f == "control_delay" else float(r["value"])
+                for r in site_rows if r["field"] == f and r.get("value") is not None]
+        site_now[f] = round(mean(vals), 2) if vals else None
     return {"approaches": out, "mapping_size": len(approaches), "queue_status": queue_status, "delay_metric": metric,
             "ranked_delays": tt.get("ranked_delays", [metric]), "adequate_quarters": tt["adequate_quarters"],
-            "site_control_delay_s": r1(mean(site_delay)) if site_delay else None}
+            "site_control_delay_s": r1(site_now["control_delay"]) if site_now["control_delay"] is not None else None,
+            "site": {f: {"now": site_now[f], **ref["site"].get(f, {"usual": None, "weeks": 0})} for f in site_now},
+            "reference": {"weeks_read": ref["weeks_read"], "min_weeks": ref["min_weeks"], "errors": ref["errors"]}}
 
 
 DELAY_NAMES = {"control_delay": "control delay", "approach_delay": "approach delay"}
@@ -320,6 +404,49 @@ def _or(items: list[str], word: str = "or") -> str:
     return items[0] if len(items) == 1 else ", ".join(items[:-1]) + f" {word} " + items[-1]
 
 
+def _vs(now, usual, unit: str, d: int = 1) -> str:
+    text = f"{now:.{d}f}{unit}"
+    if usual is None:
+        return text
+    if usual:
+        pct = (now - usual) / usual * 100
+        diff = "as usual" if abs(pct) < 0.5 else f"{abs(pct):.0f}% {'higher' if pct > 0 else 'lower'}"
+    else:
+        diff = "as usual" if now == 0 else "usually 0"
+    return f"{text} (usual {usual:.{d}f}{unit}, {diff})"
+
+
+def usual_line(ev: dict) -> str | None:
+    """Each observed approach and the whole junction against their usual values (code-written)."""
+    parts = []
+    for a in ev.get("approaches") or []:
+        if not a.get("link") or (a.get("control_delay_s") is None and a.get("queue_mean_m") is None):
+            continue
+        u, w = a.get("usual") or {}, a.get("usual_weeks") or {}
+        items = []
+        if a.get("control_delay_s") is not None:
+            items.append("control delay " + _vs(a["control_delay_s"], u.get("control_delay_s"), " s"))
+        if a.get("approach_delay_s") is not None:
+            items.append("approach delay " + _vs(a["approach_delay_s"], u.get("approach_delay_s"), " s"))
+        if a.get("stops_per_vehicle") is not None:
+            items.append("stops per vehicle " + _vs(a["stops_per_vehicle"], u.get("stops_per_vehicle"), "", 2))
+        if a.get("queue_adequate"):
+            items.append("mean queue " + _vs(a["queue_mean_m"], u.get("queue_mean_m"), " m"))
+        weeks = w.get("control_delay_s") or w.get("queue_mean_m") or 0
+        sample = f"{a.get('vehicles', 0)} vehicle{'s' if a.get('vehicles', 0) != 1 else ''}"
+        parts.append(f"{a['approach']} ({sample}; usual from {weeks} week{'s' if weeks != 1 else ''}): " + ", ".join(items))
+    site = ev.get("site") or {}
+    whole = []
+    for f, name, unit, d in (("control_delay", "control delay", " s", 1), ("stops", "stops per vehicle", "", 2),
+                             ("speed", "speed", " km/h", 1)):
+        v = site.get(f) or {}
+        if v.get("now") is not None:
+            whole.append(f"{name} " + _vs(v["now"], v.get("usual"), unit, d))
+    if whole:
+        parts.append("Whole junction: " + ", ".join(whole))
+    return ("Against usual: " + "; ".join(parts) + ".") if parts else None
+
+
 def written(ev: dict) -> dict:
     if not ev["available"]:
         return {"road_user_impact": UNAVAILABLE, "agreement": NO_COVERAGE, "coverage": ev["coverage_note"]}
@@ -359,7 +486,7 @@ def written(ev: dict) -> dict:
                      "TomTom for this period, so no comparison is possible.")
     statement = (ev.get("coverage") or {}).get("statement", "")
     text = "\n".join([f"Largest values: {' '.join(largest)}" if largest else "",
-                      f"By approach: {' '.join(by)}"] + lines
+                      f"By approach: {' '.join(by)}", usual_line(ev) or ""] + lines
                      + [f"Coverage: {statement} {CAVEAT}".replace("  ", " ")])
     return {"road_user_impact": "\n".join(x for x in text.split("\n") if x), "agreement": verdict,
             "coverage": "; ".join(x for x in (statement, ev["coverage_note"]) if x)}
@@ -373,7 +500,8 @@ must appear in the evidence or the draft. Keep one statement for every SCATS-ide
 or no coverage), naming it exactly as in the evidence, and keep the draft's overall verdict (agreement, partial
 agreement, disagreement or insufficient coverage) with the approaches that match and those that differ. Keep the
 draft's coverage statement (how much of the 30 minutes delay and queue cover). Keep the draft's lines and their
-labels exactly: "Largest values:", "By approach:", "Overall:", "Coverage:". TomTom shows road-user impact, never
+labels exactly: "Largest values:", "By approach:", "Against usual:", "Overall:", "Coverage:"; the "Against usual:" line
+(each approach against its usual value, with its number of vehicles) is kept as written. TomTom shows road-user impact, never
 proof of cause. State the findings only: no interpretation such as "despite", "as expected" or reasons. Write plain
 English, not codes such as abnormal_high or Q3C. Name approaches as in the evidence ("approach" or
 "missing_approaches"), never by a bare link ID. Rank and cite delay and queue values only for adequately observed
@@ -434,7 +562,8 @@ def run(source, site: dict, period: Period, rules: dict, llm=None) -> dict:
     if comparison and comparison["uncovered_scats_approaches"]:
         notes.append("SCATS-identified approaches without adequate TomTom data: " + ", ".join(comparison["uncovered_scats_approaches"]))
     ev = {"site": site["site"], "period": period.label(), "available": available, "approaches": rows,
-          "site_control_delay_s": measured["site_control_delay_s"], "scats_approaches": flagged, "comparison": comparison,
+          "site_control_delay_s": measured["site_control_delay_s"], "site": measured.get("site"),
+          "reference": measured.get("reference"), "scats_approaches": flagged, "comparison": comparison,
           "queue": measured["queue_status"], "missing_approach_links": missing, "missing_approaches": missing_names,
           "coverage": coverage(rows, flagged, measured["queue_status"]),
           "coverage_note": "; ".join(notes) or DEFAULT_NOTE}
@@ -454,6 +583,7 @@ def run(source, site: dict, period: Period, rules: dict, llm=None) -> dict:
     # The LLM may re-word "Largest values" and "By approach"; the verdict and the coverage lines are always the
     # code's (seen live: an LLM named the wrong link as missing, SCATS 4566), with the caveat of methodology 13.
     worded["answer"]["road_user_impact"] = layout.keep_code_lines(
-        worded["answer"]["road_user_impact"], draft["road_user_impact"], layout.D002_LABELS, ["Overall:", "Coverage:"])
+        worded["answer"]["road_user_impact"], draft["road_user_impact"], layout.D002_LABELS,
+        ["Against usual:", "Overall:", "Coverage:"])
     return {"template_id": TEMPLATE, "template_version": spec["version"], "question": spec["question"], "evidence": ev,
             **worded}

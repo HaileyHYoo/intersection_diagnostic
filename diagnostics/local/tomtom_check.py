@@ -118,7 +118,11 @@ def check(source, settings, site: str, period, queue_history: bool = False) -> d
     def read(p):
         w = {"period": p.label()}
         try:
-            w["delay"] = _delays(source.tomtom_turn_kpi(site, p.start, p.end), p, rules)
+            from ..templates.d002 import aggregate               # the report's own pooling (by vehicles)
+            w["delay"] = {ap: {"approach_delay": v["approach_delay_s"], "control_delay": v["control_delay_s"],
+                               "stops": v["stops_per_vehicle"], "vehicles": v["vehicles"],
+                               "quarters": max(v["quarters_by"].values() or [0])}
+                          for ap, v in aggregate(source.tomtom_turn_kpi(site, p.start, p.end), p, rules).items()}
         except Exception as exc:  # noqa: BLE001
             w["delay_error"] = f"{type(exc).__name__}: {str(exc)[:160]}"
         try:
@@ -189,7 +193,8 @@ def text(c: dict) -> str:
         ad, cd = u["approach_delay"].get(a, {}), u["control_delay"].get(a, {})
         lines.append(f"    {a} {names.get(a, '(not in the mapping file)')}: approach {n.get('approach_delay')} / "
                      f"{ad.get('usual')} ({ad.get('weeks', 0)}), control {n.get('control_delay')} / {cd.get('usual')} "
-                     f"({cd.get('weeks', 0)}), quarter-hours now {n.get('quarters', 0)}")
+                     f"({cd.get('weeks', 0)}), stops/veh {n.get('stops')}, vehicles {n.get('vehicles', 0)}, "
+                     f"quarter-hours now {n.get('quarters', 0)}")
     lines.append("  TomTom site KPIs: " + (", ".join(f"{f} {v} / {u['site_kpi'].get(f, {}).get('usual')} "
                                                      f"({u['site_kpi'].get(f, {}).get('weeks', 0)})"
                                                      for f, v in (now.get("site_kpi") or {}).items()) or "none"))

@@ -399,12 +399,22 @@ class TomTomApproachMetrics(ApproachRef):
     multi_stop_rate: float | None = None
     queue_length_m: float | None = None
     is_observed: bool = Field(description="False when TomTom had no adequate coverage; missing is never zero")
+    # Proposed (20 Nov 2026): the number of probe vehicles behind the values, stops per vehicle, and the usual
+    # values (median of the reference weeks, from 2 weeks) so the page can show how far each value is from usual.
+    vehicles: int | None = Field(default=None, description="Probe vehicles observed in the period (sum of SampleCount)")
+    stops_per_vehicle: float | None = Field(default=None, description="Mean stops per vehicle (AvgStopsPerCar, pooled by vehicles)")
+    reference_delay_s: float | None = Field(default=None, description="Usual approach delay (median of the reference weeks)")
+    reference_control_delay_s: float | None = Field(default=None, description="Usual control delay")
+    reference_stops_per_vehicle: float | None = Field(default=None, description="Usual stops per vehicle")
+    reference_queue_length_m: float | None = Field(default=None, description="Usual mean queue length")
+    reference_weeks: int | None = Field(default=None, description="Reference weeks behind the usual delay")
 
 class TomTomMovementMetrics(BaseModel):
     approach_id: str
     movement: str = Field(examples=["through", "right", "left"])
     delay_s: float | None = None
     control_delay_s: float | None = None
+    vehicles: int | None = Field(default=None, description="Proposed (20 Nov 2026): probe vehicles in the period")
 
 class ScatsComparison(BaseModel):
     approach_id: str
@@ -474,6 +484,11 @@ class SiteReport(BaseModel):
     evidence: Annotated[SiteScreeningResult, Field(description="Saved Q1/Q3 evidence from the run, unchanged")]
     diagnosis: DiagnosisResult | None = Field(default=None, description="Set for Red sites only")
     link_speed: LinkSpeedReport | None = Field(default=None, description="None when the lookup failed")
+    tomtom: Q5Output | None = Field(
+        default=None,
+        description="Proposed (20 Nov 2026): TomTom values per approach with their usual values for an Amber site "
+                    "(for a Red site they are in diagnosis.q5)",
+    )
     created_at: datetime
 
     @model_validator(mode="after")

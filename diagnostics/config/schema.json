@@ -99,7 +99,9 @@
           "control_delay": "ControlDelaySec",
           "multi_stop_rate": "MultiStopRate",
           "turn_ratio": "TurnRatioPct",
-          "sample_count": "SampleCount"
+          "sample_count": "SampleCount",
+          "stops": "AvgStopsPerCar",
+          "stop_rate": "StopRate"
         },
         "interval_minutes": 15,
         "filters": {

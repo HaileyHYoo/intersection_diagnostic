@@ -117,6 +117,13 @@ class LinkSpeedTests(unittest.TestCase):
         self.assertEqual(amber.link_speed.links[0].street_name, "William Street [N]")    # with its bound (SCATS 1037)
         self.assertIn("Reference speed: median TomTom speed", amber.link_speed.notes[-1])
         self.assertIsNotNone(amber.link_speed.links[0].reference_speed_kmh)
+        # 20 Nov 2026: the Amber page also has the TomTom values per approach with vehicles and usual values
+        self.assertIsNotNone(amber.tomtom)
+        self.assertTrue(amber.tomtom.available)
+        observed = [a for a in amber.tomtom.approaches if a.is_observed]
+        self.assertTrue(observed and all(a.vehicles for a in observed))
+        self.assertTrue(any(a.reference_control_delay_s is not None for a in observed))
+        self.assertIn("Against usual:", amber.tomtom.narrative)
         speed = {"available": True, "notes": [], "reference": "median TomTom speed of ...", "approaches": [
             {"link": "Q1", "approach": "Queensberry Street [W]", "street": "Queensberry Street", "arm": 4, "speed_kmh": 21.0,
              "reference_kmh": None, "reference_weeks": 3}]}

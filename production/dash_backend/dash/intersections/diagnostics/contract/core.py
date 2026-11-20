@@ -160,9 +160,12 @@ def run_site_report(request, run, source, settings: Settings | None = None, llm=
                                        if run.site(no) is not None else None),
             recurrence=persistence.site_persistence(archive, run.result.region, evidence.site_no,
                                                  adapter.period_from_model(period, settings.rules)))
+    tomtom = None
+    if diagnosis is None and settings.rules["tomtom"].get("show_on_amber") and adapter.has_field(S.SiteReport, "tomtom"):
+        tomtom = amber_tomtom(evidence, period, source, settings)
     report = S.SiteReport(region=run.result.region, screening_run_id=run.run_id, site_no=evidence.site_no, period=period,
                           evidence=evidence, diagnosis=diagnosis, link_speed=link_speed,
-                          created_at=datetime.now().astimezone())
+                          created_at=datetime.now().astimezone(), **adapter.optional(S.SiteReport, tomtom=tomtom))
     if archive is not None and diagnosis is not None:
         p = adapter.period_from_model(period, settings.rules)
         key = history.log_key(report.region, p, f"{run.run_id}_{report.site_no}").replace("screening-logs/", "site-reports/", 1)
@@ -171,6 +174,18 @@ def run_site_report(request, run, source, settings: Settings | None = None, llm=
         except Exception as exc:  # noqa: BLE001 - the report is still returned
             log.warning("Site report %s not archived: %s", key, exc)
     return report
+
+
+def amber_tomtom(evidence, period_model, source, settings: Settings):
+    """The TomTom values per approach with their usual values for an Amber click (20 Nov 2026): D002 on the saved
+    evidence, worded by code (no LLM). None when it cannot be read; the rest of the report is unaffected."""
+    try:
+        period = adapter.period_from_model(period_model, settings.rules)
+        r2 = d002.run(source, adapter.site_from_model(evidence), period, settings.rules, None)
+        return adapter.q5_output(r2, period, settings.rules, adapter.template_ref(settings.rules, "D002"))
+    except Exception as exc:  # noqa: BLE001 - supplementary on an Amber page
+        log.warning("TomTom values for Amber site %s not read: %s", evidence.site_no, exc)
+        return None
 
 
 def run_diagnosis(inp, source, settings: Settings | None = None, llm=None, audit_store=None, control: dict | None = None,

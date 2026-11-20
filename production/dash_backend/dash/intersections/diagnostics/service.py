@@ -200,6 +200,12 @@ class DiagnosticsService:
         link_speed = self._link_speed(run, s)
         if link_speed is not None:
             out["link_speed"] = link_speed
+        if s["category"].startswith("amber") and self.settings.rules["tomtom"].get("show_on_amber"):
+            try:                                   # supplementary: TomTom values with their usual values, no LLM
+                period = period_ending(run["payload"]["period"]["end"], self.settings.rules)
+                out["tomtom"] = d002.run(self.source, s, period, self.settings.rules, None)
+            except Exception as exc:  # noqa: BLE001
+                out["tomtom_error"] = f"{type(exc).__name__}: {str(exc)[:160]}"
         return out
 
     def diagnose(self, run_id: str, site: str, reuse: bool = True) -> dict:

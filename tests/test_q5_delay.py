@@ -63,7 +63,7 @@ class ControlDelayTests(unittest.TestCase):
     def test_ranked_by_control_delay_by_default(self):
         m, by = self.measure()
         self.assertEqual(m["delay_metric"], "control_delay")
-        self.assertEqual((by["LA"]["delay_s"], by["LB"]["delay_s"]), (5.0, 40.0))
+        self.assertEqual((by["LA"]["delay_s"], by["LB"]["delay_s"]), (5.0, 16.0))
         self.assertEqual((by["LA"]["approach_delay_s"], by["LB"]["approach_delay_s"]), (50.0, 20.0))   # still reported
         comp = d002.compare(m, d002.scats_approaches(site()))
         self.assertEqual(comp["greatest_delay"]["link"], "LB")
@@ -81,12 +81,15 @@ class ControlDelayTests(unittest.TestCase):
         _, by = self.measure()
         self.assertEqual(by["LA"]["control_delay_s"], 2.5)
 
-    def test_plain_mean_like_the_chatbot_or_sample_weighted(self):
-        _, by = self.measure()
-        self.assertEqual(by["LB"]["control_delay_s"], 40.0)                 # (70 + 10) / 2
-        self.rules["tomtom"]["delay_mean"] = "sample_weighted"
+    def test_vehicle_weighted_by_default_or_plain_like_the_chatbot(self):
+        """Decision of 20 Nov 2026: the movements are pooled by their vehicles (SampleCount), so one vehicle's
+        70 s does not weigh as much as nine vehicles' 10 s (SCATS 4397 Rathdowne Street [N]: 22.2 s plain, 15.5 s)."""
         _, by = self.measure()
         self.assertEqual(by["LB"]["control_delay_s"], 16.0)                 # (70*1 + 10*9) / 10
+        self.assertEqual(by["LB"]["vehicles"], 20)                          # 10 vehicles in each quarter-hour
+        self.rules["tomtom"]["delay_mean"] = "plain"
+        _, by = self.measure()
+        self.assertEqual(by["LB"]["control_delay_s"], 40.0)                 # (70 + 10) / 2
 
     def test_both_delays_are_ranked(self):
         m, _ = self.measure()                         # LA: greatest approach delay; LB: greatest control delay
@@ -101,7 +104,7 @@ class ControlDelayTests(unittest.TestCase):
         self.assertEqual(comp["greatest_delay"]["link"], "LB")          # the contract's single field: delay_metric
         text = d002.written({"available": True, "comparison": comp, "scats_approaches": d002.scats_approaches(site()),
                              "queue": "unavailable", "coverage_note": ""})["road_user_impact"]
-        self.assertIn("The greatest TomTom control delay (40.0 s) among the adequately observed approaches is on B Street [E].", text)
+        self.assertIn("The greatest TomTom control delay (16.0 s) among the adequately observed approaches is on B Street [E].", text)
         self.assertIn("The greatest TomTom approach delay (50.0 s) among the adequately observed approaches is on A Street [N].", text)
 
     def test_approach_delay_option(self):
@@ -146,7 +149,7 @@ class OffSiteApproachTests(unittest.TestCase):
                       result["evidence"]["coverage_note"])
         from diagnostics.report import tomtom_tables
         moves = tomtom_tables(result)[1]
-        self.assertEqual(moves["columns"], ["Approach", "Movement", "To", "Control delay (s)"])
+        self.assertEqual(moves["columns"], ["Approach", "Movement", "To", "Vehicles", "Control delay (s)", "Stops per vehicle"])
         self.assertIn("A Street (southbound)", [r[2] for r in moves["rows"]])
 
 

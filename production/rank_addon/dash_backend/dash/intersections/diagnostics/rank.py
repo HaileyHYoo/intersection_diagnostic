@@ -5,7 +5,9 @@ Sites are ordered within Red and within each Amber category; a rank never moves 
     score = severity x impact x type x confidence x persistence
 
 - severity: for every abnormal finding a robust z-score, |current - usual| / spread, where spread is the 10th-90th
-  percentile width divided by 2.563 (the standard deviation of a normal distribution with that range), never below a
+  percentile width divided by c(n), the expected 10th-90th percentile width of n normal values (n = the reference
+  weeks; stats.quantile's linear interpolation): 1.79 for 5 weeks to 2.05 for 8, 2.563 for a large sample. With a
+  fixed 2.563 a short history understates the spread and overstates z by 25-43% (review of 18 Nov 2026). Never below a
   floor: sqrt(usual) vehicles for volume (the Poisson standard deviation of a count), 2 s for cycle length, 1 point for
   Cycle Stability, 1 percentage point for green share. Each z is capped at 5; the three largest are combined as
   sqrt(sum z^2), so one extreme value cannot dominate and several findings add up.
@@ -27,6 +29,38 @@ from .names import approach_label
 from .stats import ABNORMAL
 
 RANKED = ("red", "amber_traffic", "amber_signal")
+
+
+def _expected_order_stats(n: int, steps: int = 4000) -> list[float]:
+    """E[X(k)] for k = 1..n of n standard normal values (numerical integration, |x| <= 8)."""
+    pdf = lambda x: math.exp(-x * x / 2) / math.sqrt(2 * math.pi)
+    cdf = lambda x: 0.5 * (1 + math.erf(x / math.sqrt(2)))
+    h = 16 / steps
+    xs = [-8 + i * h for i in range(steps + 1)]
+    out = []
+    for k in range(1, n + 1):
+        coef = math.factorial(n) / (math.factorial(k - 1) * math.factorial(n - k))
+        vals = [x * pdf(x) * cdf(x) ** (k - 1) * (1 - cdf(x)) ** (n - k) for x in xs]
+        out.append(coef * h * (sum(vals) - (vals[0] + vals[-1]) / 2))
+    return out
+
+
+_RANGE: dict[int, float] = {}
+
+
+def range_constant(n: int | None, rule: dict) -> float:
+    """c(n): the expected 10th-90th percentile width, in standard deviations, of n normal values with the linear
+    interpolation of stats.quantile (5 -> 1.79, 8 -> 2.05; 2.563 in the limit). rule["range_to_sd"] when n is unknown."""
+    if not n or n < 2:
+        return rule["range_to_sd"]
+    if n not in _RANGE:
+        e = _expected_order_stats(n)
+        def q(p):
+            pos = p * (n - 1)
+            lo = int(pos)
+            return e[lo] if lo + 1 >= n else e[lo] * (1 - (pos - lo)) + e[lo + 1] * (pos - lo)
+        _RANGE[n] = q(0.9) - q(0.1)
+    return _RANGE[n]
 FLOOR_UNITS = {"volume": "veh", "cycle_length": "s", "cycle_stability": "points", "phase_service": "pp"}
 
 
@@ -36,7 +70,7 @@ def spread(row: dict, measure: str, rule: dict) -> float | None:
         return None
     floor = rule["spread_floor"][measure]
     floor = math.sqrt(max(usual, 1)) if floor == "sqrt_usual" else float(floor)
-    return max((hi - lo) / rule["range_to_sd"], floor)
+    return max((hi - lo) / range_constant(row.get("n_history"), rule), floor)
 
 
 def z_score(row: dict, measure: str, rule: dict) -> float | None:

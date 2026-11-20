@@ -99,7 +99,8 @@ def history_reference(source, links: list[str], period: Period, rules: dict) -> 
             value = harmonic(rows.get(link, []))
             if value is not None:
                 per_week[link].append(value)
-    minimum = rules["history"]["min_observations"]                      # the screening's own minimum
+    # a display value, not a screening decision: 2 weeks (methodology owner, 20 Nov 2026), else the screening's minimum
+    minimum = rules.get("link_speed", {}).get("reference_min_weeks", rules["history"]["min_observations"])
     centre = median if rules.get("reference_value") == "median" else (lambda v: sum(v) / len(v))   # as Q1/Q3
     ref = {link: centre(v) for link, v in per_week.items() if len(v) >= minimum}
     return ref, {link: len(v) for link, v in per_week.items()}, len(used)
@@ -136,7 +137,7 @@ def link_speed(source, site: dict, period: Period, schema: dict, region: str | N
             out["reference_weeks"] = weeks
             word = "median" if rules.get("reference_value") == "median" else "mean"
             out["reference"] = (f"{word} TomTom speed of the same 30 minutes, {reference_span(period, rules)}, read "
-                                f"from the same feed; shown when at least {rules['history']['min_observations']} "
+                                f"from the same feed; shown when at least {rules.get('link_speed', {}).get('reference_min_weeks', rules['history']['min_observations'])} "
                                 "weeks have samples")
         except Exception as exc:  # noqa: BLE001
             out["reference"] = f"unavailable - {type(exc).__name__}: {str(exc)[:120]}"
