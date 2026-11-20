@@ -470,7 +470,8 @@ def q5_output(d002: dict, period: Period, rules: dict, template: S.TemplateRef |
     listed = {a.approach_id for a in approaches}
     approaches += [S.TomTomApproachMetrics(approach_id=p["link"], approach_name=p.get("approach") or p["link"], is_observed=False)
                    for p in ev["comparison"]["per_approach"] if p["link"] not in listed]
-    movements = [S.TomTomMovementMetrics(approach_id=ident(a), movement=m["movement"], control_delay_s=m.get("control_delay_s"),
+    movements = [S.TomTomMovementMetrics(approach_id=ident(a), movement=m["movement"], delay_s=m.get("approach_delay_s"),
+                                         control_delay_s=m.get("control_delay_s"),
                                          **optional(S.TomTomMovementMetrics, vehicles=m.get("vehicles")))
                  for a in ev["approaches"] for m in a["movements"]]
     comp = ev["comparison"]
