@@ -30,7 +30,7 @@ for the persistence factor. Leave it empty or pass `None` for a week that was no
 
 score = severity × impact × type × confidence × persistence
 
-- severity: per abnormal finding, |current − usual| / spread, spread = (90th − 10th percentile) / 2.563, never below
+- severity: per abnormal finding, |current − usual| / spread, spread = (90th − 10th percentile) / c(n), where c(n) is the expected 10th–90th percentile width of n normal values and n the number of reference weeks (1.79 for 5 weeks, 1.91 for 6, 1.99 for 7, 2.05 for 8; 2.563 for a large sample), never below
   √usual vehicles for volumes, 2 s for cycle length, 1 point for Cycle Stability, 1 pp for green share; each capped at
   5; the three largest combined as √(Σz²). Approaches of one phase count once.
 - impact: log10(1 + site veh/h) / log10(1 001).
@@ -38,6 +38,8 @@ score = severity × impact × type × confidence × persistence
 - confidence: × 0.8 at the 5-week minimum history, × 0.8 with a tolerated detector.
 - persistence: × (1 + 0.25 k), k = previous weeks in which the site had the same category (Red; Red or Amber for Amber).
 - Sites with a usual green share of 100 % or a usual volume of 0 behind a finding are listed apart (mapping_suspect).
+- The weights (1.25, 0.8, 0.25) are judgement-based for now; they are to be checked against next-week recurrence and
+  with a sensitivity analysis (proposal sent to the methodology owner, 20 Nov 2026).
 
 On the AM peak of 10 Nov 2026 the top of the Red list was led by sites that are Red under both the default
 methodology and the sensitivity run with every switch on (16 of the top 20).

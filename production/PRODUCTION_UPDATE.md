@@ -144,3 +144,44 @@ and baseline version are unchanged; only the diagnosis text and the supporting e
 | `templates/readings.py` | Phases outside every approach's "Phases" list (pedestrian, turning or side-road phases): when two approaches served by complementary phases do not fill the cycle, the phase shares are solved with one more unknown for the unlisted phases, and the per-approach "the other phases took 100 minus its share" sentences are dropped | 3426: "the phases not listed for any assessed approach took 23.1%" instead of contradictory phase sentences |
 | `templates/readings.py` | A green-share normal range of 40 pp or wider gives no usual share by phase and no phase shift | 3182: no "phases A, B and D usual 8.4%" |
 | `templates/readings.py` | An approach that itself lost green is not counted as receiving the green another approach lost, so "less green with higher volume" is no longer cancelled against a response to demand | 3426: the demand reading is no longer Strong with a point against it |
+
+## 13. Update of 20 Nov 2026: TomTom values per approach with their usual values; rank spread by weeks
+
+Requested by the methodology owner (20 Nov 2026): show the TomTom values per approach and how far they are from usual,
+as for the SCATS measures, also on Amber pages. Categories and the baseline version are unchanged.
+
+| File | Change | Seen on the page as |
+|---|---|---|
+| `templates/d002.py` | An approach's TomTom value is the mean over all its observed probe vehicles: the 15-minute movement records (approach → exit) pooled by `SampleCount`, over its movements and both quarter-hours (`tomtom.delay_mean: "sample_weighted"`). Before, every record weighed the same, so one vehicle's turn weighed as much as several vehicles going straight (SCATS 4397 Rathdowne Street [N], 10 Nov 08:00: control delay 22.2 s before, 15.5 s now). A negative delay still counts as 0 | Different (lower or higher) delays where movements have unequal samples |
+| `templates/d002.py`, `config/schema.json` | Stops per vehicle (`AvgStopsPerCar`) per approach and movement, pooled the same way; the number of vehicles behind every value | New columns: Vehicles, Stops per vehicle |
+| `templates/d002.py` | Usual values: the same measures in each reference week of the screening (same weekday and slot, holidays left out), the median of the weeks with a value, from 2 weeks (`tomtom.reference_min_weeks`); the queue's usual value reads the Junction Analytics archive once per week (`tomtom.queue_reference`) | A new code-written line "Against usual:" in section 3: each approach and the whole junction, now against usual, with the weeks and vehicles |
+| `link_speed.py` | The reference link speed is shown from 2 weeks (`link_speed.reference_min_weeks`), as a display value | More links with a reference speed |
+| `contract/core.py`, `service.py` | An Amber click also runs D002 (code wording, no LLM; `tomtom.show_on_amber`) | TomTom values on Amber pages once `SiteReport.tomtom` exists (below) |
+| `rank.py` (add-on) | The spread divides the 10th–90th percentile width by c(n), its expected value for n reference weeks (1.79 for 5 weeks to 2.05 for 8), instead of 2.563 | Rank order; the README gives the rule |
+
+**Contract fields to add (production schema).** The package fills them as soon as they exist (`adapter.optional`);
+until then the values are in the section 3 text ("Against usual:"):
+
+```python
+class TomTomApproachMetrics(ApproachRef):
+    ...
+    vehicles: int | None = None                      # probe vehicles in the period (sum of SampleCount)
+    stops_per_vehicle: float | None = None           # AvgStopsPerCar, pooled by vehicles
+    reference_delay_s: float | None = None           # usual approach delay (median of the reference weeks)
+    reference_control_delay_s: float | None = None   # usual control delay
+    reference_stops_per_vehicle: float | None = None
+    reference_queue_length_m: float | None = None
+    reference_weeks: int | None = None               # reference weeks behind the usual delay
+
+class TomTomMovementMetrics(BaseModel):
+    ...
+    vehicles: int | None = None
+
+class SiteReport(BaseModel):
+    ...
+    tomtom: Q5Output | None = None                   # Amber sites: TomTom values with their usual values
+```
+
+The `SiteReport` validator is unchanged (`diagnosis` stays Red-only). A Red click now makes about 7 more small InfluxDB
+queries and up to 7 queue-archive calls (one per reference week) for the usual values; `tomtom.queue_reference: false`
+turns the queue history off if the click is too slow.

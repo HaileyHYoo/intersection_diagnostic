@@ -100,6 +100,7 @@
   "rank": {
     "note": "Order within Red and within each Amber category only; never changes a category (13-16 Nov 2026, proposal for the methodology owner).",
     "range_to_sd": 2.563,
+    "range_to_sd_note": "Used only when the number of reference weeks n is unknown: the spread divides the 10th-90th percentile width by c(n), its expected value for n normal values (rank.range_constant: 1.79 for 5 weeks, 2.05 for 8; 18 Nov 2026 review).",
     "spread_floor": {"volume": "sqrt_usual", "cycle_length": 2.0, "cycle_stability": 1.0, "phase_service": 1.0},
     "z_cap": 5,
     "top_findings": 3,

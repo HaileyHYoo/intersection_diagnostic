@@ -5,7 +5,7 @@
     "archive.py": "35d8040183ae6d68610100b3e073ae95479476b843d75010f1e7327740179b92",
     "arms.py": "b3706f0dbbb64a2f9d6ba23c3625a0e00bfd02f71134be5455bcd504d479aed5",
     "baseline.py": "9f2ea60336850fececaf1d1755004b31ec1c7e7c2981d3a1fd65667bf96f3f69",
-    "config/rules.json": "ba705e7765fd642c07b884f3581b74e18f6ea521197711a291272aa89c940b22",
+    "config/rules.json": "c1d1adf9981c056b2b220f518ac35f863be7bba1b8fc7f2bbc74e6c5010ad1a9",
     "config/schema.json": "4ef919f7dbeb0acea937a1fda322367f8eb5b5bc5393045eab8d5ca22dd0699c",
     "contract/__init__.py": "8973aab51d753b08f6fe38e8d54f8235e9b22001501128b62168e438a3ffd8dd",
     "contract/adapter.py": "697d07ddf2bb6dc4b01490dde777769ccc79eaab01e0b6096a4c018fdabc057f",
