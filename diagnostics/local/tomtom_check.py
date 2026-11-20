@@ -203,3 +203,82 @@ def text(c: dict) -> str:
         s = u["speed"].get(link, {})
         lines.append(f"    {link}: {(now.get('speed') or {}).get(link)} / {s.get('usual')} ({s.get('weeks', 0)})")
     return "\n".join(lines)
+
+
+# ------------------------------------------------------------------------------------------------ raw dump
+def raw_dump(source, settings, site: str, period, out_dir, minutes: int = 30) -> tuple[str, list]:
+    """Every record of IntersectionTurnKpi and IntersectionKpi for the site, all fields and tags, with no
+    MinutesPast / Provider filter, from `minutes` before to `minutes` after the period; the site's TomTom mapping and
+    its Neo4j EGRESS links, side by side. Writes one CSV per measurement and returns (text, paths)."""
+    import csv
+    from datetime import timedelta
+    from pathlib import Path
+    from zoneinfo import ZoneInfo
+    from .. import ids
+    from ..timewin import to_utc, tz_name
+    tz = ZoneInfo(tz_name(settings.rules))
+    a, b = period.start - timedelta(minutes=minutes), period.end + timedelta(minutes=minutes)
+    egress = {x["link"]: x.get("street") for x in source.approaches([site])}
+    mapping = source.tomtom_mapping(site)
+    m_app, m_exit = mapping.get("approaches", {}), mapping.get("exits", {})
+    lines = [f"TomTom raw data for site {site}, {period.label()} (records {minutes} min either side)",
+             f"  Neo4j EGRESS links ({len(egress)}): " + ", ".join(f"{l} {s}" for l, s in egress.items()),
+             f"  mapping file: {'junction ' + str(mapping.get('uuid')) if m_app else 'NOT IN THE FILE'}"]
+    for k, v in m_app.items():
+        tag = "EGRESS of the site" if v.get("link") in egress else "NOT an EGRESS link of the site"
+        lines.append(f"    approach {k}: {v.get('street')} {v.get('direction')}bound -> link {v.get('link')} ({tag}"
+                     + (f", {v.get('stub_hops')} link(s) upstream" if v.get("stub_hops") else "") + ")")
+    for k, v in m_exit.items():
+        lines.append(f"    exit {k}: {v.get('street')} {v.get('direction')}bound -> link {v.get('link')}")
+    no_tt = [l for l in egress if l not in {v.get("link") for v in m_app.values()}]
+    if no_tt:
+        lines.append("  EGRESS links without a TomTom approach in the mapping: " + ", ".join(no_tt))
+    paths = []
+    if not hasattr(source, "_query"):
+        return "\n".join(lines + ["  (raw records need the live source)"]), paths
+    for key in ("tomtom_turn_kpi", "tomtom_site_kpi"):
+        feed = dict(source._feed(key))
+        feed["filters"] = {}
+        try:
+            rows = source._query(key, a, b, tag_in=(feed["site_tag"], [ids.site_tag(site, feed["site_format"])]), feed=feed)
+        except Exception as exc:  # noqa: BLE001
+            lines.append(f"  {feed['measurement']}: {type(exc).__name__}: {str(exc)[:200]}")
+            continue
+        for r in rows:
+            r["local_time"] = to_utc(r["time"]).astimezone(tz).strftime("%Y-%m-%d %H:%M:%S")
+        tags = sorted({k for r in rows for k in r} - {"time", "local_time", "field", "value"})
+        path = Path(out_dir) / f"tomtom_raw_{site}_{feed['measurement']}.csv"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
+            w.writerow(["local_time", "field", "value", *tags])
+            for r in sorted(rows, key=lambda r: (r["local_time"], str(r.get("ApproachId")), str(r.get("ExitId")), r["field"])):
+                w.writerow([r["local_time"], r["field"], r["value"], *[r.get(t) for t in tags]])
+        paths.append(path)
+        lines.append(f"  {feed['measurement']}: {len(rows)} records; fields: {', '.join(sorted({r['field'] for r in rows}))}")
+        for t in tags:
+            vals = sorted({str(r.get(t)) for r in rows})
+            lines.append(f"    tag {t}: " + (", ".join(vals[:12]) + (f" ... ({len(vals)} values)" if len(vals) > 12 else "")))
+        lines.append("    stamps: " + ", ".join(sorted({r["local_time"][11:] for r in rows})))
+        if key == "tomtom_turn_kpi":
+            seen = sorted({str(r.get(feed["approach_tag"])) for r in rows})
+            for ap in seen:
+                info = m_app.get(ap)
+                where = (f"mapping -> {info.get('link')} {info.get('street')} "
+                         f"({'EGRESS' if info.get('link') in egress else 'not EGRESS'})") if info else "NOT IN THE MAPPING"
+                lines.append(f"    ApproachId {ap}: {where}")
+            # the period's quarter-hour values per approach and exit (MinutesPast 15, Provider TomTom)
+            lines.append("    values (MinutesPast=15, Provider=TomTom) stamped after the period start, up to 30 min after its end, per approach -> exit:")
+            keyf = lambda r: (str(r.get("ApproachId")), str(r.get("ExitId")))
+            inside = [r for r in rows if str(r.get("MinutesPast")) == "15" and str(r.get("Provider")) == "TomTom"
+                      and to_utc(period.start) < to_utc(r["time"]) <= to_utc(period.end) + timedelta(minutes=minutes)]
+            grid = defaultdict(lambda: defaultdict(dict))
+            for r in inside:
+                grid[keyf(r)][r["local_time"][11:16]][r["field"]] = r["value"]
+            for (ap, ex), by_t in sorted(grid.items()):
+                to = m_exit.get(ex, {})
+                lines.append(f"      {ap} -> {ex} ({to.get('street')} {to.get('direction')}bound):")
+                for t, f in sorted(by_t.items()):
+                    lines.append("        " + t + "  " + ", ".join(f"{k}={_r(v, 2) if isinstance(v, (int, float)) else v}"
+                                                             for k, v in sorted(f.items())))
+    return "\n".join(lines), paths

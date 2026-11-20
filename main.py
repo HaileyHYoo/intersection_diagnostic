@@ -469,6 +469,11 @@ def cmd_tomtom_check(args):
         if args.raw:
             c["raw"] = tomtom_check.raw_stamps(source, site, period, settings.rules)
             print(tomtom_check.raw_text(c["raw"]))
+        if args.dump:
+            text, paths = tomtom_check.raw_dump(source, settings, site, period, args.out_dir)
+            print(text)
+            for p in paths:
+                print("Saved:", p)
         path = Path(args.out_dir) / f"tomtom_check_{site}.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(c, indent=2, default=str), encoding="utf-8")
@@ -695,6 +700,8 @@ def main(argv=None) -> int:
     p.add_argument("--end", help="period end (default: the latest completed period)")
     p.add_argument("--queue-history", action="store_true", help="also read the queue archive for each reference week")
     p.add_argument("--raw", action="store_true", help="also print the record stamps of the TomTom feeds around the period")
+    p.add_argument("--dump", action="store_true", help="every TomTom record (all fields and tags, no filter) around the "
+                   "period, the mapping and the EGRESS links side by side; CSV per measurement")
     p.add_argument("--fake", action="store_true", help="synthetic network")
     p.add_argument("--out-dir", default=str(ROOT / "out"))
     p.set_defaults(func=cmd_tomtom_check)
