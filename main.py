@@ -19,6 +19,7 @@
     python main.py stats --end 2026-10-30T15:30      every check counted on its own for every site (no gates), JSON + CSV
     python main.py export-run --run ID               the run's screening log and baseline snapshot as plain JSON files
     python main.py kpi-check --site 707 --end 2026-10-30T15:30 [--references 3]   every stored PerfKpi/PerfApproach field
+    python main.py tomtom-check --site 4397 --end 2026-11-10T08:30      TomTom delay, queue and speed, now and usual
     python main.py subsystem-check --site 4864 --end 2026-11-10T08:30   subsystem_status fields and SCATS measurements
     python main.py measure-check --site 4864 --end 2026-11-10T08:30     unused SCATS measurements: keys and the site's records
     python main.py site-history --site 4397 --from 2026-10-01 --to 2026-10-31   categories over screened periods
@@ -449,6 +450,28 @@ def cmd_subsystem_check(args):
         print("Saved:", path)
 
 
+def cmd_tomtom_check(args):
+    """What TomTom data a site has now and in its reference weeks (delay, site KPIs, queue, link speed)."""
+    from diagnostics.local import tomtom_check
+    from diagnostics.settings import Settings
+    from diagnostics.timewin import latest_period, period_ending
+    settings = Settings()
+    period = period_ending(args.end, settings.rules) if args.end else latest_period(settings.rules)
+    if args.fake:
+        from diagnostics.local.fake import FakeSource
+        source = FakeSource(settings.rules, settings.schema, period.end.isoformat(), n_sites=48)
+    else:
+        from diagnostics.sources.live import LiveSource
+        source = LiveSource(settings)
+    for site in args.site:
+        c = tomtom_check.check(source, settings, site, period, queue_history=args.queue_history)
+        print(tomtom_check.text(c))
+        path = Path(args.out_dir) / f"tomtom_check_{site}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(c, indent=2, default=str), encoding="utf-8")
+        print("Saved:", path)
+
+
 def cmd_measure_check(args):
     from diagnostics.local import measure_check
     from diagnostics.settings import Settings
@@ -663,6 +686,14 @@ def main(argv=None) -> int:
     p.add_argument("--sites", type=int, default=48, help=argparse.SUPPRESS)
     p.add_argument("--out-dir", default=str(ROOT / "out"))
     p.set_defaults(func=cmd_stats)
+
+    p = sub.add_parser("tomtom-check", help="TomTom delay, site KPIs, queue and link speed of a site, now and usual")
+    p.add_argument("--site", nargs="+", required=True)
+    p.add_argument("--end", help="period end (default: the latest completed period)")
+    p.add_argument("--queue-history", action="store_true", help="also read the queue archive for each reference week")
+    p.add_argument("--fake", action="store_true", help="synthetic network")
+    p.add_argument("--out-dir", default=str(ROOT / "out"))
+    p.set_defaults(func=cmd_tomtom_check)
 
     p = sub.add_parser("subsystem-check", help="subsystem_status fields of a site's subsystem, and the SCATS measurements")
     p.add_argument("--site", nargs="+", required=True)
