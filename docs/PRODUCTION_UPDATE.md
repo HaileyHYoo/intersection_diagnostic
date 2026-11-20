@@ -156,6 +156,7 @@ as for the SCATS measures, also on Amber pages. Categories and the baseline vers
 | `templates/d002.py`, `config/schema.json` | Stops per vehicle (`AvgStopsPerCar`) per approach and movement, pooled the same way; the number of vehicles behind every value | New columns: Vehicles, Stops per vehicle |
 | `templates/d002.py` | Usual values: the same measures in each reference week of the screening (same weekday and slot, holidays left out), the median of the weeks with a value, from 2 weeks (`tomtom.reference_min_weeks`); the queue's usual value reads the Junction Analytics archive once per week (`tomtom.queue_reference`) | A new code-written line "Against usual:" in section 3: each approach and the whole junction, now against usual, with the weeks and vehicles |
 | `link_speed.py` | The reference link speed is shown from 2 weeks (`link_speed.reference_min_weeks`), as a display value | More links with a reference speed |
+| `contract/adapter.py` | `TomTomMovementMetrics.delay_s` carries the movement's approach delay (it was empty), as `TomTomApproachMetrics.delay_s` does per approach | Movement delay filled |
 | `contract/core.py`, `service.py` | An Amber click also runs D002 (code wording, no LLM; `tomtom.show_on_amber`) | TomTom values on Amber pages once `SiteReport.tomtom` exists (below) |
 | `rank.py` (add-on) | The spread divides the 10th–90th percentile width by c(n), its expected value for n reference weeks (1.79 for 5 weeks to 2.05 for 8), instead of 2.563 | Rank order; the README gives the rule |
 
