@@ -17,13 +17,20 @@
     "weeks": 8,
     "min_observations": 5,
     "report_min_observations": 2,
-    "extend_beyond_weeks": false,
+    "extend_beyond_weeks": true,
     "max_lookback_weeks": 12,
-    "school_holidays": "include",
-    "exclude": {"public_holidays": true, "dst_change_days": true, "year_end": true}
+    "school_holidays": "match",
+    "exclude": {
+      "public_holidays": true,
+      "dst_change_days": true,
+      "year_end": true
+    }
   },
   "report_min_note": "Methodology owner, 20 Nov 2026: the screening (categories) needs min_observations (5) weeks per measure; a measure with 2-4 weeks stays not assessed, but its usual value and range from those weeks are shown in the report and used to read a Red site (phase shares, subsystem state) and for the TomTom and link-speed usual values.",
-  "percentiles": {"low": 0.10, "high": 0.90},
+  "percentiles": {
+    "low": 0.1,
+    "high": 0.9
+  },
   "reference_value": "median",
   "q2": {
     "window_minutes": 60,
@@ -36,12 +43,16 @@
   },
   "q1": {
     "min_pct_difference": 10,
-    "min_count_noise_sd": 0,
+    "min_count_noise_sd": 2,
     "approach_history_min_presence": 1,
     "grey_if_any_approach_missing": true
   },
-  "q3a": {"min_pct_difference": 10},
-  "q3b": {"higher_is_more_stable": true},
+  "q3a": {
+    "min_pct_difference": 10
+  },
+  "q3b": {
+    "higher_is_more_stable": true
+  },
   "q3c": {
     "approach_history_min_presence": 1,
     "grey_site_if_any_approach_without_green": true,
@@ -55,19 +66,27 @@
   },
   "alignment": {
     "note": "Live feeds are written at a fixed offset from the grid (detector counts at :03/:08, PerfKpi/PerfApproach at :07/:22), so an off-grid record goes to the interval its stamp falls in (ceil). Within tolerance_seconds of a grid point it is moved onto that point.",
-    "written_after_interval": ["site_kpi", "approach_perf"],
+    "written_after_interval": [
+      "site_kpi",
+      "approach_perf"
+    ],
     "written_after_note": "IntersectionPerfKpi and IntersectionPerfApproach records are written about 7 minutes after the quarter-hour they describe (15:07 = 14:45-15:00; confirmed with the data owner, Nov 2026): they go to the quarter-hour that ended before the stamp, and the query reaches 15 minutes past the period. The period's last record is written at about end + 7 min, hence data_latency_minutes 10.",
     "tolerance_seconds": 60,
     "off_grid": "ceil",
     "duplicates": "last"
   },
-  "fallbacks": {"enabled": false},
+  "fallbacks": {
+    "enabled": false
+  },
   "tomtom": {
     "api_enabled": true,
     "adequate_quarters": 2,
     "queue_min_minutes": 15,
     "delay_metric": "control_delay",
-    "ranked_delays": ["control_delay", "approach_delay"],
+    "ranked_delays": [
+      "control_delay",
+      "approach_delay"
+    ],
     "delay_mean": "sample_weighted",
     "reference_min_weeks": 2,
     "queue_reference": true,
@@ -79,20 +98,33 @@
   },
   "link_speed": {
     "enabled": true,
-    "categories": ["amber_traffic", "amber_signal", "red"],
+    "categories": [
+      "amber_traffic",
+      "amber_signal",
+      "red"
+    ],
     "reference_from_history": true,
     "reference_min_weeks": 2,
     "note": "Methodology (speed addition): on an Amber or Red click, show the TomTom speed of the site's incoming (EGRESS) links for the same 30-minute period, and the historical reference speed: the same feed's speed in the same 30 minutes of the reference weeks (median, read on the click, not stored). Supplementary only: it never changes Q1, Q2, Q3, the Q5 agreement or the category. Missing speed is shown as unavailable. No network-wide speed screening and no speed baseline."
   },
   "contract": {
     "template_ids": {
-      "D001": {"template_id": "ID_Q4_SCATS_INTERPRETATION", "version": "1.0.0"},
-      "D002": {"template_id": "ID_Q5_TOMTOM_CONFIRMATION", "version": "1.0.0"}
+      "D001": {
+        "template_id": "ID_Q4_SCATS_INTERPRETATION",
+        "version": "1.0.0"
+      },
+      "D002": {
+        "template_id": "ID_Q5_TOMTOM_CONFIRMATION",
+        "version": "1.0.0"
+      }
     },
     "note": "Template registry IDs in the production contract. D001 is the contract's example; the D002 ID is a placeholder until the production team confirms it."
   },
   "click": {
-    "red": ["D001", "D002"],
+    "red": [
+      "D001",
+      "D002"
+    ],
     "amber_traffic": [],
     "amber_signal": [],
     "normal": [],
@@ -103,7 +135,12 @@
     "note": "Order within Red and within each Amber category only; never changes a category (13-16 Nov 2026, proposal for the methodology owner).",
     "range_to_sd": 2.563,
     "range_to_sd_note": "Used only when the number of reference weeks n is unknown: the spread divides the 10th-90th percentile width by c(n), its expected value for n normal values (rank.range_constant: 1.79 for 5 weeks, 2.05 for 8; 18 Nov 2026 review).",
-    "spread_floor": {"volume": "sqrt_usual", "cycle_length": 2.0, "cycle_stability": 1.0, "phase_service": 1.0},
+    "spread_floor": {
+      "volume": "sqrt_usual",
+      "cycle_length": 2.0,
+      "cycle_stability": 1.0,
+      "phase_service": 1.0
+    },
     "z_cap": 5,
     "top_findings": 3,
     "impact_reference_veh_h": 1000,
@@ -113,5 +150,6 @@
     "tolerated_detector_factor": 0.8,
     "persistence_weeks": 4,
     "persistence_step": 0.25
-  }
+  },
+  "production_switches": "Switches on in production: all (tools/build_production.py; methodology owner, 23 Nov 2026). The source rules.json keeps them off."
 }

@@ -1,11 +1,12 @@
 {
   "package": "dash_backend.dash.intersections.diagnostics",
+  "production_switches": "all",
   "files": {
     "__init__.py": "e566b6b31d8c609355349866514660cf8812b98e583d353d105892d4d167f132",
     "archive.py": "35d8040183ae6d68610100b3e073ae95479476b843d75010f1e7327740179b92",
     "arms.py": "b3706f0dbbb64a2f9d6ba23c3625a0e00bfd02f71134be5455bcd504d479aed5",
     "baseline.py": "9f2ea60336850fececaf1d1755004b31ec1c7e7c2981d3a1fd65667bf96f3f69",
-    "config/rules.json": "ddbea9fd4dfc4c17593fcfe58221a6b56b47e2eceab463af55dd4702e16461dd",
+    "config/rules.json": "2322a11fb410f59f8df6f271527be1645eaa0f9488e662aa9525fc2baaa8a584",
     "config/schema.json": "4ef919f7dbeb0acea937a1fda322367f8eb5b5bc5393045eab8d5ca22dd0699c",
     "contract/__init__.py": "8973aab51d753b08f6fe38e8d54f8235e9b22001501128b62168e438a3ffd8dd",
     "contract/adapter.py": "72d883af9f6416d0e316f4248ef8508f2a37cc7b4e394d9cd79fe42586e1988c",

@@ -212,3 +212,25 @@ value from 2 weeks. Categories and the baseline version are unchanged.
 | `templates/d001.py` | Phase shares are solved with these approaches too (a Red site whose approaches have 2-4 weeks of green share) | Section 1 |
 | `subsystems.py` | The subsystem's usual saturation and cycle from 2 reference weeks | Section 1, "Control" evidence |
 | (20 Nov) `templates/d002.py`, `link_speed.py` | TomTom and link-speed usual values from 2 weeks | Section 3 |
+
+## 15. Update of 23 Nov 2026: the three methodology switches on in production
+
+Methodology owner (23 Nov 2026): production runs with backfill, school-holiday matching and the count-noise floor on.
+The shipped `config/rules.json` is the source rules with `settings.switch_overrides("all")` merged in by
+`tools/build_production.py` (key `production_switches` says so); the source rules keep the methodology as written for
+the tests, and `python main.py ... --switches all` runs locally as production does.
+
+| Switch | Shipped value | Effect |
+|---|---|---|
+| Backfill | `history.extend_beyond_weeks: true`, `max_lookback_weeks: 12` | A left-out or missing week is replaced by an earlier one, up to 12 weeks back, with one window per site |
+| School | `history.school_holidays: "match"` | A school-term weekday is compared only with term days, a school-holiday weekday only with holiday days |
+| Noise | `q1.min_count_noise_sd: 2` | A flagged volume difference must also be at least 2 √usual vehicles |
+
+- **Baseline version** changes from `v1.1-f6389e86dc` to `v1.1-ad03aecdc8`: the first runs compute new baselines (and
+  read up to 12 weeks back), so they are slower; later runs reuse them.
+- **Categories change**: on the AM peak of 10 Nov 2026, Red went from 83 to 66 sites (38 Red in both) and Amber –
+  traffic from 508 to 328. Screening logs written before the change were made with the switches off; the ranking's
+  persistence counts them as they are.
+- **School terms** are in `vic_calendar.SCHOOL_TERMS` for 2024–2026. A day outside the table is not matched (it is
+  compared with every day, as with the switch off), so the 2027 terms must be added before 1 Jan 2027.
+- Signal data (Q3) start about 20 Oct 2026, so backfill cannot give Q3 more than about 5 weeks yet.

@@ -109,6 +109,18 @@ class ProductionBuildTests(unittest.TestCase):
                                 capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_production_runs_with_the_three_switches_on(self):
+        """Methodology owner, 23 Nov 2026: production has backfill, school matching and the noise floor on; the source
+        rules.json keeps the methodology as written (switches off)."""
+        import json
+        shipped = json.loads((ROOT / "production" / "dash_backend" / "dash" / "intersections" / "diagnostics" / "config"
+                              / "rules.json").read_text(encoding="utf-8"))
+        source = json.loads((ROOT / "diagnostics" / "config" / "rules.json").read_text(encoding="utf-8"))
+        on = lambda r: (r["history"]["extend_beyond_weeks"], r["history"]["school_holidays"], r["q1"]["min_count_noise_sd"])
+        self.assertEqual(on(shipped), (True, "match", 2))
+        self.assertEqual(on(source), (False, "include", 0))
+        self.assertEqual(shipped["history"]["max_lookback_weeks"], 12)
+
 
 if __name__ == "__main__":
     unittest.main()

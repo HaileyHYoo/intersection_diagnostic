@@ -28,6 +28,12 @@ EXCLUDE_DIRS = {"local", "__pycache__"}
 SEPARATE = {"rank.py"}
 RANK_OUT = OUT / "rank_addon"
 RANK_TARGET = RANK_OUT / "dash_backend" / "dash" / "intersections" / "diagnostics"
+# Production runs with the three methodology switches on (methodology owner, 23 Nov 2026): the shipped
+# config/rules.json is the source rules.json with settings.switch_overrides(PRODUCTION_SWITCHES) merged in. The source
+# file keeps the methodology as written (the tests check it); `python main.py ... --switches all` runs locally as
+# production does.
+PRODUCTION_SWITCHES = "all"
+RULES = "config/rules.json"
 DOCS = {"docs/PRODUCTION_UPDATE.md": "PRODUCTION_UPDATE.md",
         "docs/SCHEMA.md": "SCHEMA.md", "docs/DATA_MAPPING.md": "DATA_MAPPING.md", "requirements.txt": "requirements.txt", ".env.example": ".env.example"}
 
@@ -41,9 +47,25 @@ def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def production_rules() -> bytes:
+    """The source rules with the production switches merged in (same definition as main.py --switches)."""
+    sys.path.insert(0, str(ROOT))
+    from diagnostics.settings import _merge, switch_overrides
+    rules = json.loads((SOURCE / RULES).read_text(encoding="utf-8"))
+    rules = _merge(rules, switch_overrides(PRODUCTION_SWITCHES))
+    rules["production_switches"] = (f"Switches on in production: {PRODUCTION_SWITCHES} (tools/build_production.py; "
+                                    "methodology owner, 23 Nov 2026). The source rules.json keeps them off.")
+    return (json.dumps(rules, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+
+
+def file_digest(path: Path) -> str:
+    rel = str(path.relative_to(SOURCE))
+    return hashlib.sha256(production_rules()).hexdigest() if rel == RULES else digest(path)
+
+
 def manifest() -> dict:
-    return {"package": "dash_backend.dash.intersections.diagnostics",
-            "files": {str(p.relative_to(SOURCE)): digest(p) for p in source_files()}}
+    return {"package": "dash_backend.dash.intersections.diagnostics", "production_switches": PRODUCTION_SWITCHES,
+            "files": {str(p.relative_to(SOURCE)): file_digest(p) for p in source_files()}}
 
 
 def check_imports() -> None:
@@ -65,6 +87,7 @@ def build() -> None:
         dest = TARGET / path.relative_to(SOURCE)
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(path, dest)
+    (TARGET / RULES).write_bytes(production_rules())
     for src, dst in DOCS.items():
         if (ROOT / src).exists():
             shutil.copy2(ROOT / src, OUT / dst)
