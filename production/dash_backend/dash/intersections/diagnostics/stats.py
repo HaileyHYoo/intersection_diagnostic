@@ -43,25 +43,41 @@ def pct_difference(current: float, usual: float) -> float | None:
     return None if not usual else (current - usual) / abs(usual) * 100
 
 
+REPORT_MIN_OBSERVATIONS = 2          # rules history.report_min_observations (methodology owner, 20 Nov 2026)
+
+
+def report_reference(env: dict, minimum: int = REPORT_MIN_OBSERVATIONS) -> dict:
+    """For a measure with fewer weeks than the screening needs: its usual value and range from the weeks it has, when
+    at least `minimum` (2). Shown in the report only; the measure stays INSUFFICIENT and decides nothing."""
+    values = [v for v in env.get("values") or [] if v is not None]
+    if env.get("usual") is not None or len(values) < max(minimum, 2):
+        return {}
+    return {"report_usual": median(values), "report_p_low": quantile(values, 0.10),
+            "report_p_high": quantile(values, 0.90)}
+
+
 def _result(status, current, env, direction=None, diff=None, reason=None) -> dict:
     return {"status": status, "current": current, "usual": env.get("usual"), "p_low": env.get("p_low"),
             "p_high": env.get("p_high"), "n_history": env.get("n", 0), "direction": direction,
             "pct_difference": diff, "reason": reason}
 
 
-def _insufficient(current, env) -> dict | None:
+def _insufficient(current, env, report_min: int = REPORT_MIN_OBSERVATIONS) -> dict | None:
     if current is None:
-        return _result(INSUFFICIENT, None, env, reason="no current value for the analysis period")
+        return {**_result(INSUFFICIENT, None, env, reason="no current value for the analysis period"),
+                **report_reference(env, report_min)}
     if env.get("usual") is None:
-        return _result(INSUFFICIENT, current, env, reason=f"only {env.get('n', 0)} valid historical observations")
+        return {**_result(INSUFFICIENT, current, env, reason=f"only {env.get('n', 0)} valid historical observations"),
+                **report_reference(env, report_min)}
     return None
 
 
-def two_sided(current: float | None, env: dict, min_pct: float, noise_sd: float = 0) -> dict:
+def two_sided(current: float | None, env: dict, min_pct: float, noise_sd: float = 0,
+              report_min: int = REPORT_MIN_OBSERVATIONS) -> dict:
     """noise_sd > 0 (counts only, q1.min_count_noise_sd): the difference must also be at least noise_sd x sqrt(usual)
     vehicles, the Poisson standard deviation of a count, so that a few vehicles on a small approach are not flagged.
     0 (default) is the methodology as written."""
-    missing = _insufficient(current, env)
+    missing = _insufficient(current, env, report_min)
     if missing:
         return missing
     diff = pct_difference(current, env["usual"])
@@ -75,8 +91,9 @@ def two_sided(current: float | None, env: dict, min_pct: float, noise_sd: float 
     return _result(status, current, env, direction if status == ABNORMAL else None, diff)
 
 
-def poorer_only(current: float | None, env: dict, higher_is_better: bool) -> dict:
-    missing = _insufficient(current, env)
+def poorer_only(current: float | None, env: dict, higher_is_better: bool,
+                report_min: int = REPORT_MIN_OBSERVATIONS) -> dict:
+    missing = _insufficient(current, env, report_min)
     if missing:
         return missing
     poorer = current < env["p_low"] if higher_is_better else current > env["p_high"]
@@ -84,8 +101,8 @@ def poorer_only(current: float | None, env: dict, higher_is_better: bool) -> dic
     return _result(ABNORMAL if poorer else NORMAL, current, env, "POORER" if poorer else None, diff)
 
 
-def range_only(current: float | None, env: dict) -> dict:
-    missing = _insufficient(current, env)
+def range_only(current: float | None, env: dict, report_min: int = REPORT_MIN_OBSERVATIONS) -> dict:
+    missing = _insufficient(current, env, report_min)
     if missing:
         return missing
     diff = pct_difference(current, env["usual"])

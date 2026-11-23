@@ -194,3 +194,7 @@ for Grey and Detector Health neighbours (no Q1/Q3), and `rank.py` inside the pac
 new `rank.py` only changes the spread to c(n), same functions and rows). `dash_backend/schemas/intersections_diagnostics_schemas.py`
 is the production team's file (with `SiteRank` and `ScreeningPanelData.ranking`) plus only the optional fields above;
 drop that file to keep the schema as it was, and the package still runs (the fields are filled only when they exist).
+
+**Subsystem map (production team, 20 Nov 2026).** In production the subsystem membership is to be read from the SCATS
+region layer's `scats_subsystem_map_AU-VIC-Melbourne.json`, at the path the production team knows, instead of the
+bundled `data/site_subsystem_map.json` (the chatbot's file of Oct 2026), which remains the local fallback.

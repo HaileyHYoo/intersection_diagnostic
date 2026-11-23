@@ -116,9 +116,13 @@ def rules_overrides(config: S.ScreeningConfig) -> dict:
 
 
 def comparison(row: dict) -> S.HistoricalComparison:
-    return S.HistoricalComparison(current=row.get("current"), reference=row.get("usual"), p10=row.get("p_low"),
-                                  p90=row.get("p_high"), n_history_obs=row.get("n_history") or 0,
-                                  pct_diff=row.get("pct_difference"))
+    """A measure the screening could not assess (fewer than 5 weeks) carries its report reference (2-4 weeks) in
+    reference / p10 / p90, with its not-assessed status; n_history_obs says how many weeks."""
+    usual, lo, hi = row.get("usual"), row.get("p_low"), row.get("p_high")
+    if usual is None and row.get("report_usual") is not None:
+        usual, lo, hi = row["report_usual"], row.get("report_p_low"), row.get("report_p_high")
+    return S.HistoricalComparison(current=row.get("current"), reference=usual, p10=lo, p90=hi,
+                                  n_history_obs=row.get("n_history") or 0, pct_diff=row.get("pct_difference"))
 
 
 def _coords(site: dict):
@@ -224,10 +228,15 @@ def site_from_model(m: S.SiteScreeningResult) -> dict:
         label = re.match(r"^(.*) \[([A-Z]{1,2})\]$", name or "")         # approach_label: "Street [N]"
         street, bound = (label.group(1), label.group(2)) if label else (name or None, None)
         # The saved name is kept as the label, so "Link X [S] (no street name)" is not re-labelled with its link ID.
-        return {"link": approach_id, "street": street, "bound": bound, "label": name or None,
-                "current": hc.current, "usual": hc.reference,
-                "p_low": hc.p10, "p_high": hc.p90, "n_history": hc.n_history_obs, "pct_difference": hc.pct_diff,
-                "status": status, "direction": direction}
+        out = {"link": approach_id, "street": street, "bound": bound, "label": name or None,
+               "current": hc.current, "usual": hc.reference,
+               "p_low": hc.p10, "p_high": hc.p90, "n_history": hc.n_history_obs, "pct_difference": hc.pct_diff,
+               "status": status, "direction": direction}
+        if status == INSUFFICIENT and hc.reference is not None:
+            # a not-assessed measure's reference is its report reference (2-4 weeks): kept apart, as screened
+            out.update(usual=None, p_low=None, p_high=None, report_usual=hc.reference, report_p_low=hc.p10,
+                       report_p_high=hc.p90)
+        return out
 
     q1 = {"status": STATUS_BACK[m.q1.status], "not_evaluated": not_evaluated_from_notes(m.notes), "approaches": [
         row(a.approach_id, a.approach_name, a.volume, STATUS_BACK[a.status], a.direction.value.upper() if a.direction else None)
@@ -316,6 +325,26 @@ def _against(row: dict, unit: str = "", diff: str | None = None) -> str:
     return text + (f"; {diff}" if diff else "")
 
 
+def _short(row: dict, unit: str = "", rules: dict | None = None, pp: bool = False) -> str | None:
+    """A measure with 2-4 reference weeks: not assessed for the category, but its usual value from those weeks is shown
+    for the report (history.report_min_observations; methodology owner, 20 Nov 2026)."""
+    if row.get("report_usual") is None or row.get("current") is None:
+        return None
+    d = decimals(row)
+    c, u = row["current"], row["report_usual"]
+    if pp:
+        diff = round(c, 1) - round(u, 1)
+        change = "no change" if round(diff, 1) == 0 else f"{abs(diff):.1f} percentage points {'higher' if diff > 0 else 'lower'}"
+    else:
+        change = "no change" if not u or round((c - u) / abs(u) * 100, 1) == 0 else \
+            f"{abs((c - u) / abs(u) * 100):.1f}% {'higher' if c > u else 'lower'}"
+    need = (rules or {}).get("history", {}).get("min_observations", 5)
+    weeks = row.get("n_history") or 0
+    return (f"{_num(c, d, unit)}; usual {_num(u, d, unit)} from only {weeks} reference week{'s' if weeks != 1 else ''} "
+            f"(range {_num(row.get('report_p_low'), d)}-{_num(row.get('report_p_high'), d, unit)}); {change}; not assessed "
+            f"for the category (at least {need} weeks are needed), shown for reference")
+
+
 def _pct_diff(row: dict, words=("higher", "lower")) -> str | None:
     p = row.get("pct_difference")
     if p is None:
@@ -343,11 +372,16 @@ def evidence_items(site: dict, period: Period | None = None, rules: dict | None 
     approach and measure is listed with its current value, usual value and normal range, so a page that shows
     only the statements still shows which approaches were assessed (methodology owner, Nov 2026)."""
     items = [S.EvidenceItem(statement=reference_text(period, rules), source="Reference")] if period and rules else []
-    values = lambda r: {"current": _f(r.get("current")), "reference": _f(r.get("usual")), "p10": _f(r.get("p_low")),
-                        "p90": _f(r.get("p_high")), "pct_diff": _f(r.get("pct_difference"))}
+    values = lambda r: {"current": _f(r.get("current")), "reference": _f(r.get("usual", None) if r.get("usual") is not None
+                                                                         else r.get("report_usual")),
+                        "p10": _f(r.get("p_low") if r.get("usual") is not None else r.get("report_p_low")),
+                        "p90": _f(r.get("p_high") if r.get("usual") is not None else r.get("report_p_high")),
+                        "pct_diff": _f(r.get("pct_difference"))}
     q1 = site["q1"]
     for a in _abnormal_first(q1["approaches"]):
-        if a["status"] == INSUFFICIENT:
+        if a["status"] == INSUFFICIENT and _short(a, " veh/30 min", rules):
+            text = f"{approach_label(a)} volume: {_short(a, ' veh/30 min', rules)}."
+        elif a["status"] == INSUFFICIENT:
             why = "no current volume" if a.get("current") is None else "fewer than 5 historical values"
             text = f"{approach_label(a)} volume: not assessed ({why})."
         else:
@@ -361,7 +395,9 @@ def evidence_items(site: dict, period: Period | None = None, rules: dict | None 
             ("Q3A", "cycle_length", "cycle_length_s", "Cycle length", " s", ("longer", "shorter")),
             ("Q3B", "cycle_stability", "cycle_stability", "Cycle Stability (score 0-100, higher is more stable)", "", None)):
         c = comps[key]
-        if c["status"] == INSUFFICIENT:
+        if c["status"] == INSUFFICIENT and _short(c, unit, rules):
+            text = f"{name}: {_short(c, unit, rules)}."
+        elif c["status"] == INSUFFICIENT:
             text = f"{name}: not assessed ({c.get('reason') or 'insufficient data'})."
         else:
             diff = _pct_diff(c, words) if words else None
@@ -371,7 +407,9 @@ def evidence_items(site: dict, period: Period | None = None, rules: dict | None 
     if ps["approaches"]:
         items.append(S.EvidenceItem(statement=Q3C_LABEL, source="Q3C", metric="phase_service"))
     for a in _abnormal_first(ps["approaches"]):
-        if a["status"] == INSUFFICIENT:
+        if a["status"] == INSUFFICIENT and _short(a, "%", rules, pp=True):
+            text = f"{approach_label(a)} green share: {_short(a, '%', rules, pp=True)}."
+        elif a["status"] == INSUFFICIENT:
             text = f"{approach_label(a)} green share: not assessed ({a.get('reason') or 'fewer than 5 historical values'})."
         else:
             diff = None

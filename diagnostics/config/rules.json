@@ -16,11 +16,13 @@
   "history": {
     "weeks": 8,
     "min_observations": 5,
+    "report_min_observations": 2,
     "extend_beyond_weeks": false,
     "max_lookback_weeks": 12,
     "school_holidays": "include",
     "exclude": {"public_holidays": true, "dst_change_days": true, "year_end": true}
   },
+  "report_min_note": "Methodology owner, 20 Nov 2026: the screening (categories) needs min_observations (5) weeks per measure; a measure with 2-4 weeks stays not assessed, but its usual value and range from those weeks are shown in the report and used to read a Red site (phase shares, subsystem state) and for the TomTom and link-speed usual values.",
   "percentiles": {"low": 0.10, "high": 0.90},
   "reference_value": "median",
   "q2": {

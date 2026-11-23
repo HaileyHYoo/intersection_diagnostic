@@ -89,9 +89,15 @@ def evidence(site: dict, period: dict, detail: dict | None = None, schema: dict 
         "quarter_view": view,
         "control": control,
         "persistence": persistence,
-        "phase_service_all": [{"approach": approach_label(a), "current": r1(a["current"]), "usual": r1(a["usual"]),
-                               "normal_range": [r1(a.get("p_low")), r1(a.get("p_high"))]}
-                              for a in comps["phase_service"]["approaches"] if a["status"] != INSUFFICIENT],
+        # every approach with a usual value: from 5 weeks as screened, or from 2-4 weeks for the report
+        # (history.report_min_observations, 20 Nov 2026), so the phase shares can still be solved
+        "phase_service_all": [{"approach": approach_label(a), "current": r1(a["current"]),
+                               "usual": r1(a["usual"] if a.get("usual") is not None else a.get("report_usual")),
+                               "normal_range": [r1(a.get("p_low") if a.get("usual") is not None else a.get("report_p_low")),
+                                                r1(a.get("p_high") if a.get("usual") is not None else a.get("report_p_high"))],
+                               "report_only": a["status"] == INSUFFICIENT}
+                              for a in comps["phase_service"]["approaches"]
+                              if a["status"] != INSUFFICIENT or a.get("report_usual") is not None],
     }
     ev["phase_shifts"] = rd_mod.phase_shifts(ev, view)
     ev["phase_shares"] = rd_mod.phase_shares(ev, view)

@@ -106,7 +106,7 @@ def q1_traffic(links: list[dict], current: dict[str, float], base: dict[str, dic
     rows = []
     for a in evaluated:
         result = stats.two_sided(current.get(a["link"]), base[a["link"]], rule["min_pct_difference"],
-                                 rule.get("min_count_noise_sd", 0))
+                                 rule.get("min_count_noise_sd", 0), report_min(rules))
         rows.append({"link": a["link"], "street": a.get("street"), "bound": bounds.get(a["link"]), **result})
     missing = [r for r in rows if r["status"] == INSUFFICIENT]
     flagged = [r for r in rows if r["status"] == ABNORMAL]
@@ -145,7 +145,7 @@ def q3c_phase_service(site_links: list[dict], current: dict[str, dict], base: di
                          "n_history": base[link]["n"], "direction": None, "pct_difference": None, "no_green": True,
                          "recorded_green_share": now.get("raw_share") if now else None})
             continue
-        result = stats.range_only(now["green_share"], base[link])
+        result = stats.range_only(now["green_share"], base[link], report_min(rules))
         rows.append({"link": link, "street": streets.get(link), "bound": bounds.get(link), **result, "no_green": False})
     grey_site = bool(without_green) and rule.get("grey_site_if_any_approach_without_green", True)
     flagged = [r for r in rows if r["status"] == ABNORMAL]
@@ -164,12 +164,18 @@ def q3c_phase_service(site_links: list[dict], current: dict[str, dict], base: di
             "without_green": without_green, "grey_site": grey_site}
 
 
+def report_min(rules: dict) -> int:
+    """Weeks from which a measure that the screening cannot assess (fewer than history.min_observations) still gets a
+    usual value for the report (history.report_min_observations, 2; methodology owner, 20 Nov 2026)."""
+    return rules["history"].get("report_min_observations", stats.REPORT_MIN_OBSERVATIONS)
+
+
 def q3_signal(kpi_now: dict, kpi_base: dict, origin: dict, q3c: dict, rules: dict) -> dict:
     cycle = stats.two_sided(kpi_now.get("cycle_length"), kpi_base.get("cycle_length", {"n": 0}),
-                            rules["q3a"]["min_pct_difference"])
+                            rules["q3a"]["min_pct_difference"], report_min=report_min(rules))
     cycle["origin"] = origin.get("cycle_length")
     stability = stats.poorer_only(kpi_now.get("cycle_stability"), kpi_base.get("cycle_stability", {"n": 0}),
-                                  rules["q3b"]["higher_is_more_stable"])
+                                  rules["q3b"]["higher_is_more_stable"], report_min(rules))
     components = {"cycle_length": cycle, "cycle_stability": stability, "phase_service": q3c}
     statuses = [c["status"] for c in components.values()]
     abnormal = statuses.count(ABNORMAL)

@@ -23,7 +23,7 @@ from pathlib import Path
 
 PACKAGE_ROOT = Path(__file__).resolve().parent
 CONFIG_DIR = PACKAGE_ROOT / "config"
-NEW_HISTORY_DEFAULTS = {"max_lookback_weeks": 12, "school_holidays": "include"}
+NEW_HISTORY_DEFAULTS = {"max_lookback_weeks": 12, "school_holidays": "include", "report_min_observations": 2}
 
 
 def _read_json(path: Path) -> dict:

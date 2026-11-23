@@ -163,7 +163,8 @@ def status_context(source, settings, site: str, period, reference: bool = True) 
             if s:
                 refs.append(s)
         weeks = len(refs)
-        if weeks >= settings.rules["history"]["min_observations"]:
+        # a report value, not a screening decision: from history.report_min_observations (2) weeks (20 Nov 2026)
+        if weeks >= settings.rules["history"].get("report_min_observations", settings.rules["history"]["min_observations"]):
             usual = {k: round(median(r[k] for r in refs), 1) for k in ("ds_median", "ds_mean", "ds_max", "cl_mean", "rl_mean", "cl_sd")
                      if all(r.get(k) is not None for r in refs)}
             usual["ds_at_least_100_share"] = round(median(r["ds_at_least_100"] / r["records"] for r in refs), 2)

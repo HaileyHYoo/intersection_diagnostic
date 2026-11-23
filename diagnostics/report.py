@@ -29,6 +29,11 @@ def _digits(row: dict) -> int:
 
 def _values(row: dict) -> list[str]:
     d = _digits(row)
+    if row.get("usual") is None and row.get("report_usual") is not None:
+        # not assessed (2-4 weeks): the usual value from those weeks, marked as shown for reference (20 Nov 2026)
+        lo, hi = row.get("report_p_low"), row.get("report_p_high")
+        return [_fmt(row.get("current"), digits=d), _fmt(row["report_usual"], digits=d) + " (ref.)",
+                "-" if lo is None or hi is None else f"{lo:.{d}f}-{hi:.{d}f} (ref.)"]
     return [_fmt(row.get("current"), digits=d), _fmt(row.get("usual"), digits=d), _range(row, d)]
 
 
@@ -42,7 +47,7 @@ def evidence_tables(site: dict) -> list[dict]:
                "rows": [[approach_label(a), *_values(a), weeks(a), _fmt(a["pct_difference"], "%"),
                          (a["direction"] or a["status"]).title() if a["status"] != "INSUFFICIENT DATA" else
                          ("Not assessed: no current volume" if a.get("current") is None
-                          else "Not assessed: fewer than 5 historical values")]
+                          else "Not assessed for the category: fewer than 5 weeks")]
                         for a in q1["approaches"]]
                        + [[approach_label(a), "-", "-", "-", "0", "-", "Not assessed: no volume in any reference week"]
                           for a in q1.get("not_evaluated", [])]}
