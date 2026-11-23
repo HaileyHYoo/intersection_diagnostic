@@ -198,3 +198,17 @@ drop that file to keep the schema as it was, and the package still runs (the fie
 **Subsystem map (production team, 20 Nov 2026).** In production the subsystem membership is to be read from the SCATS
 region layer's `scats_subsystem_map_AU-VIC-Melbourne.json`, at the path the production team knows, instead of the
 bundled `data/site_subsystem_map.json` (the chatbot's file of Oct 2026), which remains the local fallback.
+
+## 14. Update of 23 Nov 2026: the report uses references of 2 weeks or more
+
+Methodology owner (20 Nov 2026): the categories keep needing 5 reference weeks per measure; the report uses a usual
+value from 2 weeks. Categories and the baseline version are unchanged.
+
+| File | Change | Seen on the page as |
+|---|---|---|
+| `stats.py`, `screening.py` | A measure with 2-4 weeks stays not assessed (INSUFFICIENT DATA, decides nothing) but keeps its usual value and range from those weeks (`report_usual`, `report_p_low`, `report_p_high`; `history.report_min_observations: 2`) | - |
+| `contract/adapter.py` | Such a measure carries that reference in `HistoricalComparison.reference` / `p10` / `p90`, with its not-assessed status and `n_history_obs` (2-4) | Q1/Q3 tables: a usual value on rows that are not assessed |
+| `contract/adapter.py` | Its evidence statement: "Clyde Road [N] green share: 77.8%; usual 85.0% from only 2 reference weeks (range 81.0-89.0%); 7.2 percentage points lower; not assessed for the category (at least 5 weeks are needed), shown for reference." | Section 2 |
+| `templates/d001.py` | Phase shares are solved with these approaches too (a Red site whose approaches have 2-4 weeks of green share) | Section 1 |
+| `subsystems.py` | The subsystem's usual saturation and cycle from 2 reference weeks | Section 1, "Control" evidence |
+| (20 Nov) `templates/d002.py`, `link_speed.py` | TomTom and link-speed usual values from 2 weeks | Section 3 |
